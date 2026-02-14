@@ -27,6 +27,7 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ФИО</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Почта</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Роль</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действия</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -37,10 +38,15 @@
                                         </td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $user->email }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $user->role }}</td>
+                                        <td class="px-4 py-3 text-right">
+                                            <a href="{{ route('users.edit', $user) }}" class="inline-flex items-center px-3 py-1.5 bg-indigo-600 dark:bg-indigo-500 text-white text-sm font-medium rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600">
+                                                Изменить
+                                            </a>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="px-4 py-6 text-center text-sm text-gray-500">Пользователей пока нет.</td>
+                                        <td colspan="4" class="px-4 py-6 text-center text-sm text-gray-500">Пользователей пока нет.</td>
                                     </tr>
                                 @endforelse
                             </tbody>

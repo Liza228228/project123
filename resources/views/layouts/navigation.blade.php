@@ -20,6 +20,16 @@
                             Управление пользователями
                         </x-nav-link>
                     @endif
+                    @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                        <x-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
+                            Заявки
+                        </x-nav-link>
+                    @endif
+                    @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                        <x-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
+                            Заявки
+                        </x-nav-link>
+                    @endif
                 </div>
             </div>
 
@@ -78,6 +88,16 @@
             @if (Auth::user()->role === \App\Models\User::ROLE_ADMINISTRATOR)
                 <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')">
                     Управление пользователями
+                </x-responsive-nav-link>
+            @endif
+            @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
+                    Заявки
+                </x-responsive-nav-link>
+            @endif
+            @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
+                    Заявки
                 </x-responsive-nav-link>
             @endif
         </div>
