@@ -10,13 +10,9 @@ class EquipmentTypeSeeder extends Seeder
     public function run(): void
     {
         $names = [
-            'Дрель',
-            'Шуруповёрт',
-            'Перфоратор',
-            'Болгарка',
-            'Сварочный аппарат',
-            'Компрессор',
-            'Измерительный инструмент',
+            'Труба',
+            'Уровень',
+            'Рулетка',
         ];
 
         foreach ($names as $name) {

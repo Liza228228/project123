@@ -13,12 +13,12 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('surname');   // фамилия
-            $table->string('name');      // имя
-            $table->string('patronymic'); // отчество
-            $table->string('email')->unique(); // почта
+            $table->string('surname');  
+            $table->string('name');     
+            $table->string('patronymic'); 
+            $table->string('email')->unique(); 
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');  // пароль
+            $table->string('password'); 
             $table->enum('role', [
                 'Директор',
                 'Начальник отдела снабжения',

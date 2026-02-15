@@ -27,9 +27,7 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Подразделение</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ответственный</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Оборудование</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Кол-во</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Желаемая дата поставки</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Действия</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -43,8 +41,7 @@
                                                 —
                                             @endif
                                         </td>
-                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->equipment_display_name }}</td>
-                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->quantity }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->equipment_summary }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
                                         <td class="px-4 py-3 text-right">
                                             <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 bg-indigo-600 dark:bg-indigo-500 text-white text-sm font-medium rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600">
@@ -54,7 +51,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="px-4 py-6 text-center text-sm text-gray-500">Заявок пока нет.</td>
+                                        <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">Заявок пока нет.</td>
                                     </tr>
                                 @endforelse
                             </tbody>

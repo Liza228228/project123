@@ -13,8 +13,6 @@ class SubdivisionSeeder extends Seeder
             'Участок №1',
             'Участок №2',
             'Участок №3',
-            'Склад',
-            'Ремонтная служба',
         ];
 
         foreach ($names as $name) {

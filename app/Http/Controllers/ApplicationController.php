@@ -8,13 +8,14 @@ use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class ApplicationController extends Controller
 {
     public function index(): View
     {
-        $applications = Application::with(['subdivision', 'responsibleUser', 'equipmentType', 'user'])
+        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user'])
             ->orderByDesc('created_at')
             ->get();
 
@@ -25,7 +26,7 @@ class ApplicationController extends Controller
     {
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::orderBy('surname')->orderBy('name')->get();
+        $users = User::where('role', User::ROLE_SITE_FOREMAN)->orderBy('surname')->orderBy('name')->get();
 
         return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users'));
     }
@@ -34,26 +35,53 @@ class ApplicationController extends Controller
     {
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
-            'responsible_user_id' => ['nullable', 'exists:users,id'],
-            'equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
-            'equipment_name' => ['nullable', 'string', 'max:255'],
-            'quantity' => ['required', 'integer', 'min:1'],
-            'desired_delivery_date' => ['required', 'date'],
+            'responsible_user_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->where('role', User::ROLE_SITE_FOREMAN),
+            ],
+            'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.equipment_select' => ['nullable', 'string', 'max:255'],
+            'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+        ], [
+            'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
+            'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
 
-        if (empty($validated['equipment_type_id']) && empty(trim($validated['equipment_name'] ?? ''))) {
+        $hasValidItem = collect($validated['items'])->contains(fn (array $item) =>
+            !empty($item['equipment_type_id'] ?? null) || !empty(trim($item['equipment_name'] ?? ''))
+        );
+        if (!$hasValidItem) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
-        }
-        if (!empty($validated['equipment_type_id'])) {
-            $validated['equipment_name'] = null;
-        } else {
-            $validated['equipment_type_id'] = null;
         }
 
         $validated['user_id'] = $request->user()->id;
+        if (empty($validated['responsible_user_id'])) {
+            $validated['responsible_user_id'] = $request->user()->id;
+        }
         $validated['equipment_in_warehouse'] = null;
 
-        Application::create($validated);
+        $application = Application::create([
+            'subdivision_id' => $validated['subdivision_id'],
+            'responsible_user_id' => $validated['responsible_user_id'],
+            'desired_delivery_date' => $validated['desired_delivery_date'],
+            'user_id' => $validated['user_id'],
+            'equipment_in_warehouse' => $validated['equipment_in_warehouse'],
+        ]);
+
+        foreach ($validated['items'] as $item) {
+            $typeId = $item['equipment_type_id'] ?? null;
+            $name = trim($item['equipment_name'] ?? '');
+            if (empty($typeId) && $name === '') {
+                continue;
+            }
+            $application->items()->create([
+                'equipment_type_id' => $typeId ?: null,
+                'equipment_name' => $typeId ? null : $name,
+                'quantity' => (int) ($item['quantity'] ?? 1),
+            ]);
+        }
 
         return redirect()->route('applications.index')
             ->with('status', 'Заявка успешно создана.');
@@ -63,7 +91,7 @@ class ApplicationController extends Controller
     {
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::orderBy('surname')->orderBy('name')->get();
+        $users = User::where('role', User::ROLE_SITE_FOREMAN)->orderBy('surname')->orderBy('name')->get();
 
         return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users'));
     }
@@ -72,23 +100,46 @@ class ApplicationController extends Controller
     {
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
-            'responsible_user_id' => ['nullable', 'exists:users,id'],
-            'equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
-            'equipment_name' => ['nullable', 'string', 'max:255'],
-            'quantity' => ['required', 'integer', 'min:1'],
-            'desired_delivery_date' => ['required', 'date'],
+            'responsible_user_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->where('role', User::ROLE_SITE_FOREMAN),
+            ],
+            'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
+            'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+        ], [
+            'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
+            'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
 
-        if (empty($validated['equipment_type_id']) && empty(trim($validated['equipment_name'] ?? ''))) {
+        $hasValidItem = collect($validated['items'])->contains(fn (array $item) =>
+            !empty($item['equipment_type_id'] ?? null) || !empty(trim($item['equipment_name'] ?? ''))
+        );
+        if (!$hasValidItem) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
-        if (!empty($validated['equipment_type_id'])) {
-            $validated['equipment_name'] = null;
-        } else {
-            $validated['equipment_type_id'] = null;
-        }
 
-        $application->update($validated);
+        $application->update([
+            'subdivision_id' => $validated['subdivision_id'],
+            'responsible_user_id' => $validated['responsible_user_id'],
+            'desired_delivery_date' => $validated['desired_delivery_date'],
+        ]);
+
+        $application->items()->delete();
+        foreach ($validated['items'] as $item) {
+            $typeId = $item['equipment_type_id'] ?? null;
+            $name = trim($item['equipment_name'] ?? '');
+            if (empty($typeId) && $name === '') {
+                continue;
+            }
+            $application->items()->create([
+                'equipment_type_id' => $typeId ?: null,
+                'equipment_name' => $typeId ? null : $name,
+                'quantity' => (int) ($item['quantity'] ?? 1),
+            ]);
+        }
 
         return redirect()->route('applications.index')
             ->with('status', 'Заявка успешно обновлена.');

@@ -13,9 +13,9 @@
         body { font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
     </style>
 </head>
-<body class="min-h-screen bg-gray-100 text-gray-800 antialiased">
-    <header class="bg-white border-b border-gray-200">
-        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+<body class="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 antialiased flex flex-col">
+    <header class="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 shrink-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
             <div>
                 <h1 class="font-semibold text-gray-800">ИС учёта материалов</h1>
                 <p class="text-sm text-gray-500">Теплоснабжающая организация</p>
@@ -34,39 +34,40 @@
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-12">
-        <div class="bg-white border border-gray-200 rounded-lg p-8">
-            <h2 class="text-xl font-semibold text-gray-800 mb-2">
-                Система учёта материалов для теплоснабжающей организации
-            </h2>
-            <p class="text-gray-600 mb-6">
-                Учёт материалов, складских остатков и заявок. Войдите в систему для работы.
-            </p>
-            @guest
-                <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-transparent rounded-md">
-                    Войти в систему
-                </a>
-            @endguest
-        </div>
+    <main class="flex-1 py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 dark:text-gray-100">
+                    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                        Система учёта материалов для теплоснабжающей организации
+                    </h2>
+                    @guest
+                        <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-transparent rounded-md">
+                            Войти в систему
+                        </a>
+                    @endguest
+                </div>
+            </div>
 
-        <div class="mt-8 grid sm:grid-cols-3 gap-4">
-            <div class="bg-white border border-gray-200 rounded-lg p-5">
-                <h3 class="font-medium text-gray-800 mb-1">Учёт материалов</h3>
-                <p class="text-sm text-gray-500">Ведение складского учёта и номенклатуры</p>
-            </div>
-            <div class="bg-white border border-gray-200 rounded-lg p-5">
-                <h3 class="font-medium text-gray-800 mb-1">Заявки и списание</h3>
-                <p class="text-sm text-gray-500">Оформление заявок и списание материалов</p>
-            </div>
-            <div class="bg-white border border-gray-200 rounded-lg p-5">
-                <h3 class="font-medium text-gray-800 mb-1">Отчётность</h3>
-                <p class="text-sm text-gray-500">Отчёты и аналитика по материалам</p>
+            <div class="mt-6 grid sm:grid-cols-3 gap-4">
+                <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900 dark:text-gray-100">
+                        <h3 class="font-medium text-gray-800 dark:text-gray-200">Учёт материалов</h3>
+                    </div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900 dark:text-gray-100">
+                        <h3 class="font-medium text-gray-800 dark:text-gray-200">Заявки</h3>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
 
-    <footer class="max-w-4xl mx-auto px-4 py-4 mt-12 border-t border-gray-200 text-center text-sm text-gray-500">
-        ИС учёта материалов для теплоснабжающей организации
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 py-4 mt-auto shrink-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            ИС учёта материалов для теплоснабжающей организации
+        </div>
     </footer>
 </body>
 </html>

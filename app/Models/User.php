@@ -13,14 +13,14 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
-    /** Роли пользователей */
+    /** роли  */
     public const ROLE_DIRECTOR = 'Директор';
     public const ROLE_SUPPLY_DEPARTMENT_HEAD = 'Начальник отдела снабжения';
     public const ROLE_ACCOUNTANT = 'Бухгалтер';
     public const ROLE_SITE_FOREMAN = 'Мастер участка';
     public const ROLE_ADMINISTRATOR = 'Администратор';
 
-    /** @var list<string> Все допустимые роли */
+   
     public const ROLES = [
         self::ROLE_DIRECTOR,
         self::ROLE_SUPPLY_DEPARTMENT_HEAD,

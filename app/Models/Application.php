@@ -4,16 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Application extends Model
 {
     protected $fillable = [
         'subdivision_id',
         'responsible_user_id',
-        'equipment_type_id',
-        'equipment_name',
         'equipment_in_warehouse',
-        'quantity',
         'desired_delivery_date',
         'user_id',
     ];
@@ -35,22 +33,20 @@ class Application extends Model
         return $this->belongsTo(User::class, 'responsible_user_id');
     }
 
-    public function equipmentType(): BelongsTo
-    {
-        return $this->belongsTo(EquipmentType::class);
-    }
-
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /** Отображаемое название оборудования: из справочника или свободный ввод */
-    public function getEquipmentDisplayNameAttribute(): string
+    public function items(): HasMany
     {
-        if ($this->equipment_type_id && $this->equipmentType) {
-            return $this->equipmentType->name;
-        }
-        return $this->equipment_name ?? '—';
+        return $this->hasMany(ApplicationItem::class)->orderBy('id');
+    }
+
+    /** Краткое отображение позиций: «Позиция 1, Позиция 2» или одна строка */
+    public function getEquipmentSummaryAttribute(): string
+    {
+        $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name . ' × ' . $item->quantity);
+        return $names->isEmpty() ? '—' : $names->implode('; ');
     }
 }
