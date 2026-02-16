@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('subdivisions', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->comment('Наименование подразделения');
+            $table->string('name');
             $table->timestamps();
 
             $table->unique('name');

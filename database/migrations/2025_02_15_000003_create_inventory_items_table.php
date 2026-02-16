@@ -10,12 +10,12 @@ return new class extends Migration
     {
         Schema::create('inventory_items', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('parent_id')->nullable()->constrained('inventory_items')->cascadeOnDelete()->comment('Родитель (иерархия из файла 1)');
-            $table->boolean('is_group')->default(false)->comment('Это группа (Да/Нет)');
-            $table->string('name')->comment('Наименование');
-            $table->string('code')->comment('Код');
-            $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete()->comment('Тип склада');
-            $table->text('comment')->nullable()->comment('Комментарий');
+            $table->foreignId('parent_id')->nullable()->constrained('inventory_items')->cascadeOnDelete();
+            $table->boolean('is_group')->default(false);
+            $table->string('name');
+            $table->string('code');
+            $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete();
+            $table->text('comment')->nullable();
             $table->timestamps();
             $table->unique('code');
         });

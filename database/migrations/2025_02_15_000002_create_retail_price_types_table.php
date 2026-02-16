@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('retail_price_types', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->comment('Тип цен розничной торговли');
+            $table->string('name');
             $table->timestamps();
             $table->unique('name');
         });

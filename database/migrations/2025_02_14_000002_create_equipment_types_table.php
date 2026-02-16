@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('equipment_types', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->comment('Наименование типа оборудования');
+            $table->string('name');
             $table->timestamps();
 
             $table->unique('name');
