@@ -4,9 +4,11 @@
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
                 Заявки
             </h2>
-            <a href="{{ route('applications.create') }}" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-800 text-sm font-medium rounded-md hover:bg-gray-700 dark:hover:bg-gray-300">
-                Создать заявку
-            </a>
+            @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                <a href="{{ route('applications.create') }}" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                    Создать заявку
+                </a>
+            @endif
         </div>
     </x-slot>
 
@@ -44,8 +46,8 @@
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->equipment_summary }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
                                         <td class="px-4 py-3 text-right">
-                                            <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 bg-indigo-600 dark:bg-indigo-500 text-white text-sm font-medium rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600">
-                                                Изменить
+                                            <a href="{{ route('applications.show', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                                                Просмотр
                                             </a>
                                         </td>
                                     </tr>

@@ -26,6 +26,7 @@ return new class extends Migration
                 'Мастер участка',
                 'Администратор',
             ]);
+            $table->boolean('is_blocked')->default(false);
             $table->rememberToken();
             $table->timestamps();
         });

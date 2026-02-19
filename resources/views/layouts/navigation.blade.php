@@ -20,7 +20,7 @@
                             Управление пользователями
                         </x-nav-link>
                     @endif
-                    @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+                    @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN]))
                         <x-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
                             Заявки
                         </x-nav-link>
@@ -85,7 +85,7 @@
                     Управление пользователями
                 </x-responsive-nav-link>
             @endif
-            @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+            @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN]))
                 <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
                     Заявки
                 </x-responsive-nav-link>

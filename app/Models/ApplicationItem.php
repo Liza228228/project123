@@ -12,12 +12,15 @@ class ApplicationItem extends Model
         'equipment_type_id',
         'equipment_name',
         'quantity',
+        'is_checked',
+        'reason_not_selected',
     ];
 
     protected function casts(): array
     {
         return [
             'quantity' => 'integer',
+            'is_checked' => 'boolean',
         ];
     }
 

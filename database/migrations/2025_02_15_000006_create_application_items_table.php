@@ -14,6 +14,8 @@ return new class extends Migration
             $table->foreignId('equipment_type_id')->nullable()->constrained('equipment_types')->nullOnDelete();
             $table->string('equipment_name')->nullable();
             $table->unsignedInteger('quantity')->default(1);
+            $table->boolean('is_checked')->default(false);
+            $table->string('reason_not_selected', 500)->nullable();
             $table->timestamps();
         });
 

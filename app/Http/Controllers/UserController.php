@@ -85,4 +85,20 @@ class UserController extends Controller
         return redirect()->route('users.index')
             ->with('status', 'Данные пользователя успешно обновлены.');
     }
+
+    public function block(User $user): RedirectResponse
+    {
+        $user->update(['is_blocked' => true]);
+
+        return redirect()->route('users.index')
+            ->with('status', 'Пользователь заблокирован.');
+    }
+
+    public function unblock(User $user): RedirectResponse
+    {
+        $user->update(['is_blocked' => false]);
+
+        return redirect()->route('users.index')
+            ->with('status', 'Пользователь разблокирован.');
+    }
 }

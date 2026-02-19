@@ -20,7 +20,6 @@ class User extends Authenticatable
     public const ROLE_SITE_FOREMAN = 'Мастер участка';
     public const ROLE_ADMINISTRATOR = 'Администратор';
 
-   
     public const ROLES = [
         self::ROLE_DIRECTOR,
         self::ROLE_SUPPLY_DEPARTMENT_HEAD,
@@ -41,6 +40,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'is_blocked',
     ];
 
     /**
@@ -63,6 +63,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_blocked' => 'boolean',
         ];
     }
 

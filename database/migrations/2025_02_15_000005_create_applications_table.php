@@ -19,6 +19,7 @@ return new class extends Migration
                 $table->unsignedInteger('quantity');
                 $table->date('desired_delivery_date');
                 $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+                $table->timestamps();
             });
         } else {
             if (Schema::hasColumn('applications', 'warehouse_id')) {

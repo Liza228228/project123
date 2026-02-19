@@ -25,12 +25,17 @@ Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(fun
     Route::post('/', [UserController::class, 'store'])->name('store');
     Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit');
     Route::put('/{user}', [UserController::class, 'update'])->name('update');
+    Route::post('/{user}/block', [UserController::class, 'block'])->name('block');
+    Route::post('/{user}/unblock', [UserController::class, 'unblock'])->name('unblock');
 });
 
-Route::middleware(['auth', 'site_foreman'])->prefix('applications')->name('applications.')->group(function () {
+Route::middleware(['auth', 'applications'])->prefix('applications')->name('applications.')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('index');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
+    Route::post('/items/{item}/toggle', [ApplicationController::class, 'toggleCheck'])->name('items.toggle');
+    Route::put('/items/{item}/reason', [ApplicationController::class, 'updateReason'])->name('items.reason');
+    Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');
 });
