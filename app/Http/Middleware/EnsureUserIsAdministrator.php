@@ -11,7 +11,7 @@ class EnsureUserIsAdministrator
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$request->user() || $request->user()->role !== User::ROLE_ADMINISTRATOR) {
+        if (! $request->user() || $request->user()->role !== User::ROLE_ADMINISTRATOR) {
             abort(403, 'Доступ разрешён только администраторам.');
         }
 

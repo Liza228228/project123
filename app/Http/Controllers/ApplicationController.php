@@ -9,9 +9,9 @@ use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Illuminate\Support\Facades\Validator;
 
 class ApplicationController extends Controller
 {
@@ -55,10 +55,9 @@ class ApplicationController extends Controller
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
 
-        $hasValidItem = collect($validated['items'])->contains(fn (array $item) =>
-            !empty($item['equipment_type_id'] ?? null) || !empty(trim($item['equipment_name'] ?? ''))
+        $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_type_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
         );
-        if (!$hasValidItem) {
+        if (! $hasValidItem) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
@@ -131,10 +130,9 @@ class ApplicationController extends Controller
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
 
-        $hasValidItem = collect($validated['items'])->contains(fn (array $item) =>
-            !empty($item['equipment_type_id'] ?? null) || !empty(trim($item['equipment_name'] ?? ''))
+        $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_type_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
         );
-        if (!$hasValidItem) {
+        if (! $hasValidItem) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
@@ -165,9 +163,21 @@ class ApplicationController extends Controller
     public function toggleCheck(Request $request, ApplicationItem $item): RedirectResponse
     {
         $newChecked = ! $item->is_checked;
+
+        // При снятии отметки заявка не обновляется, пока не указана причина
+        if (! $newChecked) {
+            // Пользователь передумал: галочка уже снята на экране, нажал снова — вернуть отметку без причины
+            if ($item->is_checked && $request->boolean('restore')) {
+                return redirect()->route('applications.show', $item->application_id)
+                    ->with('status', 'Отметка сохранена.');
+            }
+            return redirect()->route('applications.show', $item->application_id)
+                ->with('require_reason_item_id', $item->id);
+        }
+
         $item->update([
             'is_checked' => $newChecked,
-            'reason_not_selected' => $newChecked ? null : $item->reason_not_selected,
+            'reason_not_selected' => null,
         ]);
 
         return redirect()->route('applications.show', $item->application_id)
@@ -176,10 +186,6 @@ class ApplicationController extends Controller
 
     public function updateReason(Request $request, ApplicationItem $item): RedirectResponse
     {
-        if ($item->is_checked) {
-            return redirect()->route('applications.show', $item->application_id);
-        }
-
         $validator = Validator::make($request->all(), [
             'reason_not_selected' => ['required', 'string', 'min:1', 'max:500'],
         ], [
@@ -189,13 +195,18 @@ class ApplicationController extends Controller
         if ($validator->fails()) {
             return redirect()->route('applications.show', $item->application_id)
                 ->withErrors($validator)
-                ->with('reason_error_item_id', $item->id);
+                ->with('reason_error_item_id', $item->id)
+                ->with('require_reason_item_id', $item->is_checked ? $item->id : null);
         }
 
-        $item->update(['reason_not_selected' => trim($request->input('reason_not_selected'))]);
+        $reason = trim($request->input('reason_not_selected'));
+        $item->update([
+            'reason_not_selected' => $reason,
+            'is_checked' => false,
+        ]);
 
         return redirect()->route('applications.show', $item->application_id)
-            ->with('status', 'Комментарий сохранён.');
+            ->with('status', 'Сохранено');
     }
 
     private function authorizeSiteForeman(Request $request): void

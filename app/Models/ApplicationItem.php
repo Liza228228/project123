@@ -39,6 +39,7 @@ class ApplicationItem extends Model
         if ($this->equipment_type_id && $this->equipmentType) {
             return $this->equipmentType->name;
         }
+
         return trim($this->equipment_name ?? '') ?: '—';
     }
 }

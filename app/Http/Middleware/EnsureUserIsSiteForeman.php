@@ -11,7 +11,7 @@ class EnsureUserIsSiteForeman
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$request->user() || $request->user()->role !== User::ROLE_SITE_FOREMAN) {
+        if (! $request->user() || $request->user()->role !== User::ROLE_SITE_FOREMAN) {
             abort(403, 'Доступ разрешён только мастеру участка.');
         }
 

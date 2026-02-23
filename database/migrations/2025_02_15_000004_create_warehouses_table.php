@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('warehouses', function (Blueprint $table) {
             $table->id();
-            $table->boolean('is_primary')->default(false); //приоритет да нет
+            $table->boolean('is_primary')->default(false); // приоритет да нет
             $table->string('name');
             $table->string('code');
             $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete(); // тип склада (оптовый склад)

@@ -46,7 +46,8 @@ class Application extends Model
     /** Краткое отображение позиций: «Позиция 1, Позиция 2» или одна строка */
     public function getEquipmentSummaryAttribute(): string
     {
-        $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name . ' × ' . $item->quantity);
+        $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
+
         return $names->isEmpty() ? '—' : $names->implode('; ');
     }
 }

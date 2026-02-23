@@ -15,9 +15,13 @@ class User extends Authenticatable
 
     /** роли  */
     public const ROLE_DIRECTOR = 'Директор';
+
     public const ROLE_SUPPLY_DEPARTMENT_HEAD = 'Начальник отдела снабжения';
+
     public const ROLE_ACCOUNTANT = 'Бухгалтер';
+
     public const ROLE_SITE_FOREMAN = 'Мастер участка';
+
     public const ROLE_ADMINISTRATOR = 'Администратор';
 
     public const ROLES = [

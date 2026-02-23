@@ -23,19 +23,22 @@ class ImportExcelDataCommand extends Command
         $basePath = base_path('Data');
 
         if ($file === 'all') {
-            $this->importFile($basePath . DIRECTORY_SEPARATOR . '1.csv', 'inventory', $encoding);
-            $this->importFile($basePath . DIRECTORY_SEPARATOR . '2.csv', 'warehouses', $encoding);
+            $this->importFile($basePath.DIRECTORY_SEPARATOR.'1.csv', 'inventory', $encoding);
+            $this->importFile($basePath.DIRECTORY_SEPARATOR.'2.csv', 'warehouses', $encoding);
+
             return self::SUCCESS;
         }
 
-        $path = $basePath . DIRECTORY_SEPARATOR . $file;
-        if (!is_file($path)) {
+        $path = $basePath.DIRECTORY_SEPARATOR.$file;
+        if (! is_file($path)) {
             $this->error("Файл не найден: {$path}");
+
             return self::FAILURE;
         }
 
         $type = str_contains($file, '1.') ? 'inventory' : 'warehouses';
         $this->importFile($path, $type, $encoding);
+
         return self::SUCCESS;
     }
 
@@ -48,6 +51,7 @@ class ImportExcelDataCommand extends Command
         $lines = array_filter(explode("\n", $content), fn ($l) => trim($l) !== '');
         if (empty($lines)) {
             $this->warn("Файл пуст: {$path}");
+
             return;
         }
 
@@ -73,12 +77,14 @@ class ImportExcelDataCommand extends Command
             $row = str_getcsv($line, ';');
             if (count($row) < 3) {
                 $skipped++;
+
                 continue;
             }
             $row = array_pad($row, count($header), null);
             $data = array_combine($header, $row);
-            if (!is_array($data)) {
+            if (! is_array($data)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -90,6 +96,7 @@ class ImportExcelDataCommand extends Command
 
             if ($name === '' || $code === '') {
                 $skipped++;
+
                 continue;
             }
 
@@ -133,12 +140,14 @@ class ImportExcelDataCommand extends Command
             $row = str_getcsv($line, ';');
             if (count($row) < 3) {
                 $skipped++;
+
                 continue;
             }
             $row = array_pad($row, count($header), null);
             $data = array_combine($header, $row);
-            if (!is_array($data)) {
+            if (! is_array($data)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -151,6 +160,7 @@ class ImportExcelDataCommand extends Command
 
             if ($name === '' || $code === '') {
                 $skipped++;
+
                 continue;
             }
 
@@ -190,6 +200,7 @@ class ImportExcelDataCommand extends Command
     private function normalizeBool(string $value): bool
     {
         $v = mb_strtolower(trim($value));
+
         return $v === 'да' || $v === 'yes' || $v === '1' || $v === 'true';
     }
 }
