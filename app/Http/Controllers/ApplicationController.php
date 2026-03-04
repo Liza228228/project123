@@ -26,7 +26,7 @@ class ApplicationController extends Controller
 
     public function create(Request $request): View
     {
-        $this->authorizeSiteForeman($request);
+        $this->authorizeCanCreateOrEditApplications($request);
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
@@ -37,7 +37,7 @@ class ApplicationController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeSiteForeman($request);
+        $this->authorizeCanCreateOrEditApplications($request);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -101,7 +101,7 @@ class ApplicationController extends Controller
 
     public function edit(Request $request, Application $application): View
     {
-        $this->authorizeSiteForeman($request);
+        $this->authorizeCanCreateOrEditApplications($request);
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
@@ -112,7 +112,7 @@ class ApplicationController extends Controller
 
     public function update(Request $request, Application $application): RedirectResponse
     {
-        $this->authorizeSiteForeman($request);
+        $this->authorizeCanCreateOrEditApplications($request);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -209,10 +209,16 @@ class ApplicationController extends Controller
             ->with('status', 'Сохранено');
     }
 
-    private function authorizeSiteForeman(Request $request): void
+    private function authorizeCanCreateOrEditApplications(Request $request): void
     {
-        if (! $request->user() || $request->user()->role !== User::ROLE_SITE_FOREMAN) {
-            abort(403, 'Создание и редактирование заявок разрешено только мастеру участка.');
+        $allowed = in_array($request->user()?->role, [
+            User::ROLE_DIRECTOR,
+            User::ROLE_SITE_FOREMAN,
+            User::ROLE_SUPPLY_DEPARTMENT_HEAD,
+        ], true);
+
+        if (! $request->user() || ! $allowed) {
+            abort(403, 'Создание и редактирование заявок разрешено только директору, начальнику отдела снабжения и мастеру участка.');
         }
     }
 }

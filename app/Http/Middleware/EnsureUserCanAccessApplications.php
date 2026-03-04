@@ -19,10 +19,11 @@ class EnsureUserCanAccessApplications
         $allowed = in_array($user->role, [
             User::ROLE_DIRECTOR,
             User::ROLE_SITE_FOREMAN,
+            User::ROLE_SUPPLY_DEPARTMENT_HEAD,
         ], true);
 
         if (! $allowed) {
-            abort(403, 'Доступ к заявкам разрешён только директору и мастеру участка.');
+            abort(403, 'Доступ к заявкам разрешён только директору, начальнику отдела снабжения и мастеру участка.');
         }
 
         return $next($request);

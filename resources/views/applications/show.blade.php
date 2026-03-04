@@ -5,7 +5,7 @@
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
                 Просмотр заявки
             </h2>
-            @if (Auth::user()->role === \App\Models\User::ROLE_SITE_FOREMAN)
+            @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD]))
                 <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                     Изменить
                 </a>
@@ -47,7 +47,7 @@
                     </div>
 
                     @php
-                        $isDirector = Auth::user()->role === \App\Models\User::ROLE_DIRECTOR;
+                        $canManageApproval = in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD], true);
                         $uncheckedItems = $application->items->where('is_checked', false);
                         $checkedItems = $application->items->where('is_checked', true);
                         if (session('require_reason_item_id')) {
@@ -69,11 +69,11 @@
                                     @php
                                         $requireReason = session('require_reason_item_id') == $item->id;
                                         $showReasonForm = !$item->is_checked || $requireReason;
-                                        $canEdit = $isDirector && ($showReasonForm || $requireReason);
+                                        $canEdit = $canManageApproval && ($showReasonForm || $requireReason);
                                     @endphp
                                     <li class="px-4 py-3 bg-amber-50/50 dark:bg-amber-900/20 {{ $showReasonForm && $canEdit ? 'space-y-2' : '' }}">
                                         <div class="flex items-center gap-4">
-                                            @if($isDirector)
+                                            @if($canManageApproval)
                                                 <form action="{{ route('applications.items.toggle', $item) }}" method="POST" class="flex items-center gap-4 flex-1">
                                                     @csrf
                                                     @if($requireReason)
@@ -96,7 +96,7 @@
                                                 </span>
                                             @endif
                                         </div>
-                                        @if($isDirector && $showReasonForm)
+                                        @if($canManageApproval && $showReasonForm)
                                             <div class="pl-7">
                                                 @if($requireReason)
                                                     <p class="text-sm text-amber-600 dark:text-amber-400 mb-2">Укажите причину, почему оборудование не выбрано.</p>
@@ -139,7 +139,7 @@
                                     @endphp
                                     <li class="px-4 py-3 bg-green-50/50 dark:bg-green-900/20">
                                         <div class="flex items-center gap-4">
-                                            @if($isDirector)
+                                            @if($canManageApproval)
                                                 <form action="{{ route('applications.items.toggle', $item) }}" method="POST" class="flex items-center gap-4 flex-1">
                                                     @csrf
                                                     @if($requireReason)
