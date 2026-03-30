@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\EquipmentType;
+use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +18,7 @@ class ApplicationController extends Controller
 {
     public function index(): View
     {
-        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user'])
+        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'sourceApplication'])
             ->orderByDesc('created_at')
             ->get();
 
@@ -30,9 +31,39 @@ class ApplicationController extends Controller
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::where('role', User::ROLE_SITE_FOREMAN)->orderBy('surname')->orderBy('name')->get();
+        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get();
+        $prefill = null;
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users'));
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill'));
+    }
+
+    public function repeat(Request $request, Application $application): View
+    {
+        $this->authorizeCanRepeatApplications($request);
+
+        $application->load(['items']);
+        $subdivisions = Subdivision::orderBy('name')->get();
+        $equipmentTypes = EquipmentType::orderBy('name')->get();
+        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get();
+        $prefill = [
+            'source_application_id' => $application->id,
+            'subdivision_id' => $application->subdivision_id,
+            'responsible_user_id' => $application->responsible_user_id,
+            'desired_delivery_date' => now()->toDateString(),
+            'items' => $application->items->map(fn (ApplicationItem $item): array => [
+                'equipment_type_id' => $item->equipment_type_id ?? '',
+                'equipment_name' => $item->equipment_name ?? '',
+                'quantity' => $item->quantity,
+            ])->all(),
+        ];
+
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -41,9 +72,10 @@ class ApplicationController extends Controller
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
+            'source_application_id' => ['nullable', 'exists:applications,id'],
             'responsible_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role', User::ROLE_SITE_FOREMAN),
+                Rule::exists('users', 'id')->where('role_id', Role::ID_SITE_FOREMAN),
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
@@ -69,6 +101,7 @@ class ApplicationController extends Controller
 
         $application = Application::create([
             'subdivision_id' => $validated['subdivision_id'],
+            'source_application_id' => $validated['source_application_id'] ?? null,
             'responsible_user_id' => $validated['responsible_user_id'],
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
@@ -94,7 +127,7 @@ class ApplicationController extends Controller
 
     public function show(Application $application): View
     {
-        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType']);
+        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication']);
 
         return view('applications.show', compact('application'));
     }
@@ -105,7 +138,10 @@ class ApplicationController extends Controller
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::where('role', User::ROLE_SITE_FOREMAN)->orderBy('surname')->orderBy('name')->get();
+        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get();
 
         return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users'));
     }
@@ -118,7 +154,7 @@ class ApplicationController extends Controller
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
             'responsible_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role', User::ROLE_SITE_FOREMAN),
+                Rule::exists('users', 'id')->where('role_id', Role::ID_SITE_FOREMAN),
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
@@ -211,14 +247,21 @@ class ApplicationController extends Controller
 
     private function authorizeCanCreateOrEditApplications(Request $request): void
     {
-        $allowed = in_array($request->user()?->role, [
-            User::ROLE_DIRECTOR,
-            User::ROLE_SITE_FOREMAN,
-            User::ROLE_SUPPLY_DEPARTMENT_HEAD,
+        $allowed = in_array((int) $request->user()?->role_id, [
+            Role::ID_DIRECTOR,
+            Role::ID_SITE_FOREMAN,
+            Role::ID_SUPPLY_DEPARTMENT_HEAD,
         ], true);
 
         if (! $request->user() || ! $allowed) {
             abort(403, 'Создание и редактирование заявок разрешено только директору, начальнику отдела снабжения и мастеру участка.');
+        }
+    }
+
+    private function authorizeCanRepeatApplications(Request $request): void
+    {
+        if ((int) $request->user()?->role_id !== Role::ID_SITE_FOREMAN) {
+            abort(403, 'Создание повторной заявки разрешено только мастеру участка.');
         }
     }
 }

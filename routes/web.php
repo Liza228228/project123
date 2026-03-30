@@ -32,6 +32,7 @@ Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(fun
 Route::middleware(['auth', 'applications'])->prefix('applications')->name('applications.')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('index');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
+    Route::get('/{application}/repeat', [ApplicationController::class, 'repeat'])->name('repeat');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
     Route::post('/items/{item}/toggle', [ApplicationController::class, 'toggleCheck'])->name('items.toggle');
     Route::put('/items/{item}/reason', [ApplicationController::class, 'updateReason'])->name('items.reason');

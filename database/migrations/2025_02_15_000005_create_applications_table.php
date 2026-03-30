@@ -11,6 +11,7 @@ return new class extends Migration
         if (! Schema::hasTable('applications')) {
             Schema::create('applications', function (Blueprint $table) {
                 $table->id();
+                $table->foreignId('source_application_id')->nullable()->constrained('applications')->nullOnDelete();
                 $table->foreignId('subdivision_id')->constrained('subdivisions')->cascadeOnDelete();
                 $table->foreignId('responsible_user_id')->nullable()->constrained('users')->nullOnDelete();
                 $table->foreignId('equipment_type_id')->nullable()->constrained('equipment_types')->nullOnDelete();

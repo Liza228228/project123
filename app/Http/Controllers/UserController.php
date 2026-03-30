@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,14 +14,16 @@ class UserController extends Controller
 {
     public function index(): View
     {
-        $users = User::orderBy('surname')->orderBy('name')->get();
+        $users = User::with('role')->orderBy('surname')->orderBy('name')->get();
 
         return view('users.index', compact('users'));
     }
 
     public function create(): View
     {
-        return view('users.create');
+        $roles = Role::orderBy('name')->get();
+
+        return view('users.create', compact('roles'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -30,7 +33,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'patronymic' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'role' => ['required', 'string', 'in:'.implode(',', User::ROLES)],
+            'role_id' => ['required', 'exists:roles,id'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
@@ -39,7 +42,7 @@ class UserController extends Controller
             'name' => $request->name,
             'patronymic' => $request->patronymic,
             'email' => $request->email,
-            'role' => $request->role,
+            'role_id' => $request->role_id,
             'password' => Hash::make($request->password),
         ]);
 
@@ -49,7 +52,9 @@ class UserController extends Controller
 
     public function edit(User $user): View
     {
-        return view('users.edit', compact('user'));
+        $roles = Role::orderBy('name')->get();
+
+        return view('users.edit', compact('user', 'roles'));
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -59,7 +64,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'patronymic' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class.',email,'.$user->id],
-            'role' => ['required', 'string', 'in:'.implode(',', User::ROLES)],
+            'role_id' => ['required', 'exists:roles,id'],
         ];
 
         if ($request->filled('password')) {
@@ -73,7 +78,7 @@ class UserController extends Controller
             'name' => $request->name,
             'patronymic' => $request->patronymic,
             'email' => $request->email,
-            'role' => $request->role,
+            'role_id' => $request->role_id,
         ];
 
         if ($request->filled('password')) {

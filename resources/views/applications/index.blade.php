@@ -4,7 +4,7 @@
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
                 Заявки
             </h2>
-            @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD]))
+            @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
                 <a href="{{ route('applications.create') }}" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                     Создать заявку
                 </a>
@@ -35,7 +35,16 @@
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                                 @forelse($applications as $application)
                                     <tr>
-                                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{{ $application->subdivision->name }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                                            <div class="flex flex-col gap-1">
+                                                <span>{{ $application->subdivision->name }}</span>
+                                                @if($application->source_application_id)
+                                                    <span class="inline-flex w-fit items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                                        Повторная к заявке №{{ $application->source_application_id }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                             @if($application->responsibleUser)
                                                 {{ $application->responsibleUser->surname }} {{ $application->responsibleUser->name }}

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -20,7 +21,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Иванович',
                 'email' => 'Ivanov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role' => User::ROLE_DIRECTOR,
+                'role_id' => Role::ID_DIRECTOR,
             ],
             [
                 'surname' => 'Петров',
@@ -28,7 +29,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Петрович',
                 'email' => 'Petrov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role' => User::ROLE_SUPPLY_DEPARTMENT_HEAD,
+                'role_id' => Role::ID_SUPPLY_DEPARTMENT_HEAD,
             ],
             [
                 'surname' => 'Сидорова',
@@ -36,7 +37,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Сергеевна',
                 'email' => 'Sidorova@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role' => User::ROLE_ACCOUNTANT,
+                'role_id' => Role::ID_ACCOUNTANT,
             ],
             [
                 'surname' => 'Козлов',
@@ -44,7 +45,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Николаевич',
                 'email' => 'Kozlov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role' => User::ROLE_SITE_FOREMAN,
+                'role_id' => Role::ID_SITE_FOREMAN,
             ],
             [
                 'surname' => 'Смирнов',
@@ -52,7 +53,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Александрович',
                 'email' => 'Smirnov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role' => User::ROLE_ADMINISTRATOR,
+                'role_id' => Role::ID_ADMINISTRATOR,
             ],
         ];
 

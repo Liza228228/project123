@@ -14,6 +14,7 @@ class Application extends Model
         'equipment_in_warehouse',
         'desired_delivery_date',
         'user_id',
+        'source_application_id',
     ];
 
     protected function casts(): array
@@ -41,6 +42,11 @@ class Application extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
+    }
+
+    public function sourceApplication(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'source_application_id');
     }
 
     /** Краткое отображение позиций: «Позиция 1, Позиция 2» или одна строка */

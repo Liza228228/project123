@@ -1,4 +1,4 @@
-<nav x-data="{ open: false }" class="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+<nav x-data="{ open: false }" class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -15,12 +15,12 @@
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         Панель управления
                     </x-nav-link>
-                    @if (Auth::user()->role === \App\Models\User::ROLE_ADMINISTRATOR)
+                    @if ((int) Auth::user()->role_id === \App\Models\Role::ID_ADMINISTRATOR)
                         <x-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')">
                             Управление пользователями
                         </x-nav-link>
                     @endif
-                    @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD]))
+                    @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
                         <x-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
                             Заявки
                         </x-nav-link>
@@ -80,12 +80,12 @@
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                 Панель управления
             </x-responsive-nav-link>
-            @if (Auth::user()->role === \App\Models\User::ROLE_ADMINISTRATOR)
+            @if ((int) Auth::user()->role_id === \App\Models\Role::ID_ADMINISTRATOR)
                 <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')">
                     Управление пользователями
                 </x-responsive-nav-link>
             @endif
-            @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD]))
+            @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
                 <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*')">
                     Заявки
                 </x-responsive-nav-link>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,25 +13,6 @@ class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
-
-    /** роли  */
-    public const ROLE_DIRECTOR = 'Директор';
-
-    public const ROLE_SUPPLY_DEPARTMENT_HEAD = 'Начальник отдела снабжения';
-
-    public const ROLE_ACCOUNTANT = 'Бухгалтер';
-
-    public const ROLE_SITE_FOREMAN = 'Мастер участка';
-
-    public const ROLE_ADMINISTRATOR = 'Администратор';
-
-    public const ROLES = [
-        self::ROLE_DIRECTOR,
-        self::ROLE_SUPPLY_DEPARTMENT_HEAD,
-        self::ROLE_ACCOUNTANT,
-        self::ROLE_SITE_FOREMAN,
-        self::ROLE_ADMINISTRATOR,
-    ];
 
     /**
      * The attributes that are mass assignable.
@@ -43,7 +25,7 @@ class User extends Authenticatable
         'patronymic',
         'email',
         'password',
-        'role',
+        'role_id',
         'is_blocked',
     ];
 
@@ -74,5 +56,15 @@ class User extends Authenticatable
     public function applications(): HasMany
     {
         return $this->hasMany(Application::class);
+    }
+
+    public function role(): BelongsTo
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    public function hasRoleId(int $roleId): bool
+    {
+        return (int) $this->role_id === $roleId;
     }
 }

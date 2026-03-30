@@ -37,7 +37,7 @@
                                             {{ $user->surname }} {{ $user->name }} {{ $user->patronymic }}
                                         </td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $user->email }}</td>
-                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $user->role }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $user->role?->name ?? '—' }}</td>
                                         <td class="px-4 py-3 text-sm">
                                             @if($user->is_blocked)
                                                 <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200">

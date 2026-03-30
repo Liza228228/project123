@@ -27,13 +27,13 @@
         </div>
 
         <div class="mt-4">
-            <x-input-label for="role" value="Роль" />
-            <select id="role" name="role" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800" required>
-                @foreach(\App\Models\User::ROLES as $role)
-                    <option value="{{ $role }}" @selected(old('role') === $role)>{{ $role }}</option>
+            <x-input-label for="role_id" value="Роль" />
+            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800" required>
+                @foreach($roles as $role)
+                    <option value="{{ $role->id }}" @selected((string) old('role_id') === (string) $role->id)>{{ $role->name }}</option>
                 @endforeach
             </select>
-            <x-input-error :messages="$errors->get('role')" class="mt-2" />
+            <x-input-error :messages="$errors->get('role_id')" class="mt-2" />
         </div>
 
         <div class="mt-4">

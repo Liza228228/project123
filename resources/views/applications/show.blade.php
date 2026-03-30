@@ -5,9 +5,14 @@
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
                 Просмотр заявки
             </h2>
-            @if (in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SITE_FOREMAN, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD]))
+            @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
                 <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                     Изменить
+                </a>
+            @endif
+            @if ((int) Auth::user()->role_id === \App\Models\Role::ID_SITE_FOREMAN)
+                <a href="{{ route('applications.repeat', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-emerald-600 shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                    Создать повторную
                 </a>
             @endif
         </div>
@@ -43,11 +48,27 @@
                                 <dt class="text-xs text-gray-500 dark:text-gray-400">Желаемая дата поставки</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $application->desired_delivery_date->format('d.m.Y') }}</dd>
                             </div>
+                            @if($application->source_application_id)
+                                <div class="sm:col-span-2">
+                                    <dt class="text-xs text-gray-500 dark:text-gray-400">Тип заявки</dt>
+                                    <dd class="mt-0.5 text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                                        Повторная заявка
+                                        @if($application->sourceApplication)
+                                            — на основе
+                                            <a href="{{ route('applications.show', $application->sourceApplication) }}" class="underline hover:no-underline">
+                                                заявки №{{ $application->source_application_id }}
+                                            </a>
+                                        @else
+                                            — к заявке №{{ $application->source_application_id }}
+                                        @endif
+                                    </dd>
+                                </div>
+                            @endif
                         </dl>
                     </div>
 
                     @php
-                        $canManageApproval = in_array(Auth::user()->role, [\App\Models\User::ROLE_DIRECTOR, \App\Models\User::ROLE_SUPPLY_DEPARTMENT_HEAD], true);
+                        $canManageApproval = in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true);
                         $uncheckedItems = $application->items->where('is_checked', false);
                         $checkedItems = $application->items->where('is_checked', true);
                         if (session('require_reason_item_id')) {

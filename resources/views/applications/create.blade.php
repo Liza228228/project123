@@ -14,13 +14,20 @@
                 <div class="p-6 max-w-md">
                     <form method="POST" action="{{ route('applications.store') }}">
                         @csrf
+                        <input type="hidden" name="source_application_id" value="{{ old('source_application_id', $prefill['source_application_id'] ?? '') }}">
+
+                        @if($prefill)
+                            <div class="mb-4 px-4 py-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-800 dark:text-indigo-200 text-sm">
+                                Повторная заявка на основе заявки №{{ $prefill['source_application_id'] }}.
+                            </div>
+                        @endif
 
                         <div>
                             <x-input-label for="subdivision_id" value="Подразделение" />
                             <select id="subdivision_id" name="subdivision_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600" required>
                                 <option value="">Выберите подразделение</option>
                                 @foreach($subdivisions as $sub)
-                                    <option value="{{ $sub->id }}" @selected(old('subdivision_id') == $sub->id)>{{ $sub->name }}</option>
+                                    <option value="{{ $sub->id }}" @selected(old('subdivision_id', $prefill['subdivision_id'] ?? null) == $sub->id)>{{ $sub->name }}</option>
                                 @endforeach
                             </select>
                             <x-input-error :messages="$errors->get('subdivision_id')" class="mt-2" />
@@ -31,14 +38,14 @@
                             <select id="responsible_user_id" name="responsible_user_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600">
                                 <option value="">Не назначен / выбрать автоматически</option>
                                 @foreach($users as $u)
-                                    <option value="{{ $u->id }}" @selected(old('responsible_user_id') == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
+                                    <option value="{{ $u->id }}" @selected(old('responsible_user_id', $prefill['responsible_user_id'] ?? null) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
                                 @endforeach
                             </select>
                             <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-2" />
                         </div>
 
                         @php
-                            $items = old('items', [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
+                            $items = old('items', $prefill['items'] ?? [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
                             if (empty($items)) {
                                 $items = [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
                             }
@@ -78,7 +85,7 @@
 
                         <div class="mt-4">
                             <x-input-label for="desired_delivery_date" value="Желаемая дата поставки" />
-                            <x-text-input id="desired_delivery_date" class="block mt-1 w-full" type="date" name="desired_delivery_date" :value="old('desired_delivery_date')" :min="now()->format('Y-m-d')" required />
+                            <x-text-input id="desired_delivery_date" class="block mt-1 w-full" type="date" name="desired_delivery_date" :value="old('desired_delivery_date', $prefill['desired_delivery_date'] ?? null)" :min="now()->format('Y-m-d')" required />
                             <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-2" />
                         </div>
 
