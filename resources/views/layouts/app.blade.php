@@ -20,7 +20,7 @@
 
             <!-- Page Heading -->
             @isset($header)
-                <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-amber-200/60 dark:border-amber-800/40">
+                <header class="bg-white/90 dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-700">
                     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
                         {{ $header }}
                     </div>
