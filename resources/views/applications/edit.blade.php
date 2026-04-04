@@ -38,6 +38,19 @@
                             <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-2" />
                         </div>
 
+                        <div class="mt-4">
+                            <x-input-label for="transport_option_id" value="Транспорт / способ доставки" />
+                            <select id="transport_option_id" name="transport_option_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600">
+                                <option value="">Не указан</option>
+                                @foreach($transportOptions as $t)
+                                    <option value="{{ $t->id }}" @selected(old('transport_option_id', $application->transport_option_id) == $t->id)>
+                                        {{ $t->name }}@if($t->code) ({{ $t->code }})@endif
+                                    </option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('transport_option_id')" class="mt-2" />
+                        </div>
+
                         @php
                             $items = old('items', $application->items->map(fn($i) => [
                                 'equipment_type_id' => $i->equipment_type_id,

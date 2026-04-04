@@ -7,9 +7,11 @@ use App\Models\ApplicationItem;
 use App\Models\EquipmentType;
 use App\Models\Role;
 use App\Models\Subdivision;
+use App\Models\TransportOption;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -18,7 +20,7 @@ class ApplicationController extends Controller
 {
     public function index(): View
     {
-        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'sourceApplication'])
+        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'sourceApplication', 'transportOption'])
             ->orderByDesc('created_at')
             ->get();
 
@@ -36,8 +38,12 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
         $prefill = null;
+        $transportOptions = TransportOption::query()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill'));
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions'));
     }
 
     public function repeat(Request $request, Application $application): View
@@ -55,6 +61,7 @@ class ApplicationController extends Controller
             'source_application_id' => $application->id,
             'subdivision_id' => $application->subdivision_id,
             'responsible_user_id' => $application->responsible_user_id,
+            'transport_option_id' => $application->transport_option_id,
             'desired_delivery_date' => now()->toDateString(),
             'items' => $application->items->map(fn (ApplicationItem $item): array => [
                 'equipment_type_id' => $item->equipment_type_id ?? '',
@@ -62,8 +69,12 @@ class ApplicationController extends Controller
                 'quantity' => $item->quantity,
             ])->all(),
         ];
+        $transportOptions = TransportOption::query()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill'));
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -82,6 +93,7 @@ class ApplicationController extends Controller
             'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
             'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'transport_option_id' => ['nullable', 'exists:transport_options,id'],
         ], [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
@@ -103,6 +115,7 @@ class ApplicationController extends Controller
             'subdivision_id' => $validated['subdivision_id'],
             'source_application_id' => $validated['source_application_id'] ?? null,
             'responsible_user_id' => $validated['responsible_user_id'],
+            'transport_option_id' => $validated['transport_option_id'] ?? null,
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
             'equipment_in_warehouse' => $validated['equipment_in_warehouse'],
@@ -118,6 +131,8 @@ class ApplicationController extends Controller
                 'equipment_type_id' => $typeId ?: null,
                 'equipment_name' => $typeId ? null : $name,
                 'quantity' => (int) ($item['quantity'] ?? 1),
+                'is_checked' => false,
+                'reason_not_selected' => null,
             ]);
         }
 
@@ -127,7 +142,7 @@ class ApplicationController extends Controller
 
     public function show(Application $application): View
     {
-        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication']);
+        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication', 'transportOption']);
 
         return view('applications.show', compact('application'));
     }
@@ -143,7 +158,12 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users'));
+        $transportOptions = TransportOption::query()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users', 'transportOptions'));
     }
 
     public function update(Request $request, Application $application): RedirectResponse
@@ -161,6 +181,7 @@ class ApplicationController extends Controller
             'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
             'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'transport_option_id' => ['nullable', 'exists:transport_options,id'],
         ], [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
@@ -175,7 +196,9 @@ class ApplicationController extends Controller
         $application->update([
             'subdivision_id' => $validated['subdivision_id'],
             'responsible_user_id' => $validated['responsible_user_id'],
+            'transport_option_id' => $validated['transport_option_id'] ?? null,
             'desired_delivery_date' => $validated['desired_delivery_date'],
+            'approved_at' => null,
         ]);
 
         $application->items()->delete();
@@ -189,11 +212,75 @@ class ApplicationController extends Controller
                 'equipment_type_id' => $typeId ?: null,
                 'equipment_name' => $typeId ? null : $name,
                 'quantity' => (int) ($item['quantity'] ?? 1),
+                'is_checked' => false,
+                'reason_not_selected' => null,
             ]);
         }
 
         return redirect()->route('applications.index')
             ->with('status', 'Заявка успешно обновлена.');
+    }
+
+    public function saveApproval(Request $request, Application $application): RedirectResponse
+    {
+        if (! in_array((int) $request->user()?->role_id, [Role::ID_DIRECTOR, Role::ID_SUPPLY_DEPARTMENT_HEAD], true)) {
+            abort(403, 'Согласование доступно только директору и начальнику отдела снабжения.');
+        }
+
+        $application->load('items');
+
+        if ($application->items->isEmpty()) {
+            return redirect()->route('applications.show', $application)
+                ->with('status', 'Нет позиций для согласования.');
+        }
+
+        $itemsInput = $request->input('items', []);
+        $errors = [];
+
+        foreach ($application->items as $item) {
+            $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id] ?? null;
+            if (! is_array($row)) {
+                $errors["items.{$item->id}.is_checked"] = 'Отсутствуют данные по позиции.';
+
+                continue;
+            }
+            $checkedRaw = $row['is_checked'] ?? '0';
+            $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
+            if (! $isChecked) {
+                $reason = trim((string) ($row['reason_not_selected'] ?? ''));
+                if ($reason === '') {
+                    $errors["items.{$item->id}.reason_not_selected"] = 'Укажите причину, почему позиция не одобрена.';
+                } elseif (mb_strlen($reason) > 500) {
+                    $errors["items.{$item->id}.reason_not_selected"] = 'Причина не может быть длиннее 500 символов.';
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors($errors)
+                ->withInput();
+        }
+
+        DB::transaction(function () use ($application, $itemsInput) {
+            foreach ($application->items as $item) {
+                $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
+                $checkedRaw = $row['is_checked'] ?? '0';
+                $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
+                $item->update([
+                    'is_checked' => $isChecked,
+                    'reason_not_selected' => $isChecked ? null : trim((string) ($row['reason_not_selected'] ?? '')),
+                ]);
+            }
+        });
+
+        $application->refresh();
+        $application->update([
+            'approved_at' => now(),
+        ]);
+
+        return redirect()->route('applications.show', $application)
+            ->with('status', 'Согласование сохранено.');
     }
 
     public function toggleCheck(Request $request, ApplicationItem $item): RedirectResponse
@@ -207,6 +294,7 @@ class ApplicationController extends Controller
                 return redirect()->route('applications.show', $item->application_id)
                     ->with('status', 'Отметка сохранена.');
             }
+
             return redirect()->route('applications.show', $item->application_id)
                 ->with('require_reason_item_id', $item->id);
         }

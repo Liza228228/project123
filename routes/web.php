@@ -36,6 +36,7 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
     Route::post('/items/{item}/toggle', [ApplicationController::class, 'toggleCheck'])->name('items.toggle');
     Route::put('/items/{item}/reason', [ApplicationController::class, 'updateReason'])->name('items.reason');
+    Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');

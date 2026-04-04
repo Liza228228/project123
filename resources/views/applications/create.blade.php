@@ -1,149 +1,214 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center gap-4">
-            <a href="{{ route('applications.index') }}" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm">← Заявки</a>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+            <a href="{{ route('applications.index') }}" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+                ← Заявки
+            </a>
+            <h2 class="font-semibold text-xl text-slate-800 dark:text-slate-100 leading-tight tracking-tight">
                 Создать заявку
             </h2>
         </div>
     </x-slot>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 max-w-md">
-                    <form method="POST" action="{{ route('applications.store') }}">
-                        @csrf
-                        <input type="hidden" name="source_application_id" value="{{ old('source_application_id', $prefill['source_application_id'] ?? '') }}">
+    <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm overflow-hidden">
+            <div class="p-8">
+                <form method="POST" action="{{ route('applications.store') }}" class="space-y-6">
+                    @csrf
+                    <input type="hidden" name="source_application_id" value="{{ old('source_application_id', $prefill['source_application_id'] ?? '') }}">
 
-                        @if($prefill)
-                            <div class="mb-4 px-4 py-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-800 dark:text-indigo-200 text-sm">
-                                Повторная заявка на основе заявки №{{ $prefill['source_application_id'] }}.
-                            </div>
-                        @endif
+                    @if($prefill)
+                        <p class="text-sm text-slate-600 dark:text-slate-300 border-l-2 border-slate-300 dark:border-slate-600 pl-4 py-0.5">
+                            Повторная заявка на основе заявки №{{ $prefill['source_application_id'] }}.
+                        </p>
+                    @endif
 
+                    <div class="space-y-1.5">
+                        <x-input-label for="subdivision_id" value="Подразделение" />
+                        <select id="subdivision_id" name="subdivision_id" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" required>
+                            <option value="">Выберите подразделение</option>
+                            @foreach($subdivisions as $sub)
+                                <option value="{{ $sub->id }}" @selected(old('subdivision_id', $prefill['subdivision_id'] ?? null) == $sub->id)>{{ $sub->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <x-input-label for="responsible_user_id" value="Ответственный" />
+                        <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500">
+                            <option value="">Не назначен / выбрать автоматически</option>
+                            @foreach($users as $u)
+                                <option value="{{ $u->id }}" @selected(old('responsible_user_id', $prefill['responsible_user_id'] ?? null) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <x-input-label for="transport_option_id" value="Транспорт / способ доставки" />
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Машина, маршрутка, грузовик и т.п.</p>
+                        <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500">
+                            <option value="">Не указан</option>
+                            @foreach($transportOptions as $t)
+                                <option value="{{ $t->id }}" @selected(old('transport_option_id', data_get($prefill, 'transport_option_id')) == $t->id)>
+                                    {{ $t->name }}@if($t->code) ({{ $t->code }})@endif
+                                </option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('transport_option_id')" class="mt-1" />
+                    </div>
+
+                    @php
+                        $items = old('items', $prefill['items'] ?? [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
+                        if (empty($items)) {
+                            $items = [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
+                        }
+                    @endphp
+                    <div class="space-y-3">
                         <div>
-                            <x-input-label for="subdivision_id" value="Подразделение" />
-                            <select id="subdivision_id" name="subdivision_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600" required>
-                                <option value="">Выберите подразделение</option>
-                                @foreach($subdivisions as $sub)
-                                    <option value="{{ $sub->id }}" @selected(old('subdivision_id', $prefill['subdivision_id'] ?? null) == $sub->id)>{{ $sub->name }}</option>
-                                @endforeach
-                            </select>
-                            <x-input-error :messages="$errors->get('subdivision_id')" class="mt-2" />
-                        </div>
-
-                        <div class="mt-4">
-                            <x-input-label for="responsible_user_id" value="Ответственный" />
-                            <select id="responsible_user_id" name="responsible_user_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600">
-                                <option value="">Не назначен / выбрать автоматически</option>
-                                @foreach($users as $u)
-                                    <option value="{{ $u->id }}" @selected(old('responsible_user_id', $prefill['responsible_user_id'] ?? null) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
-                                @endforeach
-                            </select>
-                            <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-2" />
-                        </div>
-
-                        @php
-                            $items = old('items', $prefill['items'] ?? [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
-                            if (empty($items)) {
-                                $items = [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
-                            }
-                        @endphp
-                        <div class="mt-4">
                             <x-input-label value="Оборудование" />
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">Выберите оборудование из списка и укажите количество либо впишите своё название и количество.</p>
-                            <div id="equipment-items" class="space-y-4">
-                                @foreach($items as $idx => $item)
-                                <div class="equipment-row p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50 space-y-3">
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Выбрать оборудование из списка</label>
-                                        <select name="items[{{ $idx }}][equipment_type_id]" class="equipment-select block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm">
-                                            <option value="">— Выберите оборудование —</option>
-                                            @foreach($equipmentTypes as $et)
-                                                <option value="{{ $et->id }}" @selected(($item['equipment_type_id'] ?? '') == $et->id)>{{ $et->name }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="border-t border-gray-200 dark:border-gray-600 pt-3">
-                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Или вписать своё оборудование</label>
-                                        <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $item['equipment_name'] ?? '' }}" placeholder="Название оборудования" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm" />
-                                    </div>
-                                    <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
-                                        <div class="w-24">
-                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Количество</label>
-                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] ?? 1 }}" min="1" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm" required />
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Добавляйте позиции из списка или нажмите «Написать своё оборудование», чтобы ввести название вручную.</p>
+                        </div>
+                        <div id="equipment-items" class="space-y-3">
+                            @foreach($items as $idx => $item)
+                                @php
+                                    $typeId = $item['equipment_type_id'] ?? '';
+                                    $eqName = trim($item['equipment_name'] ?? '');
+                                    $isCustomRow = ($typeId === '' || $typeId === null) && $eqName !== '';
+                                @endphp
+                                @if($isCustomRow)
+                                    <div class="equipment-row equipment-row--custom flex flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40">
+                                        <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="" />
+                                        <div class="flex-1 min-w-[200px]">
+                                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Своё оборудование</label>
+                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $item['equipment_name'] ?? '' }}" placeholder="Название оборудования" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" />
                                         </div>
-                                        <button type="button" class="remove-item self-end px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md" title="Удалить позицию">Удалить позицию</button>
+                                        <div class="w-20">
+                                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Кол-во</label>
+                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] ?? 1 }}" min="1" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" required />
+                                        </div>
+                                        <button type="button" class="remove-item px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
-                                </div>
-                                @endforeach
-                            </div>
-                            <button type="button" id="add-equipment-item" class="mt-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ Добавить позицию</button>
-                            <x-input-error :messages="$errors->get('equipment')" class="mt-2" />
+                                @else
+                                    <div class="equipment-row equipment-row--list flex flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40">
+                                        <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
+                                        <div class="flex-1 min-w-[200px]">
+                                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Из списка</label>
+                                            <select name="items[{{ $idx }}][equipment_type_id]" class="equipment-select block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500">
+                                                <option value="">— Выберите —</option>
+                                                @foreach($equipmentTypes as $et)
+                                                    <option value="{{ $et->id }}" @selected((string) ($item['equipment_type_id'] ?? '') === (string) $et->id)>{{ $et->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="w-20">
+                                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Кол-во</label>
+                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] ?? 1 }}" min="1" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" required />
+                                        </div>
+                                        <button type="button" class="remove-item px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+                                    </div>
+                                @endif
+                            @endforeach
                         </div>
+                        <div class="flex flex-wrap items-center gap-4 pt-1">
+                            <button type="button" id="add-equipment-from-list" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">
+                                + Добавить из списка
+                            </button>
+                            <button type="button" id="add-equipment-custom" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">
+                                Написать своё оборудование
+                            </button>
+                        </div>
+                        <x-input-error :messages="$errors->get('equipment')" class="mt-1" />
+                    </div>
 
-                        <div class="mt-4">
-                            <x-input-label for="desired_delivery_date" value="Желаемая дата поставки" />
-                            <x-text-input id="desired_delivery_date" class="block mt-1 w-full" type="date" name="desired_delivery_date" :value="old('desired_delivery_date', $prefill['desired_delivery_date'] ?? null)" :min="now()->format('Y-m-d')" required />
-                            <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-2" />
-                        </div>
+                    <div class="space-y-1.5">
+                        <x-input-label for="desired_delivery_date" value="Желаемая дата поставки" />
+                        <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $prefill['desired_delivery_date'] ?? '') }}" min="{{ now()->format('Y-m-d') }}" required class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" />
+                        <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1" />
+                    </div>
 
-                        <div class="flex items-center gap-4 mt-6">
-                            <x-primary-button>Создать заявку</x-primary-button>
-                            <a href="{{ route('applications.index') }}" class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Отмена</a>
-                        </div>
-                    </form>
-                </div>
+                    <div class="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-200 dark:border-slate-700">
+                        <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 border border-transparent rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                            Создать заявку
+                        </button>
+                        <a href="{{ route('applications.index') }}" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+                            Отмена
+                        </a>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <script type="text/template" id="equipment-row-tpl">
-        <div class="equipment-row p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50 space-y-3">
-            <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Выбрать оборудование из списка</label>
-                <select name="items[__INDEX__][equipment_type_id]" class="equipment-select block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm">
-                    <option value="">— Выберите оборудование —</option>
+    <script type="text/template" id="equipment-row-from-list-tpl">
+        <div class="equipment-row equipment-row--list flex flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40">
+            <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Из списка</label>
+                <select name="items[__INDEX__][equipment_type_id]" class="equipment-select block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500">
+                    <option value="">— Выберите —</option>
                     @foreach($equipmentTypes as $et)
                         <option value="{{ $et->id }}">{{ $et->name }}</option>
                     @endforeach
                 </select>
             </div>
-            <div class="border-t border-gray-200 dark:border-gray-600 pt-3">
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Или вписать своё оборудование</label>
-                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm" />
+            <div class="w-20">
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Кол-во</label>
+                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" required />
             </div>
-            <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
-                <div class="w-24">
-                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Количество</label>
-                    <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm" required />
-                </div>
-                <button type="button" class="remove-item self-end px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md" title="Удалить позицию">Удалить позицию</button>
+            <button type="button" class="remove-item px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+        </div>
+    </script>
+    <script type="text/template" id="equipment-row-custom-tpl">
+        <div class="equipment-row equipment-row--custom flex flex-wrap items-end gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40">
+            <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" />
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Своё оборудование</label>
+                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" />
             </div>
+            <div class="w-20">
+                <label class="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">Кол-во</label>
+                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 text-sm shadow-sm focus:ring-slate-500 focus:border-slate-500" required />
+            </div>
+            <button type="button" class="remove-item px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
     <script>
         (function() {
             var container = document.getElementById('equipment-items');
-            var tpl = document.getElementById('equipment-row-tpl').innerHTML;
+            var tplList = document.getElementById('equipment-row-from-list-tpl').innerHTML;
+            var tplCustom = document.getElementById('equipment-row-custom-tpl').innerHTML;
             var nextIndex = container.querySelectorAll('.equipment-row').length;
 
-            document.getElementById('add-equipment-item').addEventListener('click', function() {
-                var html = tpl.replace(/__INDEX__/g, nextIndex++);
-                container.insertAdjacentHTML('beforeend', html);
+            function bindRemoveButtons() {
                 container.querySelectorAll('.remove-item').forEach(function(btn) {
                     btn.onclick = removeHandler;
                 });
+            }
+
+            function appendFromTemplate(tpl) {
+                var html = tpl.replace(/__INDEX__/g, nextIndex++);
+                container.insertAdjacentHTML('beforeend', html);
+                bindRemoveButtons();
+            }
+
+            document.getElementById('add-equipment-from-list').addEventListener('click', function() {
+                appendFromTemplate(tplList);
+            });
+
+            document.getElementById('add-equipment-custom').addEventListener('click', function() {
+                appendFromTemplate(tplCustom);
             });
 
             function removeHandler() {
                 var row = this.closest('.equipment-row');
-                if (container.querySelectorAll('.equipment-row').length > 1) row.remove();
+                if (container.querySelectorAll('.equipment-row').length > 1) {
+                    row.remove();
+                }
             }
-            container.querySelectorAll('.remove-item').forEach(function(btn) {
-                btn.onclick = removeHandler;
-            });
+
+            bindRemoveButtons();
         })();
     </script>
 </x-app-layout>

@@ -29,7 +29,10 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Подразделение</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ответственный</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Оборудование</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Транспорт</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Желаемая дата поставки</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Согласование</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"><span class="sr-only">Действия</span></th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -53,7 +56,27 @@
                                             @endif
                                         </td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->equipment_summary }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                            @if($application->transportOption)
+                                                <span class="line-clamp-2" title="{{ $application->transportOption->name }}">{{ $application->transportOption->name }}</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
+                                        <td class="px-4 py-3 text-sm">
+                                            @if($application->items->isEmpty())
+                                                <span class="text-gray-400 dark:text-gray-500">—</span>
+                                            @elseif($application->is_fully_approved)
+                                                <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                                                    Согласовано
+                                                </span>
+                                            @else
+                                                <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                                    На согласовании
+                                                </span>
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-right">
                                             <a href="{{ route('applications.show', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-indigo-600 shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                                                 Просмотр
@@ -62,7 +85,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">Заявок пока нет.</td>
+                                        <td colspan="7" class="px-4 py-6 text-center text-sm text-gray-500">Заявок пока нет.</td>
                                     </tr>
                                 @endforelse
                             </tbody>

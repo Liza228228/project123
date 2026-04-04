@@ -7,6 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ApplicationItem extends Model
 {
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_checked' => false,
+    ];
+
     protected $fillable = [
         'application_id',
         'equipment_type_id',
