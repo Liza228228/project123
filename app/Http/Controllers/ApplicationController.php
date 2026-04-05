@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ApplicationController extends Controller
@@ -163,12 +164,16 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
 
+        $application->load(['items.equipmentType']);
+
         return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users', 'transportOptions'));
     }
 
     public function update(Request $request, Application $application): RedirectResponse
     {
         $this->authorizeCanCreateOrEditApplications($request);
+
+        $application->load(['items.equipmentType']);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -178,6 +183,11 @@ class ApplicationController extends Controller
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.item_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('application_items', 'id')->where('application_id', $application->id),
+            ],
             'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
             'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -187,35 +197,120 @@ class ApplicationController extends Controller
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
 
-        $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_type_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
-        );
-        if (! $hasValidItem) {
+        $itemIdsInRequest = collect($validated['items'])->pluck('item_id')->filter()->map(fn ($id) => (int) $id);
+        if ($itemIdsInRequest->count() !== $itemIdsInRequest->unique()->count()) {
+            throw ValidationException::withMessages([
+                'equipment' => 'Дублирование позиций в форме.',
+            ]);
+        }
+
+        $seenUnapprovedIds = [];
+        $toCreate = [];
+
+        foreach ($validated['items'] as $index => $row) {
+            $itemId = isset($row['item_id']) ? (int) $row['item_id'] : null;
+            $typeId = $row['equipment_type_id'] ?? null;
+            $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            $qty = (int) ($row['quantity'] ?? 1);
+
+            if ($itemId) {
+                $existing = $application->items->firstWhere('id', $itemId);
+                if (! $existing) {
+                    throw ValidationException::withMessages([
+                        'equipment' => 'Некорректная позиция заявки.',
+                    ]);
+                }
+
+                if ($existing->is_checked) {
+                    $existingTypeId = $existing->equipment_type_id !== null ? (int) $existing->equipment_type_id : null;
+                    if (
+                        $typeId !== $existingTypeId
+                        || $name !== trim((string) ($existing->equipment_name ?? ''))
+                        || $qty !== (int) $existing->quantity
+                    ) {
+                        throw ValidationException::withMessages([
+                            'equipment' => 'Одобренное оборудование нельзя изменять.',
+                        ]);
+                    }
+
+                    continue;
+                }
+
+                if ($typeId === null && $name === '') {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.equipment_type_id" => 'Укажите оборудование или удалите строку.',
+                    ]);
+                }
+
+                $seenUnapprovedIds[] = $itemId;
+
+                continue;
+            }
+
+            if ($typeId === null && $name === '') {
+                continue;
+            }
+
+            $toCreate[] = [
+                'equipment_type_id' => $typeId,
+                'equipment_name' => $typeId ? null : $name,
+                'quantity' => $qty,
+            ];
+        }
+
+        $approvedCount = $application->items->where('is_checked', true)->count();
+        $linesWithEquipment = $approvedCount + count($seenUnapprovedIds) + count($toCreate);
+        if ($linesWithEquipment < 1) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
-        $application->update([
-            'subdivision_id' => $validated['subdivision_id'],
-            'responsible_user_id' => $validated['responsible_user_id'],
-            'transport_option_id' => $validated['transport_option_id'] ?? null,
-            'desired_delivery_date' => $validated['desired_delivery_date'],
-            'approved_at' => null,
-        ]);
-
-        $application->items()->delete();
-        foreach ($validated['items'] as $item) {
-            $typeId = $item['equipment_type_id'] ?? null;
-            $name = trim($item['equipment_name'] ?? '');
-            if (empty($typeId) && $name === '') {
-                continue;
-            }
-            $application->items()->create([
-                'equipment_type_id' => $typeId ?: null,
-                'equipment_name' => $typeId ? null : $name,
-                'quantity' => (int) ($item['quantity'] ?? 1),
-                'is_checked' => false,
-                'reason_not_selected' => null,
+        DB::transaction(function () use ($application, $validated, $seenUnapprovedIds, $toCreate) {
+            $application->update([
+                'subdivision_id' => $validated['subdivision_id'],
+                'responsible_user_id' => $validated['responsible_user_id'],
+                'transport_option_id' => $validated['transport_option_id'] ?? null,
+                'desired_delivery_date' => $validated['desired_delivery_date'],
+                'approved_at' => null,
             ]);
-        }
+
+            $application->items()
+                ->where('is_checked', false)
+                ->whereNotIn('id', $seenUnapprovedIds)
+                ->delete();
+
+            foreach ($validated['items'] as $row) {
+                $itemId = isset($row['item_id']) ? (int) $row['item_id'] : null;
+                if (! $itemId) {
+                    continue;
+                }
+
+                $existing = $application->items()->where('id', $itemId)->first();
+                if (! $existing || $existing->is_checked) {
+                    continue;
+                }
+
+                $typeId = $row['equipment_type_id'] ?? null;
+                $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
+                $name = trim((string) ($row['equipment_name'] ?? ''));
+
+                $existing->update([
+                    'equipment_type_id' => $typeId ?: null,
+                    'equipment_name' => $typeId ? null : $name,
+                    'quantity' => (int) ($row['quantity'] ?? 1),
+                ]);
+            }
+
+            foreach ($toCreate as $payload) {
+                $application->items()->create([
+                    'equipment_type_id' => $payload['equipment_type_id'] ?: null,
+                    'equipment_name' => $payload['equipment_name'],
+                    'quantity' => $payload['quantity'],
+                    'is_checked' => false,
+                    'reason_not_selected' => null,
+                ]);
+            }
+        });
 
         return redirect()->route('applications.index')
             ->with('status', 'Заявка успешно обновлена.');

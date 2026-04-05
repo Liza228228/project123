@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center gap-4">
-            <a href="{{ route('users.index') }}" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm">← Управление пользователями</a>
-            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+            <a href="{{ route('users.index') }}" class="text-orange-800 dark:text-orange-300 hover:text-orange-950 dark:hover:text-orange-50 text-sm">← Управление пользователями</a>
+            <h2 class="font-semibold text-xl text-orange-950 dark:text-orange-50 leading-tight">
                 Изменить данные пользователя
             </h2>
         </div>
@@ -10,7 +10,7 @@
 
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
                 <div class="p-6 max-w-md">
                     <form method="POST" action="{{ route('users.update', $user) }}">
                         @csrf
@@ -42,7 +42,7 @@
 
                         <div class="mt-4">
                             <x-input-label for="role_id" value="Роль" />
-                            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600" required>
+                            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-orange-200 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-100 shadow-sm focus:ring-orange-500 dark:focus:ring-orange-400 dark:focus:ring-offset-orange-950" required>
                                 @foreach($roles as $role)
                                     <option value="{{ $role->id }}" @selected((string) old('role_id', $user->role_id) === (string) $role->id)>{{ $role->name }}</option>
                                 @endforeach
@@ -64,7 +64,7 @@
 
                         <div class="flex items-center gap-4 mt-6">
                             <x-primary-button>Сохранить изменения</x-primary-button>
-                            <a href="{{ route('users.index') }}" class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Отмена</a>
+                            <a href="{{ route('users.index') }}" class="text-sm text-orange-800 dark:text-orange-300 hover:text-orange-950 dark:hover:text-orange-50">Отмена</a>
                         </div>
                     </form>
                 </div>

@@ -1,5 +1,5 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+    <div class="mb-4 text-sm text-orange-900 dark:text-orange-200">
         Забыли пароль? Укажите почту — мы отправим ссылку для сброса пароля.
     </div>
 

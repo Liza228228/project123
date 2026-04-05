@@ -1,10 +1,10 @@
 <section class="space-y-6">
     <header>
-        <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+        <h2 class="text-lg font-medium text-orange-950 dark:text-orange-50">
             Удаление аккаунта
         </h2>
 
-        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p class="mt-1 text-sm text-orange-800 dark:text-orange-300">
             После удаления аккаунта все связанные данные будут удалены безвозвратно. Перед удалением сохраните нужную информацию.
         </p>
     </header>
@@ -20,11 +20,11 @@
             @csrf
             @method('delete')
 
-            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+            <h2 class="text-lg font-medium text-orange-950 dark:text-orange-50">
                 Вы уверены, что хотите удалить аккаунт?
             </h2>
 
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            <p class="mt-1 text-sm text-orange-800 dark:text-orange-300">
                 После удаления аккаунта все данные будут удалены безвозвратно. Введите пароль, чтобы подтвердить удаление.
             </p>
 
@@ -35,7 +35,7 @@
                     id="password"
                     name="password"
                     type="password"
-                    class="mt-1 block w-3/4 rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 focus:border-slate-500 focus:ring-slate-500"
+                    class="mt-1 block w-3/4 rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-orange-100 focus:border-orange-500 focus:ring-orange-500"
                     placeholder="Пароль"
                 />
 
