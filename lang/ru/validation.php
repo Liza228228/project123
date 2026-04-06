@@ -81,7 +81,13 @@ return [
     ],
     'not_in' => 'Выбранное значение для :attribute недопустимо.',
     'numeric' => 'Поле :attribute должно быть числом.',
-    'password' => 'Неверный пароль.',
+    'password' => [
+        'letters' => 'В поле :attribute должна быть хотя бы одна буква.',
+        'mixed' => 'В поле :attribute должны быть заглавная и строчная буквы.',
+        'numbers' => 'В поле :attribute должна быть хотя бы одна цифра.',
+        'symbols' => 'В поле :attribute должен быть хотя бы один спецсимвол.',
+        'uncompromised' => 'Такой :attribute уже встречался в утечках данных. Выберите другой.',
+    ],
     'present' => 'Поле :attribute должно присутствовать.',
     'regex' => 'Формат поля :attribute недопустим.',
     'required' => 'Поле :attribute обязательно для заполнения.',
@@ -114,7 +120,13 @@ return [
     'attributes' => [
         'email' => 'почта',
         'name' => 'имя',
+        'surname' => 'фамилия',
+        'patronymic' => 'отчество',
         'password' => 'пароль',
+        'password_confirmation' => 'подтверждение пароля',
+        'role_id' => 'роль',
+        'current_password' => 'текущий пароль',
+        'token' => 'код сброса',
     ],
 
 ];

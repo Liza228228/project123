@@ -34,6 +34,18 @@ class LoginRequest extends FormRequest
     }
 
     /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'email.required' => 'Укажите адрес почты.',
+            'email.email' => 'Введите корректный адрес электронной почты.',
+            'password.required' => 'Введите пароль.',
+        ];
+    }
+
+    /**
      * Attempt to authenticate the request's credentials.
      *
      * @throws \Illuminate\Validation\ValidationException
@@ -50,7 +62,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        if (! Auth::attempt($this->only('email', 'password'), false)) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

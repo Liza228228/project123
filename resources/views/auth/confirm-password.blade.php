@@ -1,5 +1,5 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-orange-900 dark:text-orange-200">
+    <div class="mb-4 text-sm text-black dark:text-white">
         Это защищённая область. Подтвердите пароль для продолжения.
     </div>
 

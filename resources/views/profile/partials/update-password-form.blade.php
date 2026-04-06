@@ -1,10 +1,10 @@
 <section>
     <header>
-        <h2 class="text-lg font-medium text-orange-950 dark:text-orange-50">
+        <h2 class="text-lg font-medium text-black dark:text-white">
             Изменение пароля
         </h2>
 
-        <p class="mt-1 text-sm text-orange-800 dark:text-orange-300">
+        <p class="mt-1 text-sm text-black dark:text-white">
             Используйте надежный пароль для безопасности учетной записи.
         </p>
     </header>
@@ -15,19 +15,19 @@
 
         <div>
             <x-input-label for="update_password_current_password" value="Текущий пароль" />
-            <x-text-input id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-orange-100 focus:border-orange-500 focus:ring-orange-500" autocomplete="current-password" />
+            <x-text-input id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="current-password" />
             <x-input-error :messages="$errors->updatePassword->get('current_password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password" value="Новый пароль" />
-            <x-text-input id="update_password_password" name="password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-orange-100 focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
+            <x-text-input id="update_password_password" name="password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
             <x-input-error :messages="$errors->updatePassword->get('password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password_confirmation" value="Подтверждение пароля" />
-            <x-text-input id="update_password_password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-orange-100 focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
+            <x-text-input id="update_password_password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
             <x-input-error :messages="$errors->updatePassword->get('password_confirmation')" class="mt-2" />
         </div>
 
@@ -42,7 +42,7 @@
                     x-show="show"
                     x-transition
                     x-init="setTimeout(() => show = false, 2000)"
-                    class="text-sm text-orange-800 dark:text-orange-300"
+                    class="text-sm text-black dark:text-white"
                 >Сохранено.</p>
             @endif
         </div>

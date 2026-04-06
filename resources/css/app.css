@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    html {
+        @apply antialiased;
+    }
+
+    body {
+        @apply font-sans text-black dark:text-white;
+    }
+}

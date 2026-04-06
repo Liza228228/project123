@@ -3,10 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\Role;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
@@ -36,7 +34,6 @@ class UserFactory extends Factory
                 'id' => Role::ID_ACCOUNTANT,
                 'name' => Role::MAP[Role::ID_ACCOUNTANT],
             ])->id,
-            'remember_token' => Str::random(10),
         ];
     }
 

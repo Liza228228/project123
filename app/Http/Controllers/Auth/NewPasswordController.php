@@ -9,7 +9,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
 
@@ -34,6 +33,12 @@ class NewPasswordController extends Controller
             'token' => ['required'],
             'email' => ['required', 'email'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        ], [
+            'token.required' => 'Отсутствует код сброса. Перейдите по ссылке из письма.',
+            'email.required' => 'Укажите адрес почты.',
+            'email.email' => 'Введите корректный адрес электронной почты.',
+            'password.required' => 'Введите новый пароль.',
+            'password.confirmed' => 'Пароли не совпадают. Введите одинаковые значения.',
         ]);
 
         // Here we will attempt to reset the user's password. If it is successful we
@@ -44,7 +49,6 @@ class NewPasswordController extends Controller
             function (User $user) use ($request) {
                 $user->forceFill([
                     'password' => Hash::make($request->password),
-                    'remember_token' => Str::random(60),
                 ])->save();
 
                 event(new PasswordReset($user));

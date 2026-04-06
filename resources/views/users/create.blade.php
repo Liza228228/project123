@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center gap-4">
-            <a href="{{ route('users.index') }}" class="text-orange-800 dark:text-orange-300 hover:text-orange-950 dark:hover:text-orange-50 text-sm">← Управление пользователями</a>
-            <h2 class="font-semibold text-xl text-orange-950 dark:text-orange-50 leading-tight">
+            <a href="{{ route('users.index') }}" class="text-black dark:text-white hover:text-black dark:hover:text-white text-sm">← Управление пользователями</a>
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
                 Добавить пользователя
             </h2>
         </div>
@@ -41,7 +41,7 @@
 
                         <div class="mt-4">
                             <x-input-label for="role_id" value="Роль" />
-                            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-orange-200 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-100 shadow-sm focus:ring-orange-500 dark:focus:ring-orange-400 dark:focus:ring-offset-orange-950" required>
+                            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-orange-200 dark:border-orange-800 dark:bg-orange-950 dark:text-white shadow-sm focus:ring-orange-500 dark:focus:ring-orange-400 dark:focus:ring-offset-orange-950" required>
                                 @foreach($roles as $role)
                                     <option value="{{ $role->id }}" @selected((string) old('role_id') === (string) $role->id)>{{ $role->name }}</option>
                                 @endforeach
@@ -63,7 +63,7 @@
 
                         <div class="flex items-center gap-4 mt-6">
                             <x-primary-button>Добавить пользователя</x-primary-button>
-                            <a href="{{ route('users.index') }}" class="text-sm text-orange-800 dark:text-orange-300 hover:text-orange-950 dark:hover:text-orange-50">Отмена</a>
+                            <a href="{{ route('users.index') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white">Отмена</a>
                         </div>
                     </form>
                 </div>

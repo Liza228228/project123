@@ -31,6 +31,17 @@ class RegisteredUserController extends Controller
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'role_id' => ['required', 'exists:roles,id'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        ], [
+            'surname.required' => 'Укажите фамилию.',
+            'name.required' => 'Укажите имя.',
+            'patronymic.required' => 'Укажите отчество.',
+            'email.required' => 'Укажите адрес почты.',
+            'email.email' => 'Введите корректный адрес электронной почты.',
+            'email.unique' => 'Эта почта уже занята. Войдите или укажите другой адрес.',
+            'role_id.required' => 'Выберите роль.',
+            'role_id.exists' => 'Выбранная роль недоступна.',
+            'password.required' => 'Придумайте пароль.',
+            'password.confirmed' => 'Пароли не совпадают. Введите одинаковые значения.',
         ]);
 
         $user = User::create([

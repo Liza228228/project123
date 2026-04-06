@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
@@ -73,12 +74,16 @@ class UserController extends Controller
 
         $request->validate($rules);
 
+        if ($user->is(Auth::user()) && (int) $request->role_id !== (int) $user->role_id) {
+            abort(403, 'Нельзя изменить свою роль.');
+        }
+
         $data = [
             'surname' => $request->surname,
             'name' => $request->name,
             'patronymic' => $request->patronymic,
             'email' => $request->email,
-            'role_id' => $request->role_id,
+            'role_id' => $user->is(Auth::user()) ? $user->role_id : (int) $request->role_id,
         ];
 
         if ($request->filled('password')) {
@@ -93,6 +98,8 @@ class UserController extends Controller
 
     public function block(User $user): RedirectResponse
     {
+        $this->assertNotSelf($user);
+
         $user->update(['is_blocked' => true]);
 
         return redirect()->route('users.index')
@@ -101,9 +108,18 @@ class UserController extends Controller
 
     public function unblock(User $user): RedirectResponse
     {
+        $this->assertNotSelf($user);
+
         $user->update(['is_blocked' => false]);
 
         return redirect()->route('users.index')
             ->with('status', 'Пользователь разблокирован.');
+    }
+
+    private function assertNotSelf(User $target): void
+    {
+        if ($target->is(Auth::user())) {
+            abort(403, 'Это действие недоступно для собственной учётной записи.');
+        }
     }
 }

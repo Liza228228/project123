@@ -1,4 +1,4 @@
-<nav x-data="{ open: false }" class="bg-orange-50/95 dark:bg-orange-900 border-b border-orange-200 dark:border-orange-700 shadow-sm">
+﻿<nav x-data="{ open: false }" class="bg-orange-50/95 dark:bg-orange-900 border-b border-orange-200 dark:border-orange-700 shadow-sm text-black dark:text-white">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -6,7 +6,7 @@
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
                     <a href="{{ route('dashboard') }}">
-                        <x-application-logo class="block h-9 w-auto fill-current text-orange-800 dark:text-orange-200" />
+                        <x-application-logo class="block h-9 w-auto fill-current text-black dark:text-white" />
                     </a>
                 </div>
 
@@ -22,7 +22,7 @@
             <div class="hidden sm:flex sm:items-center sm:ms-6">
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-orange-600 dark:text-orange-300 bg-transparent hover:text-orange-800 dark:hover:text-orange-100 focus:outline-none transition ease-in-out duration-150">
+                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-black dark:text-white bg-transparent hover:opacity-80 focus:outline-none transition ease-in-out duration-150">
                             <div>{{ Auth::user()->name }}</div>
 
                             <div class="ms-1">
@@ -54,7 +54,7 @@
 
             <!-- Hamburger -->
             <div class="-me-2 flex items-center sm:hidden">
-                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-orange-500 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-200 hover:bg-orange-100 dark:hover:bg-orange-800 focus:outline-none focus:bg-orange-100 dark:focus:bg-orange-800 focus:text-orange-700 dark:focus:text-orange-200 transition duration-150 ease-in-out">
+                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-black dark:text-white hover:opacity-80 hover:bg-orange-100 dark:hover:bg-orange-800 focus:outline-none focus:bg-orange-100 dark:focus:bg-orange-800 transition duration-150 ease-in-out">
                     <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
                         <path :class="{'hidden': open, 'inline-flex': ! open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                         <path :class="{'hidden': ! open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -75,8 +75,8 @@
         <!-- Responsive Settings Options -->
         <div class="pt-4 pb-1 border-t border-orange-200 dark:border-orange-700">
             <div class="px-4">
-                <div class="font-medium text-base text-orange-950 dark:text-orange-50">{{ Auth::user()->name }}</div>
-                <div class="font-medium text-sm text-orange-700 dark:text-orange-300">{{ Auth::user()->email }}</div>
+                <div class="font-medium text-base text-black dark:text-white">{{ Auth::user()->name }}</div>
+                <div class="font-medium text-sm text-black dark:text-white opacity-80">{{ Auth::user()->email }}</div>
             </div>
 
             <div class="mt-3 space-y-1">

@@ -17,6 +17,9 @@ class Application extends Model
         'user_id',
         'source_application_id',
         'transport_option_id',
+        'director_last_edited_at',
+        'director_last_edited_by',
+        'director_last_edit_detail',
     ];
 
     protected function casts(): array
@@ -24,7 +27,23 @@ class Application extends Model
         return [
             'desired_delivery_date' => 'date',
             'approved_at' => 'datetime',
+            'director_last_edited_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Строки «что изменил директор» из многострочного text-поля.
+     *
+     * @return list<string>
+     */
+    public function directorLastEditDetailLines(): array
+    {
+        $raw = trim((string) ($this->director_last_edit_detail ?? ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        return array_values(array_filter(preg_split('/\r\n|\n|\r/', $raw)));
     }
 
     public function subdivision(): BelongsTo
@@ -47,6 +66,11 @@ class Application extends Model
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
     }
 
+    public function directorLastEditedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'director_last_edited_by');
+    }
+
     public function sourceApplication(): BelongsTo
     {
         return $this->belongsTo(self::class, 'source_application_id');
@@ -63,6 +87,30 @@ class Application extends Model
         $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
 
         return $names->isEmpty() ? '—' : $names->implode('; ');
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    public function approvedEquipmentLineItems(): \Illuminate\Support\Collection
+    {
+        return $this->items
+            ->where('is_checked', true)
+            ->sortBy('id')
+            ->values()
+            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    public function notApprovedEquipmentLineItems(): \Illuminate\Support\Collection
+    {
+        return $this->items
+            ->where('is_checked', false)
+            ->sortBy('id')
+            ->values()
+            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
     }
 
     /**

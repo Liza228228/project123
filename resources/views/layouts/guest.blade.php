@@ -8,19 +8,19 @@
     <title>ИС учёта материалов</title>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=manrope:400,500,600,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="font-sans text-orange-900 antialiased">
-    <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-orange-100 dark:bg-orange-900">
+<body class="font-sans text-black dark:text-white antialiased">
+    <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-orange-100 dark:bg-orange-900 text-black dark:text-white">
         <div>
-            <a href="/" class="inline-flex items-center gap-2 text-orange-700 dark:text-orange-200 hover:text-orange-900 dark:hover:text-white">
+            <a href="/" class="inline-flex items-center gap-2 text-black dark:text-white hover:opacity-80">
                 <span class="font-semibold tracking-wide">КТ Ресурс</span>
             </a>
         </div>
 
-        <div class="w-full sm:max-w-md mt-6 px-6 py-7 bg-white dark:bg-orange-800 shadow-md rounded-xl overflow-hidden border border-orange-200 dark:border-orange-700">
+        <div class="w-full sm:max-w-md mt-6 px-6 py-7 bg-white dark:bg-orange-800 shadow-md rounded-xl overflow-hidden border border-orange-200 dark:border-orange-700 text-black dark:text-white">
             {{ $slot }}
         </div>
     </div>

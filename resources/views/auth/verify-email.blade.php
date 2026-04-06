@@ -1,10 +1,10 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-orange-900 dark:text-orange-200">
+    <div class="mb-4 text-sm text-black dark:text-white">
         Спасибо за регистрацию. Подтвердите почту, перейдя по ссылке из письма. Если письмо не пришло, мы можем отправить его снова.
     </div>
 
     @if (session('status') == 'verification-link-sent')
-        <div class="mb-4 font-medium text-sm text-orange-800 dark:text-orange-300">
+        <div class="mb-4 font-medium text-sm text-black dark:text-white">
             Новая ссылка для подтверждения отправлена на указанную почту.
         </div>
     @endif
@@ -23,7 +23,7 @@
         <form method="POST" action="{{ route('logout') }}">
             @csrf
 
-            <button type="submit" class="underline text-sm text-orange-800 dark:text-orange-300 hover:text-orange-950 dark:hover:text-orange-50 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 dark:focus:ring-offset-orange-950">
+            <button type="submit" class="underline text-sm text-black dark:text-white hover:text-black dark:hover:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 dark:focus:ring-offset-orange-950">
                 Выйти
             </button>
         </form>

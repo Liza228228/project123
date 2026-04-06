@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
+use App\Services\ApplicationDirectorChangeRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class ApplicationController extends Controller
 
     public function create(Request $request): View
     {
-        $this->authorizeCanCreateOrEditApplications($request);
+        $this->authorizeCanCreateApplications($request);
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
@@ -80,7 +81,7 @@ class ApplicationController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeCanCreateOrEditApplications($request);
+        $this->authorizeCanCreateApplications($request);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -143,14 +144,14 @@ class ApplicationController extends Controller
 
     public function show(Application $application): View
     {
-        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication', 'transportOption']);
+        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication', 'transportOption', 'directorLastEditedBy']);
 
         return view('applications.show', compact('application'));
     }
 
     public function edit(Request $request, Application $application): View
     {
-        $this->authorizeCanCreateOrEditApplications($request);
+        $this->authorizeCanEditApplications($request);
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
@@ -171,9 +172,12 @@ class ApplicationController extends Controller
 
     public function update(Request $request, Application $application): RedirectResponse
     {
-        $this->authorizeCanCreateOrEditApplications($request);
+        $this->authorizeCanEditApplications($request);
 
         $application->load(['items.equipmentType']);
+
+        $shouldRecordManagementEdit = in_array((int) $request->user()->role_id, [Role::ID_DIRECTOR, Role::ID_SUPPLY_DEPARTMENT_HEAD], true);
+        $snapshotBefore = $shouldRecordManagementEdit ? ApplicationDirectorChangeRecorder::snapshot($application) : null;
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -312,6 +316,19 @@ class ApplicationController extends Controller
             }
         });
 
+        if ($shouldRecordManagementEdit && $snapshotBefore !== null) {
+            $application->refresh();
+            $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipmentType']);
+            $changeLines = ApplicationDirectorChangeRecorder::diff($snapshotBefore, $application);
+            if ($changeLines !== []) {
+                $application->update([
+                    'director_last_edited_at' => now(),
+                    'director_last_edited_by' => $request->user()->id,
+                    'director_last_edit_detail' => implode("\n", $changeLines),
+                ]);
+            }
+        }
+
         return redirect()->route('applications.index')
             ->with('status', 'Заявка успешно обновлена.');
     }
@@ -344,7 +361,7 @@ class ApplicationController extends Controller
             if (! $isChecked) {
                 $reason = trim((string) ($row['reason_not_selected'] ?? ''));
                 if ($reason === '') {
-                    $errors["items.{$item->id}.reason_not_selected"] = 'Укажите причину, почему позиция не одобрена.';
+                    $errors["items.{$item->id}.reason_not_selected"] = 'Укажите причину не одобрения.';
                 } elseif (mb_strlen($reason) > 500) {
                     $errors["items.{$item->id}.reason_not_selected"] = 'Причина не может быть длиннее 500 символов.';
                 }
@@ -428,16 +445,28 @@ class ApplicationController extends Controller
             ->with('status', 'Сохранено');
     }
 
-    private function authorizeCanCreateOrEditApplications(Request $request): void
+    private function authorizeCanCreateApplications(Request $request): void
     {
         $allowed = in_array((int) $request->user()?->role_id, [
             Role::ID_DIRECTOR,
             Role::ID_SITE_FOREMAN,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
         ], true);
 
         if (! $request->user() || ! $allowed) {
-            abort(403, 'Создание и редактирование заявок разрешено только директору, начальнику отдела снабжения и мастеру участка.');
+            abort(403, 'Создание заявок разрешено только директору и мастеру участка.');
+        }
+    }
+
+    private function authorizeCanEditApplications(Request $request): void
+    {
+        $allowed = in_array((int) $request->user()?->role_id, [
+            Role::ID_DIRECTOR,
+            Role::ID_SUPPLY_DEPARTMENT_HEAD,
+            Role::ID_SITE_FOREMAN,
+        ], true);
+
+        if (! $request->user() || ! $allowed) {
+            abort(403, 'Редактирование заявок разрешено директору, начальнику отдела снабжения и мастеру участка.');
         }
     }
 

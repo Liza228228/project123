@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-orange-950 dark:text-orange-50 leading-tight">
+        <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
             Профиль
         </h2>
     </x-slot>
@@ -16,12 +16,6 @@
             <div class="p-4 sm:p-8 bg-white dark:bg-orange-950 shadow-sm border border-orange-200 dark:border-orange-700 sm:rounded-lg">
                 <div class="max-w-xl">
                     @include('profile.partials.update-password-form')
-                </div>
-            </div>
-
-            <div class="p-4 sm:p-8 bg-white dark:bg-orange-950 shadow-sm border border-orange-200 dark:border-orange-700 sm:rounded-lg">
-                <div class="max-w-xl">
-                    @include('profile.partials.delete-user-form')
                 </div>
             </div>
         </div>

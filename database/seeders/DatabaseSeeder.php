@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             SubdivisionSeeder::class,
             EquipmentTypeSeeder::class,
             TransportOptionSeeder::class,
+            ApplicationSeeder::class,
         ]);
     }
 }

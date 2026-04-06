@@ -21,7 +21,6 @@ return new class extends Migration
             $table->string('password');
             $table->unsignedBigInteger('role_id');
             $table->boolean('is_blocked')->default(false);
-            $table->rememberToken();
             $table->timestamps();
         });
 

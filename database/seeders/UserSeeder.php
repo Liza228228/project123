@@ -9,9 +9,6 @@ use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
-    /**
-     * По одному пользователю на каждую роль. Пароль у всех: password
-     */
     public function run(): void
     {
         $users = [

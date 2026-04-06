@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-orange-950 dark:text-orange-50 leading-tight">
+        <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
             Панель управления
         </h2>
     </x-slot>
@@ -9,7 +9,7 @@
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
                 <div class="p-6">
-                    <p class="text-orange-900 dark:text-orange-100 mb-6 text-base">Выберите раздел для работы:</p>
+                    <p class="text-black dark:text-white mb-6 text-base">Выберите раздел для работы:</p>
 
                     <div class="flex flex-wrap gap-3">
                         @if ((int) Auth::user()->role_id === \App\Models\Role::ID_ADMINISTRATOR)
