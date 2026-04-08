@@ -12,6 +12,7 @@ class Application extends Model
         'subdivision_id',
         'responsible_user_id',
         'equipment_in_warehouse',
+        'commercial_offer_path',
         'desired_delivery_date',
         'approved_at',
         'user_id',

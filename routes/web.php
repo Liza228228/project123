@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ApplicationController;
+use App\Http\Controllers\ForemanSubdivisionAssignmentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,8 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/', [ApplicationController::class, 'index'])->name('index');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
     Route::get('/{application}/repeat', [ApplicationController::class, 'repeat'])->name('repeat');
+    Route::get('/{application}/commercial-offer', [ApplicationController::class, 'viewCommercialOffer'])->name('commercial-offer.view');
+    Route::get('/{application}/commercial-offer/download', [ApplicationController::class, 'downloadCommercialOffer'])->name('commercial-offer.download');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
     Route::post('/items/{item}/toggle', [ApplicationController::class, 'toggleCheck'])->name('items.toggle');
     Route::put('/items/{item}/reason', [ApplicationController::class, 'updateReason'])->name('items.reason');
@@ -40,6 +43,12 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');
+});
+
+Route::middleware('auth')->prefix('foreman-subdivisions')->name('foreman-subdivisions.')->group(function () {
+    Route::get('/', [ForemanSubdivisionAssignmentController::class, 'index'])->name('index');
+    Route::get('/{foreman}/edit', [ForemanSubdivisionAssignmentController::class, 'edit'])->name('edit');
+    Route::put('/{foreman}', [ForemanSubdivisionAssignmentController::class, 'update'])->name('update');
 });
 
 require __DIR__.'/auth.php';

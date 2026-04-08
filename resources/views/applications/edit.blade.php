@@ -49,20 +49,23 @@
                         <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1" />
                     </div>
 
-                    <div class="space-y-1.5">
-                        <x-input-label for="responsible_user_id" value="Ответственный" />
-                        <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
-                            <option value="">Не назначен / выбрать автоматически</option>
-                            @foreach($users as $u)
-                                <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
-                            @endforeach
-                        </select>
-                        <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1" />
-                    </div>
+                    @if ((int) Auth::user()->role_id !== \App\Models\Role::ID_SITE_FOREMAN)
+                        <div class="space-y-1.5">
+                            <x-input-label for="responsible_user_id" value="Ответственный" />
+                            <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
+                                <option value="">Не назначен / выбрать автоматически</option>
+                                @foreach($users as $u)
+                                    <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1" />
+                        </div>
+                    @else
+                        <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
+                    @endif
 
                     <div class="space-y-1.5">
-                        <x-input-label for="transport_option_id" value="Транспорт / способ доставки" />
-                        <p class="text-xs text-black dark:text-white">Машина, маршрутка, грузовик и т.п.</p>
+                        <x-input-label for="transport_option_id" value="Способ доставки" />
                         <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
                             <option value="">Не указан</option>
                             @foreach($transportOptions as $t)
@@ -114,7 +117,8 @@
                                         <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                                            <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
                                         </div>
                                         <div class="w-20">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
@@ -128,12 +132,21 @@
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                                            <select name="items[{{ $idx }}][equipment_type_id]" class="equipment-select block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
-                                                <option value="">— Выберите —</option>
-                                                @foreach($equipmentTypes as $et)
-                                                    <option value="{{ $et->id }}" @selected((string) ($typeId ?? '') === (string) $et->id)>{{ $et->name }}</option>
-                                                @endforeach
-                                            </select>
+                                            @php
+                                                $selectedType = ($typeId ?? '') !== '' ? $equipmentTypes->firstWhere('id', (int) $typeId) : null;
+                                            @endphp
+                                            <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
+                                            <input
+                                                type="text"
+                                                value="{{ $selectedType?->name ?? '' }}"
+                                                placeholder="Начните вводить оборудование"
+                                                autocomplete="off"
+                                                autocorrect="off"
+                                                autocapitalize="off"
+                                                spellcheck="false"
+                                                class="equipment-search block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                            />
+                                            <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-950 shadow-sm"></div>
                                         </div>
                                         <div class="w-20">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
@@ -180,12 +193,17 @@
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                <select name="items[__INDEX__][equipment_type_id]" class="equipment-select block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
-                    <option value="">— Выберите —</option>
-                    @foreach($equipmentTypes as $et)
-                        <option value="{{ $et->id }}">{{ $et->name }}</option>
-                    @endforeach
-                </select>
+                <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" class="equipment-type-id" />
+                <input
+                    type="text"
+                    placeholder="Начните вводить оборудование"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    class="equipment-search block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                />
+                <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-950 shadow-sm"></div>
             </div>
             <div class="w-20">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
@@ -200,7 +218,8 @@
             <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
             </div>
             <div class="w-20">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
@@ -215,12 +234,137 @@
             var tplList = document.getElementById('equipment-row-from-list-tpl').innerHTML;
             var tplCustom = document.getElementById('equipment-row-custom-tpl').innerHTML;
             var nextIndex = container.querySelectorAll('.equipment-row').length;
+            var equipmentMap = {};
+            var equipmentList = [];
+            @foreach($equipmentTypes as $et)
+            equipmentMap[@json(mb_strtolower($et->name))] = @json((string) $et->id);
+            equipmentList.push({ id: @json((string) $et->id), name: @json($et->name), key: @json(mb_strtolower($et->name)) });
+            @endforeach
+            var equipmentNameSet = {};
+            equipmentList.forEach(function(item) {
+                equipmentNameSet[item.key] = true;
+            });
+
+            function bindSearchInputs() {
+                container.querySelectorAll('.equipment-search').forEach(function(input) {
+                    if (input.dataset.bound === '1') {
+                        return;
+                    }
+                    var sync = function() {
+                        var row = input.closest('.equipment-row');
+                        if (!row) {
+                            return;
+                        }
+                        var hidden = row.querySelector('.equipment-type-id');
+                        if (!hidden) {
+                            return;
+                        }
+                        var key = (input.value || '').trim().toLowerCase();
+                        hidden.value = equipmentMap[key] || '';
+                    };
+                    var renderSuggestions = function() {
+                        var row = input.closest('.equipment-row');
+                        if (!row) {
+                            return;
+                        }
+                        var box = row.querySelector('.equipment-suggestions');
+                        if (!box) {
+                            return;
+                        }
+                        var query = (input.value || '').trim().toLowerCase();
+                        if (query.length < 2) {
+                            box.innerHTML = '';
+                            box.classList.add('hidden');
+                            return;
+                        }
+
+                        var matches = equipmentList.filter(function(item) {
+                            return item.key.indexOf(query) !== -1;
+                        }).slice(0, 8);
+
+                        if (matches.length === 0) {
+                            box.innerHTML = '';
+                            box.classList.add('hidden');
+                            return;
+                        }
+
+                        box.innerHTML = matches.map(function(item) {
+                            return '<button type="button" class="equipment-suggestion-item block w-full px-3 py-2 text-left text-sm text-black dark:text-white hover:bg-orange-100 dark:hover:bg-orange-900/40" data-id="' + item.id + '" data-name="' + item.name.replace(/"/g, '&quot;') + '">' + item.name + '</button>';
+                        }).join('');
+                        box.classList.remove('hidden');
+
+                        box.querySelectorAll('.equipment-suggestion-item').forEach(function(btn) {
+                            btn.addEventListener('click', function() {
+                                input.value = btn.dataset.name || '';
+                                sync();
+                                box.innerHTML = '';
+                                box.classList.add('hidden');
+                            });
+                        });
+                    };
+                    input.addEventListener('input', sync);
+                    input.addEventListener('input', renderSuggestions);
+                    input.addEventListener('change', sync);
+                    input.addEventListener('focus', renderSuggestions);
+                    input.addEventListener('blur', function() {
+                        setTimeout(function() {
+                            var row = input.closest('.equipment-row');
+                            var box = row ? row.querySelector('.equipment-suggestions') : null;
+                            if (!box) {
+                                return;
+                            }
+                            box.innerHTML = '';
+                            box.classList.add('hidden');
+                        }, 120);
+                    });
+                    input.dataset.bound = '1';
+                });
+            }
 
             function countEditable() {
                 return container.querySelectorAll('.equipment-row--editable').length;
             }
             function countLocked() {
                 return container.querySelectorAll('.equipment-row--locked').length;
+            }
+
+            function validateCustomInput(input) {
+                var row = input.closest('.equipment-row');
+                if (!row) {
+                    return true;
+                }
+                var error = row.querySelector('.custom-equipment-error');
+                var value = (input.value || '').trim().toLowerCase();
+                var isDuplicate = value !== '' && !!equipmentNameSet[value];
+
+                if (isDuplicate) {
+                    input.setCustomValidity('Такое оборудование уже есть в списке.');
+                    input.classList.add('border-red-500');
+                    if (error) {
+                        error.classList.remove('hidden');
+                    }
+                    return false;
+                }
+
+                input.setCustomValidity('');
+                input.classList.remove('border-red-500');
+                if (error) {
+                    error.classList.add('hidden');
+                }
+                return true;
+            }
+
+            function bindCustomInputs() {
+                container.querySelectorAll('.custom-equipment-input').forEach(function(input) {
+                    if (input.dataset.bound === '1') {
+                        return;
+                    }
+                    var run = function() { validateCustomInput(input); };
+                    input.addEventListener('input', run);
+                    input.addEventListener('change', run);
+                    input.dataset.bound = '1';
+                    run();
+                });
             }
 
             function bindRemoveButtons() {
@@ -233,6 +377,8 @@
                 var html = tpl.replace(/__INDEX__/g, nextIndex++);
                 container.insertAdjacentHTML('beforeend', html);
                 bindRemoveButtons();
+                bindSearchInputs();
+                bindCustomInputs();
             }
 
             document.getElementById('add-equipment-from-list').addEventListener('click', function() {
@@ -257,6 +403,23 @@
             }
 
             bindRemoveButtons();
+            bindSearchInputs();
+            bindCustomInputs();
+
+            var form = container.closest('form');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    var ok = true;
+                    container.querySelectorAll('.custom-equipment-input').forEach(function(input) {
+                        if (!validateCustomInput(input)) {
+                            ok = false;
+                        }
+                    });
+                    if (!ok) {
+                        e.preventDefault();
+                    }
+                });
+            }
         })();
     </script>
 </x-app-layout>

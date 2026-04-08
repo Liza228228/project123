@@ -65,6 +65,34 @@
                                     @endif
                                 </dd>
                             </div>
+                            <div class="sm:col-span-2">
+                                <dt class="text-xs text-black dark:text-white">Коммерческое предложение</dt>
+                                <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
+                                    @if($application->commercial_offer_path)
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span>{{ basename($application->commercial_offer_path) }}</span>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                                            <a
+                                                href="{{ route('applications.commercial-offer.view', $application) }}"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700"
+                                            >
+                                                Открыть файл
+                                            </a>
+                                            <a
+                                                href="{{ route('applications.commercial-offer.download', $application) }}"
+                                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-black dark:text-white rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-900/30 transition hover:bg-orange-50 dark:hover:bg-orange-900/50"
+                                            >
+                                                Скачать
+                                            </a>
+                                        </div>
+                                    @else
+                                        —
+                                    @endif
+                                </dd>
+                            </div>
                             @if($application->source_application_id)
                                 <div class="sm:col-span-2">
                                     <dt class="text-xs text-black dark:text-white">Тип заявки</dt>
@@ -134,6 +162,28 @@
                                         Снять со всех
                                     </button>
                                 </div>
+                                @if((int) Auth::user()->role_id === \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD)
+                                    <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
+                                        <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
+                                            Единая причина для неодобренного оборудования
+                                        </label>
+                                        <div class="flex flex-wrap items-start gap-2">
+                                            <input
+                                                id="bulk-unchecked-reason"
+                                                type="text"
+                                                maxlength="500"
+                                                placeholder="Например: нет на складе поставщика"
+                                                class="min-w-[260px] flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                            />
+                                            <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
+                                                Применить ко всем без галочки
+                                            </button>
+                                        </div>
+                                        <p class="text-xs text-black dark:text-white opacity-80">
+                                            Причина заполнится для всех позиций, где галочка снята.
+                                        </p>
+                                    </div>
+                                @endif
                                 <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-200 dark:border-orange-700 overflow-hidden">
                                     @foreach($application->items->sortBy('id') as $item)
                                         @php
@@ -213,6 +263,21 @@
                                     document.getElementById('approval-uncheck-all')?.addEventListener('click', function () {
                                         form.querySelectorAll('.approval-item-checkbox').forEach(function (cb) { cb.checked = false; });
                                         syncAll();
+                                    });
+
+                                    document.getElementById('apply-bulk-unchecked-reason')?.addEventListener('click', function () {
+                                        var value = (document.getElementById('bulk-unchecked-reason')?.value || '').trim();
+                                        if (value === '') {
+                                            return;
+                                        }
+                                        form.querySelectorAll('.approval-row').forEach(function (row) {
+                                            var cb = row.querySelector('.approval-item-checkbox');
+                                            var reason = row.querySelector('.approval-reason-input');
+                                            if (!cb || !reason) return;
+                                            if (!cb.checked) {
+                                                reason.value = value;
+                                            }
+                                        });
                                     });
 
                                     syncAll();
