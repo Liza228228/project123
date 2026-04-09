@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center gap-4">
-            <a href="{{ route('foreman-subdivisions.index') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">
+            <a href="{{ route('foreman-subdivisions.assignments') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">
                 ← Назад к мастерам
             </a>
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">

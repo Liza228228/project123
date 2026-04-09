@@ -28,7 +28,7 @@ class ApplicationSeeder extends Seeder
         }
 
         $subdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
-        $transportId = TransportOption::query()->orderBy('sort_order')->value('id');
+        $transportId = TransportOption::query()->orderBy('name')->value('id');
         $types = EquipmentType::query()->orderBy('id')->limit(8)->get();
 
         if ($types->count() < 3) {

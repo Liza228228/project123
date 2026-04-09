@@ -18,15 +18,21 @@
                             </a>
                         @endif
 
-                        @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
+                        @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SITE_FOREMAN, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD, \App\Models\Role::ID_ACCOUNTANT], true))
                             <a href="{{ route('applications.index') }}" class="inline-flex items-center px-6 py-3 text-base font-semibold rounded-lg border border-orange-700 text-white bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950">
                                 Заявки
                             </a>
                         @endif
 
-                        @if ((int) Auth::user()->role_id === \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD)
+                        @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD, \App\Models\Role::ID_ACCOUNTANT], true))
                             <a href="{{ route('foreman-subdivisions.index') }}" class="inline-flex items-center px-6 py-3 text-base font-semibold rounded-lg border border-orange-700 text-white bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950">
                                Подразделения
+                            </a>
+                        @endif
+
+                        @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
+                            <a href="{{ route('foreman-subdivisions.assignments') }}" class="inline-flex items-center px-6 py-3 text-base font-semibold rounded-lg border border-orange-700 text-white bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950">
+                               Назначения мастерам
                             </a>
                         @endif
                     </div>

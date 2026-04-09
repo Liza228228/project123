@@ -9,9 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 class TransportOptionSeeder extends Seeder
 {
-    /**
-     * Простой справочник: каким транспортом нужна доставка (без привязки к учётным файлам).
-     */
+
     public function run(): void
     {
         if (! Schema::hasTable('transport_options')) {
@@ -23,19 +21,14 @@ class TransportOptionSeeder extends Seeder
         }
         TransportOption::query()->delete();
 
-        $sortOrder = 0;
-
         foreach ($this->transportTypeNames() as $name) {
             $name = trim($name);
             if ($name === '') {
                 continue;
             }
-            $sortOrder++;
 
             TransportOption::create([
-                'code' => null,
                 'name' => $name,
-                'sort_order' => $sortOrder,
             ]);
         }
     }

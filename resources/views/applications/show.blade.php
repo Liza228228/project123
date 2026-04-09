@@ -41,6 +41,21 @@
                                 <dt class="text-xs text-black dark:text-white">Подразделение</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">{{ $application->subdivision->name }}</dd>
                             </div>
+                            @if($application->subdivision && $application->subdivision->warehouses->isNotEmpty())
+                                <div class="sm:col-span-2">
+                                    <dt class="text-xs text-black dark:text-white">Склады подразделения</dt>
+                                    <dd class="mt-1">
+                                        <ul class="rounded-lg border border-orange-200 dark:border-orange-700 divide-y divide-orange-200 dark:divide-orange-800 max-h-52 overflow-y-auto">
+                                            @foreach($application->subdivision->warehouses as $wh)
+                                                <li class="px-3 py-2 text-sm text-black dark:text-white">
+                                                    <span class="font-mono text-xs opacity-80">{{ $wh->code }}</span>
+                                                    — {{ $wh->name }}
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    </dd>
+                                </div>
+                            @endif
                             <div>
                                 <dt class="text-xs text-black dark:text-white">Ответственный</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
@@ -59,7 +74,7 @@
                                 <dt class="text-xs text-black dark:text-white">Транспорт / доставка</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
                                     @if($application->transportOption)
-                                        {{ $application->transportOption->name }}@if($application->transportOption->code) <span class="text-black dark:text-white font-normal">({{ $application->transportOption->code }})</span>@endif
+                                        {{ $application->transportOption->name }}
                                     @else
                                         —
                                     @endif
@@ -162,26 +177,24 @@
                                         Снять со всех
                                     </button>
                                 </div>
-                                @if((int) Auth::user()->role_id === \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD)
+                                @if(in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
                                     <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
                                         <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
-                                            Единая причина для неодобренного оборудования
+                                            Общая причина для неодобренного оборудования
                                         </label>
-                                        <div class="flex flex-wrap items-start gap-2">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
                                             <input
                                                 id="bulk-unchecked-reason"
                                                 type="text"
                                                 maxlength="500"
                                                 placeholder="Например: нет на складе поставщика"
-                                                class="min-w-[260px] flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                                class="w-full min-w-0 sm:min-w-[200px] sm:flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
                                             />
-                                            <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
-                                                Применить ко всем без галочки
+                                            <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex w-full shrink-0 items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800 sm:w-auto">
+                                                Применить к несогласованному оборудованию
                                             </button>
                                         </div>
-                                        <p class="text-xs text-black dark:text-white opacity-80">
-                                            Причина заполнится для всех позиций, где галочка снята.
-                                        </p>
+                                      
                                     </div>
                                 @endif
                                 <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-200 dark:border-orange-700 overflow-hidden">

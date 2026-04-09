@@ -8,9 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class TransportOption extends Model
 {
     protected $fillable = [
-        'code',
         'name',
-        'sort_order',
     ];
 
     public function applications(): HasMany

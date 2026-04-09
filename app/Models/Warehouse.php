@@ -11,6 +11,7 @@ class Warehouse extends Model
         'is_primary',
         'name',
         'code',
+        'subdivision_id',
         'warehouse_type_id',
         'retail_price_type_id',
         'comment',
@@ -19,6 +20,11 @@ class Warehouse extends Model
     protected function casts(): array
     {
         return ['is_primary' => 'boolean'];
+    }
+
+    public function subdivision(): BelongsTo
+    {
+        return $this->belongsTo(Subdivision::class);
     }
 
     public function warehouseType(): BelongsTo

@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             SubdivisionSeeder::class,
+            WarehouseDataFrom1CsvSeeder::class,
             EquipmentTypeSeeder::class,
             TransportOptionSeeder::class,
             ApplicationSeeder::class,

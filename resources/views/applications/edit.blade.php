@@ -34,7 +34,7 @@
                     Согласованное оборудование отображается только для просмотра. Неодобренное оборудование можно изменить, удалить или дополнить новыми.
                 </p>
 
-                <form method="POST" action="{{ route('applications.update', $application) }}" class="space-y-6">
+                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" class="space-y-6">
                     @csrf
                     @method('PUT')
 
@@ -48,6 +48,8 @@
                         </select>
                         <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1" />
                     </div>
+
+                    @include('applications.partials.subdivision-warehouses-hint')
 
                     @if ((int) Auth::user()->role_id !== \App\Models\Role::ID_SITE_FOREMAN)
                         <div class="space-y-1.5">
@@ -64,13 +66,28 @@
                         <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
                     @endif
 
+                    @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
+                        <div id="management-change-reason-block" class="space-y-1.5 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
+                            <x-input-label for="management_change_reason" value="Причина изменения " />
+                            <textarea
+                                id="management_change_reason"
+                                name="management_change_reason"
+                                rows="3"
+                                maxlength="500"
+                                class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                            >{{ old('management_change_reason') }}</textarea>
+                            <p class="text-xs text-black dark:text-white opacity-80">Причина будет показана в истории изменений заявки.</p>
+                            <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1" />
+                        </div>
+                    @endif
+
                     <div class="space-y-1.5">
                         <x-input-label for="transport_option_id" value="Способ доставки" />
                         <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
                             <option value="">Не указан</option>
                             @foreach($transportOptions as $t)
                                 <option value="{{ $t->id }}" @selected(old('transport_option_id', $application->transport_option_id) == $t->id)>
-                                    {{ $t->name }}@if($t->code) ({{ $t->code }})@endif
+                                    {{ $t->name }}
                                 </option>
                             @endforeach
                         </select>
@@ -228,6 +245,123 @@
             <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
+    <script>
+        (function() {
+            var managementReasonBlock = document.getElementById('management-change-reason-block');
+            var managementReasonInput = document.getElementById('management_change_reason');
+            var form = document.getElementById('application-edit-form');
+            var managementReasonServerError = @json($errors->has('management_change_reason'));
+
+            function trackedElements() {
+                if (!form) {
+                    return [];
+                }
+                return Array.prototype.slice.call(form.querySelectorAll(
+                    'select[name="subdivision_id"], ' +
+                    'select[name="responsible_user_id"], ' +
+                    'select[name="transport_option_id"], ' +
+                    'input[name="desired_delivery_date"], ' +
+                    'input[name^="items["][name$="[item_id]"], ' +
+                    'input[name^="items["][name$="[equipment_type_id]"], ' +
+                    'input[name^="items["][name$="[equipment_name]"], ' +
+                    'input[name^="items["][name$="[quantity]"]'
+                ));
+            }
+
+            function buildSnapshot() {
+                var data = trackedElements().map(function(el) {
+                    return [el.name, (el.value || '').trim()];
+                });
+                data.sort(function(a, b) {
+                    if (a[0] < b[0]) return -1;
+                    if (a[0] > b[0]) return 1;
+                    if (a[1] < b[1]) return -1;
+                    if (a[1] > b[1]) return 1;
+                    return 0;
+                });
+                return JSON.stringify(data);
+            }
+
+            var initialSnapshot = '';
+
+            function syncManagementReasonVisibility() {
+                if (!managementReasonBlock || !managementReasonInput) {
+                    return;
+                }
+                if (managementReasonServerError) {
+                    managementReasonBlock.classList.remove('hidden');
+                    managementReasonInput.required = true;
+                    return;
+                }
+                var changed = buildSnapshot() !== initialSnapshot;
+                managementReasonBlock.classList.toggle('hidden', !changed);
+                managementReasonInput.required = changed;
+                if (!changed) {
+                    managementReasonInput.value = '';
+                }
+            }
+
+            if (form) {
+                form.addEventListener('input', syncManagementReasonVisibility);
+                form.addEventListener('change', syncManagementReasonVisibility);
+            }
+
+            var responsibleSelect = document.getElementById('responsible_user_id');
+            var subdivisionSelect = document.getElementById('subdivision_id');
+            var subdivisionIdsByForeman = @json($subdivisionIdsByForeman ?? []);
+
+            if (responsibleSelect && subdivisionSelect) {
+                var originalOptions = Array.prototype.slice.call(subdivisionSelect.options).map(function(option) {
+                    return {
+                        value: option.value,
+                        text: option.text,
+                        selected: option.selected
+                    };
+                });
+
+                function renderSubdivisionOptions() {
+                    var selectedResponsible = responsibleSelect.value || '';
+                    var allowedIds = subdivisionIdsByForeman[selectedResponsible] || null;
+                    var currentValue = subdivisionSelect.value;
+                    var nextValue = currentValue;
+
+                    subdivisionSelect.innerHTML = '';
+
+                    originalOptions.forEach(function(option) {
+                        if (option.value === '') {
+                            subdivisionSelect.add(new Option(option.text, option.value));
+                            return;
+                        }
+                        if (Array.isArray(allowedIds) && allowedIds.indexOf(option.value) === -1) {
+                            return;
+                        }
+                        subdivisionSelect.add(new Option(option.text, option.value));
+                    });
+
+                    var hasCurrentValue = Array.prototype.some.call(subdivisionSelect.options, function(option) {
+                        return option.value === currentValue;
+                    });
+                    if (!hasCurrentValue) {
+                        nextValue = '';
+                    }
+                    subdivisionSelect.value = nextValue;
+                    subdivisionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                responsibleSelect.addEventListener('change', renderSubdivisionOptions);
+                renderSubdivisionOptions();
+            }
+
+            initialSnapshot = buildSnapshot();
+
+            if (form) {
+                form.addEventListener('input', syncManagementReasonVisibility);
+                form.addEventListener('change', syncManagementReasonVisibility);
+            }
+            syncManagementReasonVisibility();
+        })();
+    </script>
+
     <script>
         (function() {
             var container = document.getElementById('equipment-items');

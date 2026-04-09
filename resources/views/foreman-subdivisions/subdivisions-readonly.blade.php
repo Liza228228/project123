@@ -1,0 +1,223 @@
+<x-app-layout>
+    <x-slot name="header">
+        <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
+                Подразделения и склады
+            </h2>
+            @if($canManage ?? false)
+                <a href="{{ route('foreman-subdivisions.assignments') }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700">
+                    Назначения мастерам
+                </a>
+            @endif
+        </div>
+    </x-slot>
+
+    <div class="py-10">
+        <div class="max-w-6xl mx-auto sm:px-6 lg:px-8">
+            @if (session('status'))
+                <div class="mb-4 px-4 py-3 rounded-md bg-orange-100 dark:bg-orange-900/40 text-black dark:text-white text-sm">
+                    {{ session('status') }}
+                </div>
+            @endif
+            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
+                <div class="p-4 sm:p-6">
+                    @if($canManage ?? false)
+                        <div class="mb-5 grid gap-4 lg:grid-cols-2">
+                            <form method="POST" action="{{ route('foreman-subdivisions.subdivisions.store') }}" class="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20 p-3 space-y-2">
+                                @csrf
+                                <h3 class="text-sm font-semibold text-black dark:text-white">Добавить подразделение</h3>
+                                <input
+                                    type="text"
+                                    name="subdivision_name"
+                                    value="{{ old('subdivision_name') }}"
+                                    placeholder="Название подразделения"
+                                    class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                />
+                                <x-input-error :messages="$errors->get('subdivision_name')" />
+                                <button type="submit" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700">
+                                    Добавить подразделение
+                                </button>
+                            </form>
+
+                            <form method="POST" action="{{ route('foreman-subdivisions.warehouses.store') }}" class="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20 p-3 space-y-2">
+                                @csrf
+                                <h3 class="text-sm font-semibold text-black dark:text-white">Добавить склад</h3>
+                                <div class="grid gap-2 sm:grid-cols-2">
+                                    <select
+                                        name="subdivision_id"
+                                        class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                    >
+                                        <option value="">Подразделение</option>
+                                        @foreach($subdivisions as $subdivision)
+                                            <option value="{{ $subdivision->id }}" @selected((string) old('subdivision_id') === (string) $subdivision->id)>
+                                                {{ $subdivision->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <input
+                                        type="text"
+                                        name="warehouse_name"
+                                        value="{{ old('warehouse_name') }}"
+                                        placeholder="Название склада"
+                                        class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="code"
+                                        value="{{ old('code') }}"
+                                        placeholder="Код склада"
+                                        class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                    />
+                                    <label class="inline-flex items-center gap-2 text-sm text-black dark:text-white">
+                                        <input type="checkbox" name="is_primary" value="1" @checked(old('is_primary') === '1') class="rounded border-orange-300 text-orange-600 shadow-sm focus:ring-orange-500">
+                                        Основной склад
+                                    </label>
+                                </div>
+                                <textarea
+                                    name="comment"
+                                    rows="2"
+                                    placeholder="Комментарий (необязательно)"
+                                    class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                >{{ old('comment') }}</textarea>
+                                <x-input-error :messages="$errors->get('subdivision_id')" />
+                                <x-input-error :messages="$errors->get('warehouse_name')" />
+                                <x-input-error :messages="$errors->get('code')" />
+                                <x-input-error :messages="$errors->get('comment')" />
+                                <button type="submit" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700">
+                                    Добавить склад
+                                </button>
+                            </form>
+                        </div>
+                    @endif
+
+                    <div class="mb-4 rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50/60 dark:bg-orange-900/20 p-3">
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div class="min-w-[220px] flex-1">
+                                <label for="subdivision-search" class="block text-xs font-medium text-black dark:text-white mb-1">Поиск</label>
+                                <input
+                                    id="subdivision-search"
+                                    type="text"
+                                    placeholder="Подразделение, склад или код склада..."
+                                    class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                />
+                            </div>
+                            <div class="w-full sm:w-auto">
+                                <label for="warehouse-filter" class="block text-xs font-medium text-black dark:text-white mb-1">Фильтр</label>
+                                <select
+                                    id="warehouse-filter"
+                                    class="block w-full sm:w-56 rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                >
+                                    <option value="all">Все подразделения</option>
+                                    <option value="with">Только со складами</option>
+                                    <option value="without">Только без складов</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-xs text-black dark:text-white opacity-80">
+                            Можно искать по названию подразделения, коду склада и названию склада.
+                        </p>
+                    </div>
+
+                    <div id="subdivision-filter-empty" class="hidden mb-4 rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 px-4 py-3 text-sm text-black dark:text-white">
+                        По выбранным фильтрам ничего не найдено.
+                    </div>
+
+                    <div class="overflow-x-auto rounded-lg border border-orange-200 dark:border-orange-800">
+                        <table class="min-w-full divide-y divide-orange-200 dark:divide-orange-800">
+                            <thead>
+                                <tr class="bg-orange-50/70 dark:bg-orange-900/25">
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Подразделение</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase"> Склады</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subdivision-table-body" class="divide-y divide-orange-200 dark:divide-orange-800">
+                                @forelse($subdivisions as $subdivision)
+                                    @php
+                                        $warehouseSearchBlob = $subdivision->warehouses
+                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name)))
+                                            ->implode(' ');
+                                    @endphp
+                                    <tr
+                                        class="subdivision-row"
+                                        data-subdivision-name="{{ mb_strtolower($subdivision->name) }}"
+                                        data-warehouse-blob="{{ $warehouseSearchBlob }}"
+                                        data-has-warehouses="{{ $subdivision->warehouses->isEmpty() ? '0' : '1' }}"
+                                    >
+                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
+                                            <div class="font-medium">{{ $subdivision->name }}</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
+                                            @if($subdivision->warehouses->isEmpty())
+                                                <span class="inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900/35 px-2.5 py-0.5 text-xs text-black dark:text-white">
+                                                    Складов нет
+                                                </span>
+                                            @else
+                                                <ul class="space-y-1">
+                                                    @foreach($subdivision->warehouses as $warehouse)
+                                                        <li class="text-sm text-black dark:text-white rounded-md bg-orange-50 dark:bg-orange-900/20 px-2 py-1">
+                                                            <span class="font-mono text-xs opacity-80">{{ $warehouse->code }}</span>
+                                                            <span class="opacity-70">—</span>
+                                                            {{ $warehouse->name }}
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="px-4 py-6 text-center text-sm text-black dark:text-white">Подразделения не найдены.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            var searchInput = document.getElementById('subdivision-search');
+            var filterSelect = document.getElementById('warehouse-filter');
+            var rows = Array.prototype.slice.call(document.querySelectorAll('.subdivision-row'));
+            var emptyBox = document.getElementById('subdivision-filter-empty');
+
+            if (!searchInput || !filterSelect || rows.length === 0 || !emptyBox) {
+                return;
+            }
+
+            function normalize(value) {
+                return (value || '').toString().trim().toLowerCase();
+            }
+
+            function applyFilters() {
+                var query = normalize(searchInput.value);
+                var mode = filterSelect.value || 'all';
+                var visibleCount = 0;
+
+                rows.forEach(function (row) {
+                    var subName = normalize(row.getAttribute('data-subdivision-name'));
+                    var whBlob = normalize(row.getAttribute('data-warehouse-blob'));
+                    var hasWarehouses = row.getAttribute('data-has-warehouses') === '1';
+                    var queryOk = query === '' || subName.indexOf(query) !== -1 || whBlob.indexOf(query) !== -1;
+                    var modeOk = mode === 'all'
+                        || (mode === 'with' && hasWarehouses)
+                        || (mode === 'without' && !hasWarehouses);
+                    var show = queryOk && modeOk;
+                    row.classList.toggle('hidden', !show);
+                    if (show) {
+                        visibleCount++;
+                    }
+                });
+
+                emptyBox.classList.toggle('hidden', visibleCount > 0);
+            }
+
+            searchInput.addEventListener('input', applyFilters);
+            filterSelect.addEventListener('change', applyFilters);
+            applyFilters();
+        })();
+    </script>
+</x-app-layout>

@@ -9,16 +9,17 @@ use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\ApplicationDirectorChangeRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ApplicationController extends Controller
 {
@@ -43,11 +44,13 @@ class ApplicationController extends Controller
             ->get();
         $prefill = null;
         $transportOptions = TransportOption::query()
-            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions'));
+        $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
+        $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
+
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function repeat(Request $request, Application $application): View
@@ -74,11 +77,13 @@ class ApplicationController extends Controller
             ])->all(),
         ];
         $transportOptions = TransportOption::query()
-            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions'));
+        $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
+        $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
+
+        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -114,6 +119,10 @@ class ApplicationController extends Controller
                 'subdivision_id' => 'Вы не можете создать заявку для этого подразделения.',
             ]);
         }
+        $this->validateSubdivisionAllowedForResponsibleUser(
+            (int) $validated['subdivision_id'],
+            isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
+        );
 
         $equipmentTypeNames = EquipmentType::query()
             ->pluck('name')
@@ -191,7 +200,15 @@ class ApplicationController extends Controller
 
     public function show(Application $application): View
     {
-        $application->load(['subdivision', 'responsibleUser', 'user', 'items.equipmentType', 'sourceApplication', 'transportOption', 'directorLastEditedBy']);
+        $application->load([
+            'subdivision.warehouses',
+            'responsibleUser',
+            'user',
+            'items.equipmentType',
+            'sourceApplication',
+            'transportOption',
+            'directorLastEditedBy',
+        ]);
 
         return view('applications.show', compact('application'));
     }
@@ -230,13 +247,15 @@ class ApplicationController extends Controller
             ->get();
 
         $transportOptions = TransportOption::query()
-            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
         $application->load(['items.equipmentType']);
 
-        return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users', 'transportOptions'));
+        $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
+        $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
+
+        return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function update(Request $request, Application $application): RedirectResponse
@@ -255,6 +274,7 @@ class ApplicationController extends Controller
                 'nullable',
                 Rule::exists('users', 'id')->where('role_id', Role::ID_SITE_FOREMAN),
             ],
+            'management_change_reason' => ['nullable', 'string', 'max:500'],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => [
@@ -270,6 +290,10 @@ class ApplicationController extends Controller
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
+        $this->validateSubdivisionAllowedForResponsibleUser(
+            (int) $validated['subdivision_id'],
+            isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
+        );
 
         $equipmentTypeNames = EquipmentType::query()
             ->pluck('name')
@@ -413,6 +437,10 @@ class ApplicationController extends Controller
             $application->refresh();
             $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipmentType']);
             $changeLines = ApplicationDirectorChangeRecorder::diff($snapshotBefore, $application);
+            $managementReason = trim((string) ($validated['management_change_reason'] ?? ''));
+            if ($managementReason !== '') {
+                array_unshift($changeLines, 'Причина изменения: '.$managementReason);
+            }
             if ($changeLines !== []) {
                 $application->update([
                     'director_last_edited_at' => now(),
@@ -542,11 +570,12 @@ class ApplicationController extends Controller
     {
         $allowed = in_array((int) $request->user()?->role_id, [
             Role::ID_DIRECTOR,
+            Role::ID_SUPPLY_DEPARTMENT_HEAD,
             Role::ID_SITE_FOREMAN,
         ], true);
 
         if (! $request->user() || ! $allowed) {
-            abort(403, 'Создание заявок разрешено только директору и мастеру участка.');
+            abort(403, 'Создание заявок разрешено только директору, начальнику отдела снабжения и мастеру участка.');
         }
     }
 
@@ -600,5 +629,66 @@ class ApplicationController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Склады по подразделению (для подсказки в формах): строки «Нет» из справочника привязаны к «Да» через warehouses.subdivision_id.
+     *
+     * @return array<string, list<array{code: string, name: string}>>
+     */
+    private function warehousesBySubdivisionForUi(): array
+    {
+        return Warehouse::query()
+            ->whereNotNull('subdivision_id')
+            ->orderBy('name')
+            ->get(['subdivision_id', 'code', 'name'])
+            ->groupBy(fn (Warehouse $w): string => (string) $w->subdivision_id)
+            ->map(fn ($group) => $group->map(fn (Warehouse $w): array => [
+                'code' => $w->code,
+                'name' => $w->name,
+            ])->values()->all())
+            ->all();
+    }
+
+    /**
+     * Привязки «мастер участка -> подразделения» для UI-фильтра подразделений.
+     *
+     * @return array<string, list<string>>
+     */
+    private function subdivisionIdsByForemanForUi(): array
+    {
+        $map = [];
+        $foremen = User::query()
+            ->where('role_id', Role::ID_SITE_FOREMAN)
+            ->with(['assignedSubdivisions:id'])
+            ->get(['id']);
+
+        foreach ($foremen as $foreman) {
+            $map[(string) $foreman->id] = $foreman->assignedSubdivisions
+                ->pluck('id')
+                ->map(fn ($id): string => (string) $id)
+                ->values()
+                ->all();
+        }
+
+        return $map;
+    }
+
+    private function validateSubdivisionAllowedForResponsibleUser(int $subdivisionId, ?int $responsibleUserId): void
+    {
+        if (! $responsibleUserId) {
+            return;
+        }
+
+        $isAssigned = DB::table('foreman_subdivision_user')
+            ->where('foreman_user_id', $responsibleUserId)
+            ->where('subdivision_id', $subdivisionId)
+            ->exists();
+
+        if (! $isAssigned) {
+            throw ValidationException::withMessages([
+                'subdivision_id' => 'Выбранное подразделение не назначено выбранному мастеру участка.',
+            ]);
+        }
     }
 }

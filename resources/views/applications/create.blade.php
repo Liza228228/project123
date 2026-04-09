@@ -40,6 +40,8 @@
                         <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1" />
                     </div>
 
+                    @include('applications.partials.subdivision-warehouses-hint')
+
                     @if ((int) Auth::user()->role_id !== \App\Models\Role::ID_SITE_FOREMAN)
                         <div class="space-y-1.5">
                             <x-input-label for="responsible_user_id" value="Ответственный" />
@@ -61,7 +63,7 @@
                             <option value="">Не указан</option>
                             @foreach($transportOptions as $t)
                                 <option value="{{ $t->id }}" @selected(old('transport_option_id', data_get($prefill, 'transport_option_id')) == $t->id)>
-                                    {{ $t->name }}@if($t->code) ({{ $t->code }})@endif
+                                    {{ $t->name }}
                                 </option>
                             @endforeach
                         </select>
@@ -78,7 +80,7 @@
                             id="add-commercial-offer-btn"
                             class="text-sm font-medium text-black dark:text-white hover:opacity-80 dark:hover:text-white"
                         >
-                            + Добавить КП
+                            + Добавить КП (не обязательно)
                         </button>
 
                         <div id="commercial-offer-block" class="{{ $showCommercialOffer ? '' : 'hidden' }} space-y-1.5 rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/60 dark:bg-orange-900/30 p-3">
@@ -228,6 +230,58 @@
             <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
+    <script>
+        (function() {
+            var responsibleSelect = document.getElementById('responsible_user_id');
+            var subdivisionSelect = document.getElementById('subdivision_id');
+            var subdivisionIdsByForeman = @json($subdivisionIdsByForeman ?? []);
+
+            if (!responsibleSelect || !subdivisionSelect) {
+                return;
+            }
+
+            var originalOptions = Array.prototype.slice.call(subdivisionSelect.options).map(function(option) {
+                return {
+                    value: option.value,
+                    text: option.text,
+                    selected: option.selected
+                };
+            });
+
+            function renderSubdivisionOptions() {
+                var selectedResponsible = responsibleSelect.value || '';
+                var allowedIds = subdivisionIdsByForeman[selectedResponsible] || null;
+                var currentValue = subdivisionSelect.value;
+                var nextValue = currentValue;
+
+                subdivisionSelect.innerHTML = '';
+
+                originalOptions.forEach(function(option) {
+                    if (option.value === '') {
+                        subdivisionSelect.add(new Option(option.text, option.value));
+                        return;
+                    }
+                    if (Array.isArray(allowedIds) && allowedIds.indexOf(option.value) === -1) {
+                        return;
+                    }
+                    subdivisionSelect.add(new Option(option.text, option.value));
+                });
+
+                var hasCurrentValue = Array.prototype.some.call(subdivisionSelect.options, function(option) {
+                    return option.value === currentValue;
+                });
+                if (!hasCurrentValue) {
+                    nextValue = '';
+                }
+                subdivisionSelect.value = nextValue;
+                subdivisionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            responsibleSelect.addEventListener('change', renderSubdivisionOptions);
+            renderSubdivisionOptions();
+        })();
+    </script>
+
     <script>
         (function() {
             var container = document.getElementById('equipment-items');

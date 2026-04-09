@@ -4,6 +4,9 @@
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
                 Назначение подразделений 
             </h2>
+            <a href="{{ route('foreman-subdivisions.index') }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700">
+                Подразделения и склады
+            </a>
         </div>
     </x-slot>
 

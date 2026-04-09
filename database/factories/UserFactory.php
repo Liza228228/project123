@@ -28,22 +28,11 @@ class UserFactory extends Factory
             'name' => fake()->firstName(),
             'patronymic' => fake()->firstName().'ович', // упрощённое отчество
             'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'role_id' => Role::query()->inRandomOrder()->value('id') ?? Role::query()->create([
                 'id' => Role::ID_ACCOUNTANT,
                 'name' => Role::MAP[Role::ID_ACCOUNTANT],
             ])->id,
         ];
-    }
-
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
     }
 }

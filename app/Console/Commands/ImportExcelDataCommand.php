@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\InventoryItem;
 use App\Models\RetailPriceType;
 use App\Models\Warehouse;
 use App\Models\WarehouseType;
@@ -11,10 +10,10 @@ use Illuminate\Console\Command;
 class ImportExcelDataCommand extends Command
 {
     protected $signature = 'import:excel-data 
-                            {file=all : Путь к CSV (1.csv, 2.csv) или all для обоих}
+                            {file=2.csv : Путь к CSV (2.csv) или all}
                             {--encoding= : Кодировка файла (utf-8 или windows-1251)}';
 
-    protected $description = 'Импорт данных из Data/1.csv (номенклатура) и Data/2.csv (склады)';
+    protected $description = 'Импорт данных из Data/2.csv (склады)';
 
     public function handle(): int
     {
@@ -23,7 +22,6 @@ class ImportExcelDataCommand extends Command
         $basePath = base_path('Data');
 
         if ($file === 'all') {
-            $this->importFile($basePath.DIRECTORY_SEPARATOR.'1.csv', 'inventory', $encoding);
             $this->importFile($basePath.DIRECTORY_SEPARATOR.'2.csv', 'warehouses', $encoding);
 
             return self::SUCCESS;
@@ -36,8 +34,13 @@ class ImportExcelDataCommand extends Command
             return self::FAILURE;
         }
 
-        $type = str_contains($file, '1.') ? 'inventory' : 'warehouses';
-        $this->importFile($path, $type, $encoding);
+        if (! str_contains($file, '2.')) {
+            $this->error('Поддерживается только импорт складов из 2.csv.');
+
+            return self::FAILURE;
+        }
+
+        $this->importFile($path, 'warehouses', $encoding);
 
         return self::SUCCESS;
     }
@@ -58,75 +61,7 @@ class ImportExcelDataCommand extends Command
         $header = str_getcsv(array_shift($lines), ';');
         $header = array_map('trim', $header);
 
-        if ($type === 'inventory') {
-            $this->importInventoryItems($lines, $header);
-        } else {
-            $this->importWarehouses($lines, $header);
-        }
-    }
-
-    private function importInventoryItems(array $lines, array $header): void
-    {
-        $this->info('Импорт номенклатуры (1.csv)...');
-        $lastGroupId = null;
-        $created = 0;
-        $updated = 0;
-        $skipped = 0;
-
-        foreach ($lines as $line) {
-            $row = str_getcsv($line, ';');
-            if (count($row) < 3) {
-                $skipped++;
-
-                continue;
-            }
-            $row = array_pad($row, count($header), null);
-            $data = array_combine($header, $row);
-            if (! is_array($data)) {
-                $skipped++;
-
-                continue;
-            }
-
-            $isGroup = $this->normalizeBool($data['Это группа'] ?? $data['Ýòî ãðóïïà'] ?? 'Нет');
-            $name = trim($data['Наименование'] ?? $data['Íàèìåíîâàíèå'] ?? '');
-            $code = trim($data['Код'] ?? $data['Êîä'] ?? '');
-            $warehouseTypeName = trim($data['Тип склада'] ?? $data['Òèï ñêëàäà'] ?? '');
-            $comment = trim($data['Комментарий'] ?? $data['Êîììåíòàðèé'] ?? '');
-
-            if ($name === '' || $code === '') {
-                $skipped++;
-
-                continue;
-            }
-
-            $warehouseTypeId = null;
-            if ($warehouseTypeName !== '') {
-                $warehouseTypeId = WarehouseType::firstOrCreate(
-                    ['name' => $warehouseTypeName],
-                    ['name' => $warehouseTypeName]
-                )->id;
-            }
-
-            $item = InventoryItem::firstOrNew(['code' => $code]);
-            $item->parent_id = $lastGroupId;
-            $item->is_group = $isGroup;
-            $item->name = $name;
-            $item->warehouse_type_id = $warehouseTypeId;
-            $item->comment = $comment !== '' ? $comment : null;
-            if ($item->exists) {
-                $item->save();
-                $updated++;
-            } else {
-                $item->save();
-                $created++;
-            }
-            if ($isGroup) {
-                $lastGroupId = $item->id;
-            }
-        }
-
-        $this->info("Номенклатура: создано {$created}, обновлено {$updated}, пропущено {$skipped}.");
+        $this->importWarehouses($lines, $header);
     }
 
     private function importWarehouses(array $lines, array $header): void

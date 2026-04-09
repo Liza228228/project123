@@ -20,10 +20,11 @@ class EnsureUserCanAccessApplications
             Role::ID_DIRECTOR,
             Role::ID_SITE_FOREMAN,
             Role::ID_SUPPLY_DEPARTMENT_HEAD,
+            Role::ID_ACCOUNTANT,
         ], true);
 
         if (! $allowed) {
-            abort(403, 'Доступ к заявкам разрешён только директору, начальнику отдела снабжения и мастеру участка.');
+            abort(403, 'Доступ к заявкам разрешён только директору, начальнику отдела снабжения, мастеру участка и бухгалтеру.');
         }
 
         return $next($request);

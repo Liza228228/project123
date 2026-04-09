@@ -12,7 +12,7 @@ Route::get('/', function () {
 
 Route::get('/dashboard', function () {
     return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware(['auth'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -47,6 +47,9 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
 
 Route::middleware('auth')->prefix('foreman-subdivisions')->name('foreman-subdivisions.')->group(function () {
     Route::get('/', [ForemanSubdivisionAssignmentController::class, 'index'])->name('index');
+    Route::get('/assignments', [ForemanSubdivisionAssignmentController::class, 'assignments'])->name('assignments');
+    Route::post('/subdivisions', [ForemanSubdivisionAssignmentController::class, 'storeSubdivision'])->name('subdivisions.store');
+    Route::post('/warehouses', [ForemanSubdivisionAssignmentController::class, 'storeWarehouse'])->name('warehouses.store');
     Route::get('/{foreman}/edit', [ForemanSubdivisionAssignmentController::class, 'edit'])->name('edit');
     Route::put('/{foreman}', [ForemanSubdivisionAssignmentController::class, 'update'])->name('update');
 });
