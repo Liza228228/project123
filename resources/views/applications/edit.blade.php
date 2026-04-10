@@ -25,6 +25,15 @@
         if (empty($items)) {
             $items = [['item_id' => null, 'equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
         }
+        $preserveSubdivisionIdsForFilter = collect([
+            $application->subdivision_id,
+            old('subdivision_id'),
+        ])
+            ->filter(fn ($v) => $v !== null && $v !== '')
+            ->map(fn ($v) => (string) $v)
+            ->unique()
+            ->values()
+            ->all();
     @endphp
 
     <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
@@ -76,7 +85,7 @@
                                 maxlength="500"
                                 class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
                             >{{ old('management_change_reason') }}</textarea>
-                            <p class="text-xs text-black dark:text-white opacity-80">Причина будет показана в истории изменений заявки.</p>
+
                             <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1" />
                         </div>
                     @endif
@@ -309,6 +318,7 @@
             var responsibleSelect = document.getElementById('responsible_user_id');
             var subdivisionSelect = document.getElementById('subdivision_id');
             var subdivisionIdsByForeman = @json($subdivisionIdsByForeman ?? []);
+            var preserveSubdivisionIds = @json($preserveSubdivisionIdsForFilter);
 
             if (responsibleSelect && subdivisionSelect) {
                 var originalOptions = Array.prototype.slice.call(subdivisionSelect.options).map(function(option) {
@@ -333,7 +343,9 @@
                             return;
                         }
                         if (Array.isArray(allowedIds) && allowedIds.indexOf(option.value) === -1) {
-                            return;
+                            if (preserveSubdivisionIds.indexOf(option.value) === -1) {
+                                return;
+                            }
                         }
                         subdivisionSelect.add(new Option(option.text, option.value));
                     });
