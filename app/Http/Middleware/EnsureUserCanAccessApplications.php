@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Role;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,15 +15,10 @@ class EnsureUserCanAccessApplications
             abort(403, 'Необходима авторизация.');
         }
 
-        $allowed = in_array((int) $user->role_id, [
-            Role::ID_DIRECTOR,
-            Role::ID_SITE_FOREMAN,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
-            Role::ID_ACCOUNTANT,
-        ], true);
+        $allowed = $user->hasAnyRoleId([1, 6, 4, 2, 3]);
 
         if (! $allowed) {
-            abort(403, 'Доступ к заявкам разрешён только директору, начальнику отдела снабжения, мастеру участка и бухгалтеру.');
+            abort(403, 'Доступ к заявкам разрешён только директору, техническому директору, начальнику отдела снабжения, мастеру участка и бухгалтеру.');
         }
 
         return $next($request);

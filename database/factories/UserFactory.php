@@ -29,10 +29,10 @@ class UserFactory extends Factory
             'patronymic' => fake()->firstName().'ович', // упрощённое отчество
             'email' => fake()->unique()->safeEmail(),
             'password' => static::$password ??= Hash::make('password'),
-            'role_id' => Role::query()->inRandomOrder()->value('id') ?? Role::query()->create([
-                'id' => Role::ID_ACCOUNTANT,
-                'name' => Role::MAP[Role::ID_ACCOUNTANT],
-            ])->id,
+            'role_id' => Role::query()->inRandomOrder()->value('id') ?? Role::query()->updateOrCreate(
+                ['id' => 3],
+                ['name' => 'Бухгалтер']
+            )->id,
         ];
     }
 }

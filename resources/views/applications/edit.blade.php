@@ -60,7 +60,7 @@
 
                     @include('applications.partials.subdivision-warehouses-hint')
 
-                    @if ((int) Auth::user()->role_id !== \App\Models\Role::ID_SITE_FOREMAN)
+                    @if (! Auth::user()->hasRoleId(4))
                         <div class="space-y-1.5">
                             <x-input-label for="responsible_user_id" value="Ответственный" />
                             <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
@@ -75,7 +75,7 @@
                         <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
                     @endif
 
-                    @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
+                    @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
                         <div id="management-change-reason-block" class="space-y-1.5 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
                             <x-input-label for="management_change_reason" value="Причина изменения " />
                             <textarea

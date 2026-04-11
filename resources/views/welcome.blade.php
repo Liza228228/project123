@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>КТ-Ресурс — система учета материалов</title>
+    @include('partials.theme-init-script')
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
@@ -21,17 +22,23 @@
                 <h1 class="font-semibold tracking-wide text-black dark:text-white">КТ-Ресурс</h1>
 
             </div>
-            <nav>
-                @auth
-                    <a href="{{ url('/dashboard') }}" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 border border-orange-600 rounded-lg">
-                        Панель управления
-                    </a>
-                @else
-                    <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 border border-orange-600 rounded-lg">
-                        Вход
-                    </a>
-                @endauth
-            </nav>
+            <div class="flex items-center gap-4">
+                <div class="flex flex-col items-end gap-1">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider text-black/40 dark:text-white/40 leading-none">Тема</span>
+                    <x-theme-toggle />
+                </div>
+                <nav class="flex items-center">
+                    @auth
+                        <a href="{{ url('/dashboard') }}" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 border border-orange-600 rounded-lg">
+                            Панель управления
+                        </a>
+                    @else
+                        <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 border border-orange-600 rounded-lg">
+                            Вход
+                        </a>
+                    @endauth
+                </nav>
+            </div>
         </div>
     </header>
 

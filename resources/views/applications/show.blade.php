@@ -12,12 +12,12 @@
             @else
                 <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">На согласовании</span>
             @endif
-            @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD, \App\Models\Role::ID_SITE_FOREMAN], true))
+            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
                 <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
                     Изменить
                 </a>
             @endif
-            @if ((int) Auth::user()->role_id === \App\Models\Role::ID_SITE_FOREMAN)
+            @if (Auth::user()->hasRoleId(4))
                 <a href="{{ route('applications.repeat', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-700 shadow-sm transition hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
                     Создать повторную
                 </a>
@@ -127,11 +127,11 @@
                         </dl>
                     </div>
 
-                    @if((int) Auth::user()->role_id === \App\Models\Role::ID_SITE_FOREMAN && $application->director_last_edited_at)
+                    @if(Auth::user()->hasRoleId(4) && $application->director_last_edited_at)
                         @php
                             $directorEditLines = $application->directorLastEditDetailLines();
                             $mgmtEditor = $application->directorLastEditedBy;
-                            $mgmtRoleLabel = $mgmtEditor ? (\App\Models\Role::MAP[(int) $mgmtEditor->role_id] ?? null) : null;
+                            $mgmtRoleLabel = $mgmtEditor?->role?->name;
                         @endphp
                         <div class="rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50/80 dark:bg-orange-900/25 p-4 space-y-2">
                             <p class="text-sm text-black dark:text-white">
@@ -156,7 +156,7 @@
                     @endif
 
                     @php
-                        $canManageApproval = in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true);
+                        $canManageApproval = Auth::user()->hasAnyRoleId([1, 6, 2]);
                         $uncheckedItems = $application->items->where('is_checked', false);
                         $checkedItems = $application->items->where('is_checked', true);
                     @endphp
@@ -177,7 +177,7 @@
                                         Снять со всех
                                     </button>
                                 </div>
-                                @if(in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD], true))
+                                @if(Auth::user()->hasAnyRoleId([1, 6, 2]))
                                     <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
                                         <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
                                             Общая причина для неодобренного оборудования

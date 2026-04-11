@@ -7,6 +7,8 @@
 
         <title>{{ config('app.name', 'Laravel') }}</title>
 
+        @include('partials.theme-init-script')
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
@@ -23,6 +25,7 @@
                 <header class="bg-white/90 dark:bg-orange-950 shadow-sm border-b border-orange-200 dark:border-orange-800 text-black dark:text-white">
                     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
                         {{ $header }}
+                       
                     </div>
                 </header>
             @endisset

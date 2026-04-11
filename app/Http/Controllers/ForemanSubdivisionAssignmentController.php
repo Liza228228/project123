@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -31,7 +30,7 @@ class ForemanSubdivisionAssignmentController extends Controller
         $this->authorizeForManage($request);
 
         $foremen = User::query()
-            ->where('role_id', Role::ID_SITE_FOREMAN)
+            ->where('role_id', 4)
             ->with(['assignedSubdivisions' => fn ($q) => $q->orderBy('name')])
             ->orderBy('surname')
             ->orderBy('name')
@@ -103,7 +102,7 @@ class ForemanSubdivisionAssignmentController extends Controller
     {
         $this->authorizeForManage($request);
 
-        if ((int) $foreman->role_id !== Role::ID_SITE_FOREMAN) {
+        if (! $foreman->hasRoleId(4)) {
             abort(404);
         }
 
@@ -117,7 +116,7 @@ class ForemanSubdivisionAssignmentController extends Controller
     {
         $this->authorizeForManage($request);
 
-        if ((int) $foreman->role_id !== Role::ID_SITE_FOREMAN) {
+        if (! $foreman->hasRoleId(4)) {
             abort(404);
         }
 
@@ -146,29 +145,22 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     private function authorizeForView(Request $request): void
     {
-        $allowed = in_array((int) $request->user()?->role_id, [
-            Role::ID_DIRECTOR,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
-            Role::ID_ACCOUNTANT,
-        ], true);
+        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3]) ?? false;
 
         if (! $allowed) {
-            abort(403, 'Доступ разрешён только директору, начальнику отдела снабжения и бухгалтеру.');
+            abort(403, 'Доступ разрешён только директору, техническому директору, начальнику отдела снабжения и бухгалтеру.');
         }
     }
 
     private function authorizeForManage(Request $request): void
     {
         if (! $this->canManageSubdivisionsAndWarehouses($request)) {
-            abort(403, 'Изменение подразделений и складов разрешено только директору и начальнику отдела снабжения.');
+            abort(403, 'Изменение подразделений и складов разрешено только директору, техническому директору и начальнику отдела снабжения.');
         }
     }
 
     private function canManageSubdivisionsAndWarehouses(Request $request): bool
     {
-        return in_array((int) $request->user()?->role_id, [
-            Role::ID_DIRECTOR,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
-        ], true);
+        return $request->user()?->hasAnyRoleId([1, 6, 2]) ?? false;
     }
 }

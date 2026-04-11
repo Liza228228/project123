@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\EquipmentType;
-use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
@@ -20,8 +19,8 @@ class ApplicationSeeder extends Seeder
             return;
         }
 
-        $foreman = User::where('role_id', Role::ID_SITE_FOREMAN)->first();
-        $director = User::where('role_id', Role::ID_DIRECTOR)->first();
+        $foreman = User::query()->where('role_id', 4)->first();
+        $director = User::query()->where('role_id', 1)->first();
 
         if (! $foreman || Subdivision::query()->doesntExist() || EquipmentType::query()->doesntExist()) {
             return;

@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -18,7 +17,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Иванович',
                 'email' => 'Ivanov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role_id' => Role::ID_DIRECTOR,
+                'role_id' => 1,
             ],
             [
                 'surname' => 'Петров',
@@ -26,7 +25,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Петрович',
                 'email' => 'Petrov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role_id' => Role::ID_SUPPLY_DEPARTMENT_HEAD,
+                'role_id' => 2,
             ],
             [
                 'surname' => 'Сидорова',
@@ -34,7 +33,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Сергеевна',
                 'email' => 'Sidorova@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role_id' => Role::ID_ACCOUNTANT,
+                'role_id' => 3,
             ],
             [
                 'surname' => 'Козлов',
@@ -42,7 +41,7 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Николаевич',
                 'email' => 'Kozlov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role_id' => Role::ID_SITE_FOREMAN,
+                'role_id' => 4,
             ],
             [
                 'surname' => 'Смирнов',
@@ -50,7 +49,15 @@ class UserSeeder extends Seeder
                 'patronymic' => 'Александрович',
                 'email' => 'Smirnov@mail.ru',
                 'password' => Hash::make('11111111'),
-                'role_id' => Role::ID_ADMINISTRATOR,
+                'role_id' => 5,
+            ],
+            [
+                'surname' => 'Волков',
+                'name' => 'Сергей',
+                'patronymic' => 'Викторович',
+                'email' => 'Volkov@mail.ru',
+                'password' => Hash::make('11111111'),
+                'role_id' => 6,
             ],
         ];
 

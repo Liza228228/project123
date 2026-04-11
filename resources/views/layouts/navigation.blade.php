@@ -18,14 +18,23 @@
                 </div>
             </div>
 
-            <!-- Settings Dropdown -->
-            <div class="hidden sm:flex sm:items-center sm:ms-6">
+            <!-- Theme + user -->
+            <div class="hidden sm:flex sm:items-center sm:ms-6 gap-3">
+                <div class="flex flex-col items-end gap-1">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider text-black/40 dark:text-white/40 leading-none">Тема</span>
+                    <x-theme-toggle />
+                </div>
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
                         <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-black dark:text-white bg-transparent hover:opacity-80 focus:outline-none transition ease-in-out duration-150">
-                            <div>{{ Auth::user()->name }}</div>
+                            <div class="text-end">
+                                <div>{{ Auth::user()->name }}</div>
+                                <div class="text-xs font-normal text-black/60 dark:text-white/60 max-w-[14rem] truncate" title="{{ Auth::user()->role?->name ?? '' }}">
+                                    {{ Auth::user()->role?->name ?? 'Роль не назначена' }}
+                                </div>
+                            </div>
 
-                            <div class="ms-1">
+                            <div class="ms-1 shrink-0">
                                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                                 </svg>
@@ -74,9 +83,19 @@
 
         <!-- Responsive Settings Options -->
         <div class="pt-4 pb-1 border-t border-orange-200 dark:border-orange-700">
-            <div class="px-4">
+            <div class="px-4 py-3 flex items-center justify-between gap-3 border-b border-orange-100 dark:border-orange-800/80">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-black/50 dark:text-white/50">Оформление</p>
+                    <p class="mt-0.5 text-xs text-black/60 dark:text-white/60">Светлая или тёмная тема</p>
+                </div>
+                <x-theme-toggle />
+            </div>
+            <div class="px-4 pt-3">
                 <div class="font-medium text-base text-black dark:text-white">{{ Auth::user()->name }}</div>
                 <div class="font-medium text-sm text-black dark:text-white opacity-80">{{ Auth::user()->email }}</div>
+                <div class="mt-1 text-xs text-orange-800 dark:text-orange-200 font-medium">
+                    Роль: {{ Auth::user()->role?->name ?? 'не назначена' }}
+                </div>
             </div>
 
             <div class="mt-3 space-y-1">

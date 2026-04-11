@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\EquipmentType;
-use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
@@ -38,7 +37,8 @@ class ApplicationController extends Controller
 
         $subdivisions = $this->availableSubdivisionsForCreate($request);
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+        $users = User::query()
+            ->where('role_id', 4)
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
@@ -60,7 +60,8 @@ class ApplicationController extends Controller
         $application->load(['items']);
         $subdivisions = $this->availableSubdivisionsForCreate($request);
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+        $users = User::query()
+            ->where('role_id', 4)
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
@@ -90,7 +91,7 @@ class ApplicationController extends Controller
     {
         $this->authorizeCanCreateApplications($request);
 
-        $isSiteForeman = (int) $request->user()?->role_id === Role::ID_SITE_FOREMAN;
+        $isSiteForeman = $request->user()->hasRoleId(4);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
 
         $validated = $request->validate([
@@ -98,7 +99,7 @@ class ApplicationController extends Controller
             'source_application_id' => ['nullable', 'exists:applications,id'],
             'responsible_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role_id', Role::ID_SITE_FOREMAN),
+                Rule::exists('users', 'id')->where('role_id', 4),
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
@@ -207,7 +208,7 @@ class ApplicationController extends Controller
             'items.equipmentType',
             'sourceApplication',
             'transportOption',
-            'directorLastEditedBy',
+            'directorLastEditedBy.role',
         ]);
 
         return view('applications.show', compact('application'));
@@ -241,7 +242,8 @@ class ApplicationController extends Controller
 
         $subdivisions = Subdivision::orderBy('name')->get();
         $equipmentTypes = EquipmentType::orderBy('name')->get();
-        $users = User::where('role_id', Role::ID_SITE_FOREMAN)
+        $users = User::query()
+            ->where('role_id', 4)
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
@@ -262,17 +264,17 @@ class ApplicationController extends Controller
     {
         $this->authorizeCanEditApplications($request);
 
-        $isSiteForeman = (int) $request->user()?->role_id === Role::ID_SITE_FOREMAN;
+        $isSiteForeman = $request->user()->hasRoleId(4);
         $application->load(['items.equipmentType']);
 
-        $shouldRecordManagementEdit = in_array((int) $request->user()->role_id, [Role::ID_DIRECTOR, Role::ID_SUPPLY_DEPARTMENT_HEAD], true);
+        $shouldRecordManagementEdit = $request->user()->hasAnyRoleId($this->managementEditorRoleIds());
         $snapshotBefore = $shouldRecordManagementEdit ? ApplicationDirectorChangeRecorder::snapshot($application) : null;
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
             'responsible_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role_id', Role::ID_SITE_FOREMAN),
+                Rule::exists('users', 'id')->where('role_id', 4),
             ],
             'management_change_reason' => ['nullable', 'string', 'max:500'],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
@@ -456,8 +458,8 @@ class ApplicationController extends Controller
 
     public function saveApproval(Request $request, Application $application): RedirectResponse
     {
-        if (! in_array((int) $request->user()?->role_id, [Role::ID_DIRECTOR, Role::ID_SUPPLY_DEPARTMENT_HEAD], true)) {
-            abort(403, 'Согласование доступно только директору и начальнику отдела снабжения.');
+        if (! $request->user()->hasAnyRoleId($this->managementEditorRoleIds())) {
+            abort(403, 'Согласование доступно только директору, техническому директору и начальнику отдела снабжения.');
         }
 
         $application->load('items');
@@ -568,33 +570,25 @@ class ApplicationController extends Controller
 
     private function authorizeCanCreateApplications(Request $request): void
     {
-        $allowed = in_array((int) $request->user()?->role_id, [
-            Role::ID_DIRECTOR,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
-            Role::ID_SITE_FOREMAN,
-        ], true);
+        $allowed = $request->user() && $request->user()->hasAnyRoleId($this->createEditApplicationRoleIds());
 
-        if (! $request->user() || ! $allowed) {
-            abort(403, 'Создание заявок разрешено только директору, начальнику отдела снабжения и мастеру участка.');
+        if (! $allowed) {
+            abort(403, 'Создание заявок разрешено только директору, техническому директору, начальнику отдела снабжения и мастеру участка.');
         }
     }
 
     private function authorizeCanEditApplications(Request $request): void
     {
-        $allowed = in_array((int) $request->user()?->role_id, [
-            Role::ID_DIRECTOR,
-            Role::ID_SUPPLY_DEPARTMENT_HEAD,
-            Role::ID_SITE_FOREMAN,
-        ], true);
+        $allowed = $request->user() && $request->user()->hasAnyRoleId($this->createEditApplicationRoleIds());
 
-        if (! $request->user() || ! $allowed) {
-            abort(403, 'Редактирование заявок разрешено директору, начальнику отдела снабжения и мастеру участка.');
+        if (! $allowed) {
+            abort(403, 'Редактирование заявок разрешено директору, техническому директору, начальнику отдела снабжения и мастеру участка.');
         }
     }
 
     private function authorizeCanRepeatApplications(Request $request): void
     {
-        if ((int) $request->user()?->role_id !== Role::ID_SITE_FOREMAN) {
+        if (! $request->user() || ! $request->user()->hasRoleId(4)) {
             abort(403, 'Создание повторной заявки разрешено только мастеру участка.');
         }
     }
@@ -606,7 +600,7 @@ class ApplicationController extends Controller
             return Subdivision::query()->whereRaw('1 = 0')->get();
         }
 
-        if ((int) $user->role_id === Role::ID_SITE_FOREMAN) {
+        if ($user->hasRoleId(4)) {
             return $user->assignedSubdivisions()->orderBy('name')->get();
         }
 
@@ -659,7 +653,7 @@ class ApplicationController extends Controller
     {
         $map = [];
         $foremen = User::query()
-            ->where('role_id', Role::ID_SITE_FOREMAN)
+            ->where('role_id', 4)
             ->with(['assignedSubdivisions:id'])
             ->get(['id']);
 
@@ -672,6 +666,22 @@ class ApplicationController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function managementEditorRoleIds(): array
+    {
+        return [1, 6, 2];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function createEditApplicationRoleIds(): array
+    {
+        return [1, 6, 2, 4];
     }
 
     private function validateSubdivisionAllowedForResponsibleUser(int $subdivisionId, ?int $responsibleUserId): void

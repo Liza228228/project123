@@ -4,7 +4,7 @@
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
                 Заявки
             </h2>
-            @if (in_array((int) Auth::user()->role_id, [\App\Models\Role::ID_DIRECTOR, \App\Models\Role::ID_SUPPLY_DEPARTMENT_HEAD, \App\Models\Role::ID_SITE_FOREMAN], true))
+            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
                 <a href="{{ route('applications.create') }}" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
                     Создать заявку
                 </a>
