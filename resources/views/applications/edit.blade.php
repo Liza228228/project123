@@ -1,10 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center gap-4">
-            <a href="{{ route('applications.index') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">
+        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-2 w-full min-w-0">
+            <a href="{{ route('applications.index') }}" class="shrink-0 text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors whitespace-nowrap">
                 ← Заявки
             </a>
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight">
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
                 Изменить заявку
             </h2>
         </div>
@@ -36,9 +36,9 @@
             ->all();
     @endphp
 
-    <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
+    <div class="py-2 sm:py-8 md:py-10 max-w-2xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white dark:bg-orange-800 border border-orange-200 dark:border-orange-700 rounded-lg shadow-sm overflow-hidden">
-            <div class="p-8">
+            <div class="p-4 sm:p-8">
                 <p class="text-sm text-black dark:text-white border-l-2 border-orange-300 dark:border-orange-600 pl-4 py-0.5 mb-6">
                     Согласованное оборудование отображается только для просмотра. Неодобренное оборудование можно изменить, удалить или дополнить новыми.
                 </p>

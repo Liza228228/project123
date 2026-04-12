@@ -1,19 +1,19 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center gap-4">
-            <a href="{{ route('foreman-subdivisions.assignments') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">
+        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-2 w-full min-w-0">
+            <a href="{{ route('foreman-subdivisions.assignments') }}" class="shrink-0 text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors whitespace-nowrap">
                 ← Назад к мастерам
             </a>
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Назначить подразделения
             </h2>
         </div>
     </x-slot>
 
-    <div class="py-10">
+    <div class="py-2 sm:py-8 md:py-10">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
-                <div class="p-5 sm:p-6">
+            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
+                <div class="p-4 sm:p-6">
                     <div class="mb-4">
                         <p class="text-sm text-black dark:text-white opacity-80">Мастер участка</p>
                         <p class="text-base font-semibold text-black dark:text-white">

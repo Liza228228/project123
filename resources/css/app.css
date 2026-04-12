@@ -11,3 +11,18 @@
         @apply font-sans text-black dark:text-white;
     }
 }
+
+@layer components {
+    .ambient-grid {
+        background-image:
+            linear-gradient(to right, rgb(234 88 12 / 0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(234 88 12 / 0.05) 1px, transparent 1px);
+        background-size: 2.5rem 2.5rem;
+    }
+
+    .dark .ambient-grid {
+        background-image:
+            linear-gradient(to right, rgb(253 186 116 / 0.06) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(253 186 116 / 0.06) 1px, transparent 1px);
+    }
+}

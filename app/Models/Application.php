@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Application extends Model
 {
@@ -14,37 +15,49 @@ class Application extends Model
         'equipment_in_warehouse',
         'commercial_offer_path',
         'desired_delivery_date',
-        'approved_at',
+        'approved_by_user_id',
         'user_id',
         'source_application_id',
         'transport_option_id',
-        'director_last_edited_at',
-        'director_last_edited_by',
-        'director_last_edit_detail',
     ];
 
     protected function casts(): array
     {
         return [
             'desired_delivery_date' => 'date',
-            'approved_at' => 'datetime',
-            'director_last_edited_at' => 'datetime',
         ];
     }
 
+    public function editHistories(): HasMany
+    {
+        return $this->hasMany(ApplicationEditHistory::class)->orderByDesc('edited_at')->orderByDesc('id');
+    }
+
+    public function latestEditHistory(): HasOne
+    {
+        return $this->hasOne(ApplicationEditHistory::class)->latestOfMany('edited_at');
+    }
+
     /**
-     * Строки «что изменил директор» из многострочного text-поля.
+     * Текстовые строки последней записи истории правок (по одной строке на запись в БД).
      *
      * @return list<string>
      */
-    public function directorLastEditDetailLines(): array
+    public function lastEditDetailLines(): array
     {
-        $raw = trim((string) ($this->director_last_edit_detail ?? ''));
-        if ($raw === '') {
+        $history = $this->relationLoaded('latestEditHistory')
+            ? $this->getRelation('latestEditHistory')
+            : $this->latestEditHistory()->with('lines')->first();
+
+        if (! $history) {
             return [];
         }
 
-        return array_values(array_filter(preg_split('/\r\n|\n|\r/', $raw)));
+        if ($history->relationLoaded('lines')) {
+            return $history->lines->sortBy('sort_order')->pluck('body')->values()->all();
+        }
+
+        return $history->lineBodies();
     }
 
     public function subdivision(): BelongsTo
@@ -62,14 +75,14 @@ class Application extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
-    }
-
-    public function directorLastEditedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'director_last_edited_by');
     }
 
     public function sourceApplication(): BelongsTo
@@ -115,11 +128,11 @@ class Application extends Model
     }
 
     /**
-     * Согласование завершено: после успешного «Сохранить согласование» (по каждой позиции — галочка или причина отказа).
+     * По каждой позиции — галочка или указана причина отказа (заявка закрыта по согласованию).
      */
     public function getIsFullyApprovedAttribute(): bool
     {
-        if ($this->approved_at === null || $this->items->isEmpty()) {
+        if ($this->items->isEmpty()) {
             return false;
         }
 

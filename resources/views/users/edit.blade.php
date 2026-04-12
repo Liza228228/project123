@@ -1,20 +1,20 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-wrap items-center gap-3">
-            <a href="{{ route('users.index') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-black dark:text-white hover:text-orange-700 dark:hover:text-orange-300 transition">
+        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-3 gap-y-2 min-w-0 w-full">
+            <a href="{{ route('users.index') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-black dark:text-white hover:text-orange-700 dark:hover:text-orange-300 transition shrink-0 whitespace-nowrap">
                 <span aria-hidden="true">←</span> Управление пользователями
             </a>
             <span class="hidden sm:inline text-orange-300 dark:text-orange-700" aria-hidden="true">|</span>
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Редактирование пользователя
             </h2>
         </div>
     </x-slot>
 
-    <div class="py-12">
+    <div class="py-2 sm:py-8 md:py-12">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             <div class="overflow-hidden rounded-xl border border-orange-200 dark:border-orange-800 bg-white dark:bg-orange-950 shadow-sm">
-                <div class="border-b border-orange-200 dark:border-orange-800 bg-gradient-to-r from-orange-50 via-orange-50/80 to-white dark:from-orange-900/40 dark:via-orange-950 dark:to-orange-950 px-6 py-5 sm:px-8">
+                <div class="border-b border-orange-200 dark:border-orange-800 bg-gradient-to-r from-orange-50 via-orange-50/80 to-white dark:from-orange-900/40 dark:via-orange-950 dark:to-orange-950 px-4 py-4 sm:px-8 sm:py-5">
                     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                         <div>
                             <h3 class="text-lg font-semibold text-black dark:text-white">Профиль</h3>

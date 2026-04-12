@@ -1,12 +1,18 @@
-﻿<nav x-data="{ open: false }" class="bg-orange-50/95 dark:bg-orange-900 border-b border-orange-200 dark:border-orange-700 shadow-sm text-black dark:text-white">
+﻿<nav x-data="{ open: false }" class="sticky top-0 z-50 bg-orange-50/75 dark:bg-orange-900/75 backdrop-blur-md border-b border-orange-200/80 dark:border-orange-700/80 shadow-sm shadow-orange-950/[0.04] dark:shadow-black/25 text-black dark:text-white pt-[max(0px,env(safe-area-inset-top))]">
+    <div class="h-0.5 w-full bg-gradient-to-r from-transparent via-orange-400/60 to-transparent dark:via-orange-500/40" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <div class="flex">
                 <!-- Logo -->
-                <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}">
-                        <x-application-logo class="block h-9 w-auto fill-current text-black dark:text-white" />
+                <div class="shrink-0 flex items-center gap-3">
+                    <a href="{{ route('dashboard') }}" class="group flex items-center gap-2 rounded-xl px-1 py-1 -ms-1 ring-1 ring-transparent hover:ring-orange-300/50 dark:hover:ring-orange-600/40 transition-shadow">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md shadow-orange-600/25 group-hover:shadow-lg group-hover:shadow-orange-600/30 transition-shadow">
+                            <svg class="h-5 w-5 opacity-95" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                        </span>
+                        <x-application-logo class="hidden sm:block h-8 w-auto fill-current text-black dark:text-white opacity-90" />
                     </a>
                 </div>
 

@@ -9,7 +9,7 @@ use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
 use App\Models\Warehouse;
-use App\Services\ApplicationDirectorChangeRecorder;
+use App\Services\ApplicationChangeRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,13 +22,78 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ApplicationController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $applications = Application::with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'sourceApplication', 'transportOption'])
-            ->orderByDesc('created_at')
-            ->get();
+        $search = trim((string) $request->input('q', ''));
+        $equipmentFilter = (string) $request->input('equipment_filter', 'all');
+        $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval'];
+        if (! in_array($equipmentFilter, $allowedFilters, true)) {
+            $equipmentFilter = 'all';
+        }
 
-        return view('applications.index', compact('applications'));
+        $applications = Application::query()
+            ->with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'approvedBy', 'sourceApplication', 'transportOption']);
+
+        if ($search !== '') {
+            $like = '%'.addcslashes($search, '%_\\').'%';
+            $applications->where(function ($query) use ($search, $like) {
+                $query->whereRaw('0 = 1');
+                if (ctype_digit($search)) {
+                    $id = (int) $search;
+                    $query->orWhere('id', $id)->orWhere('source_application_id', $id);
+                }
+                $query->orWhereHas('subdivision', fn ($q) => $q->where('name', 'like', $like))
+                    ->orWhereHas('responsibleUser', function ($q) use ($like) {
+                        $q->where('surname', 'like', $like)
+                            ->orWhere('name', 'like', $like)
+                            ->orWhere('patronymic', 'like', $like);
+                    })
+                    ->orWhereHas('user', function ($q) use ($like) {
+                        $q->where('surname', 'like', $like)
+                            ->orWhere('name', 'like', $like)
+                            ->orWhere('patronymic', 'like', $like);
+                    })
+                    ->orWhereHas('approvedBy', function ($q) use ($like) {
+                        $q->where('surname', 'like', $like)
+                            ->orWhere('name', 'like', $like)
+                            ->orWhere('patronymic', 'like', $like);
+                    })
+                    ->orWhereHas('transportOption', fn ($q) => $q->where('name', 'like', $like))
+                    ->orWhereHas('items', function ($q) use ($like) {
+                        $q->where('equipment_name', 'like', $like)
+                            ->orWhereHas('equipmentType', fn ($eq) => $eq->where('name', 'like', $like));
+                    });
+            });
+        }
+
+        match ($equipmentFilter) {
+            'has_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', true)),
+            'has_not_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', false)),
+            'fully_approved' => $applications
+                ->whereHas('items')
+                ->whereDoesntHave('items', function ($q) {
+                    $q->where('is_checked', false)
+                        ->where(function ($q2) {
+                            $q2->whereNull('reason_not_selected')
+                                ->orWhereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
+                        });
+                }),
+            'on_approval' => $applications->where(function ($query) {
+                $query->whereDoesntHave('items')
+                    ->orWhereHas('items', function ($q) {
+                        $q->where('is_checked', false)
+                            ->where(function ($q2) {
+                                $q2->whereNull('reason_not_selected')
+                                    ->orWhereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
+                            });
+                    });
+            }),
+            default => null,
+        };
+
+        $applications = $applications->orderByDesc('created_at')->get();
+
+        return view('applications.index', compact('applications', 'search', 'equipmentFilter'));
     }
 
     public function create(Request $request): View
@@ -205,10 +270,12 @@ class ApplicationController extends Controller
             'subdivision.warehouses',
             'responsibleUser',
             'user',
+            'approvedBy',
             'items.equipmentType',
             'sourceApplication',
             'transportOption',
-            'directorLastEditedBy.role',
+            'latestEditHistory.user.role',
+            'latestEditHistory.lines',
         ]);
 
         return view('applications.show', compact('application'));
@@ -268,7 +335,7 @@ class ApplicationController extends Controller
         $application->load(['items.equipmentType']);
 
         $shouldRecordManagementEdit = $request->user()->hasAnyRoleId($this->managementEditorRoleIds());
-        $snapshotBefore = $shouldRecordManagementEdit ? ApplicationDirectorChangeRecorder::snapshot($application) : null;
+        $snapshotBefore = $shouldRecordManagementEdit ? ApplicationChangeRecorder::snapshot($application) : null;
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -394,7 +461,7 @@ class ApplicationController extends Controller
                 'responsible_user_id' => $responsibleUserId,
                 'transport_option_id' => $validated['transport_option_id'] ?? null,
                 'desired_delivery_date' => $validated['desired_delivery_date'],
-                'approved_at' => null,
+                'approved_by_user_id' => null,
             ]);
 
             $application->items()
@@ -438,17 +505,24 @@ class ApplicationController extends Controller
         if ($shouldRecordManagementEdit && $snapshotBefore !== null) {
             $application->refresh();
             $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipmentType']);
-            $changeLines = ApplicationDirectorChangeRecorder::diff($snapshotBefore, $application);
+            $changeLines = ApplicationChangeRecorder::diff($snapshotBefore, $application);
             $managementReason = trim((string) ($validated['management_change_reason'] ?? ''));
             if ($managementReason !== '') {
                 array_unshift($changeLines, 'Причина изменения: '.$managementReason);
             }
             if ($changeLines !== []) {
-                $application->update([
-                    'director_last_edited_at' => now(),
-                    'director_last_edited_by' => $request->user()->id,
-                    'director_last_edit_detail' => implode("\n", $changeLines),
-                ]);
+                DB::transaction(function () use ($application, $request, $changeLines) {
+                    $history = $application->editHistories()->create([
+                        'user_id' => $request->user()->id,
+                        'edited_at' => now(),
+                    ]);
+                    foreach (array_values($changeLines) as $i => $line) {
+                        $history->lines()->create([
+                            'sort_order' => $i,
+                            'body' => $line,
+                        ]);
+                    }
+                });
             }
         }
 
@@ -511,7 +585,7 @@ class ApplicationController extends Controller
 
         $application->refresh();
         $application->update([
-            'approved_at' => now(),
+            'approved_by_user_id' => $request->user()->id,
         ]);
 
         return redirect()->route('applications.show', $application)

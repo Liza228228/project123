@@ -1,39 +1,43 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-wrap items-center gap-3">
-            <a href="{{ route('applications.index') }}" class="text-black dark:text-white hover:text-black dark:hover:text-white text-sm">← Заявки</a>
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
-                Просмотр заявки
-            </h2>
-            @if($application->items->isEmpty())
-                <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900 dark:text-white">Нет позиций</span>
-            @elseif($application->is_fully_approved)
-                <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">Согласовано</span>
-            @else
-                <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">На согласовании</span>
-            @endif
-            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
-                <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
-                    Изменить
-                </a>
-            @endif
-            @if (Auth::user()->hasRoleId(4))
-                <a href="{{ route('applications.repeat', $application) }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-700 shadow-sm transition hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
-                    Создать повторную
-                </a>
-            @endif
+        <div class="flex flex-col gap-3 w-full min-w-0">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+                <a href="{{ route('applications.index') }}" class="shrink-0 text-black dark:text-white hover:text-black dark:hover:text-white text-sm whitespace-nowrap">← Заявки</a>
+                <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
+                    Просмотр заявки
+                </h2>
+                @if($application->items->isEmpty())
+                    <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900 dark:text-white shrink-0">Нет позиций</span>
+                @elseif($application->is_fully_approved)
+                    <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white shrink-0">Согласовано</span>
+                @else
+                    <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white shrink-0">На согласовании</span>
+                @endif
+            </div>
+            <div class="flex flex-col sm:flex-row flex-wrap gap-2">
+                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
+                    <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap shrink-0 w-full sm:w-auto">
+                        Изменить
+                    </a>
+                @endif
+                @if (Auth::user()->hasRoleId(4))
+                    <a href="{{ route('applications.repeat', $application) }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-700 shadow-sm transition hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap shrink-0 w-full sm:w-auto">
+                        Создать повторную
+                    </a>
+                @endif
+            </div>
         </div>
     </x-slot>
 
-    <div class="py-12">
+    <div class="py-2 sm:py-8 md:py-12">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             @if (session('status'))
                 <div class="mb-4 px-4 py-3 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-black dark:text-white text-sm">
                     {{ session('status') }}
                 </div>
             @endif
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
-                <div class="p-6 space-y-6">
+            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
+                <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <div>
                         <h3 class="text-sm font-medium text-black dark:text-white">Данные заявки</h3>
                         <dl class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -77,6 +81,27 @@
                                         {{ $application->transportOption->name }}
                                     @else
                                         —
+                                    @endif
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-black dark:text-white">Заявку создал(а)</dt>
+                                <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
+                                    @if($application->user)
+                                        {{ $application->user->surname }} {{ $application->user->name }}
+                                        <span class="block text-xs font-normal opacity-80 mt-0.5">{{ $application->created_at->format('d.m.Y H:i') }}</span>
+                                    @else
+                                        —
+                                    @endif
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-black dark:text-white">Согласование сохранено</dt>
+                                <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
+                                    @if($application->approvedBy)
+                                        {{ $application->approvedBy->surname }} {{ $application->approvedBy->name }}
+                                    @else
+                                        <span class="font-normal opacity-70">Ещё не сохраняли через «Сохранить согласование»</span>
                                     @endif
                                 </dd>
                             </div>
@@ -127,27 +152,27 @@
                         </dl>
                     </div>
 
-                    @if(Auth::user()->hasRoleId(4) && $application->director_last_edited_at)
+                    @if(Auth::user()->hasRoleId(4) && $application->latestEditHistory)
                         @php
-                            $directorEditLines = $application->directorLastEditDetailLines();
-                            $mgmtEditor = $application->directorLastEditedBy;
-                            $mgmtRoleLabel = $mgmtEditor?->role?->name;
+                            $editDetailLines = $application->lastEditDetailLines();
+                            $lastEditor = $application->latestEditHistory->user;
+                            $editorRoleLabel = $lastEditor?->role?->name;
                         @endphp
                         <div class="rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50/80 dark:bg-orange-900/25 p-4 space-y-2">
                             <p class="text-sm text-black dark:text-white">
                                 <span class="font-medium">В заявку внесены изменения</span>
-                                @if($mgmtEditor)
-                                    — {{ $mgmtEditor->surname }} {{ $mgmtEditor->name }}
-                                    @if($mgmtRoleLabel)
-                                        <span class="text-xs font-normal opacity-80">({{ $mgmtRoleLabel }})</span>
+                                @if($lastEditor)
+                                    — {{ $lastEditor->surname }} {{ $lastEditor->name }}
+                                    @if($editorRoleLabel)
+                                        <span class="text-xs font-normal opacity-80">({{ $editorRoleLabel }})</span>
                                     @endif
                                 @endif
-                                <span class="text-xs font-normal opacity-80"> — {{ $application->director_last_edited_at->format('d.m.Y H:i') }}</span>
+                                <span class="text-xs font-normal opacity-80"> — {{ $application->latestEditHistory->edited_at->format('d.m.Y H:i') }}</span>
                             </p>
-                            @if(count($directorEditLines) > 0)
+                            @if(count($editDetailLines) > 0)
  
                                 <ul class="list-disc list-inside text-sm text-black dark:text-white space-y-1">
-                                    @foreach($directorEditLines as $line)
+                                    @foreach($editDetailLines as $line)
                                         <li>{{ $line }}</li>
                                     @endforeach
                                 </ul>

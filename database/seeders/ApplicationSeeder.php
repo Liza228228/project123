@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Application;
+use App\Models\ApplicationEditHistory;
 use App\Models\ApplicationItem;
 use App\Models\EquipmentType;
 use App\Models\Subdivision;
@@ -47,10 +48,6 @@ class ApplicationSeeder extends Seeder
         $app1 = Application::query()->create($base + [
             'subdivision_id' => $pickSub(0),
             'desired_delivery_date' => Carbon::now()->addDays(5),
-            'approved_at' => null,
-            'director_last_edited_at' => null,
-            'director_last_edited_by' => null,
-            'director_last_edit_detail' => null,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app1->id,
@@ -72,14 +69,24 @@ class ApplicationSeeder extends Seeder
         $app2 = Application::query()->create($base + [
             'subdivision_id' => $pickSub(1),
             'desired_delivery_date' => Carbon::now()->addDays(12),
-            'approved_at' => null,
-            'director_last_edited_at' => $director ? now()->subHours(6) : null,
-            'director_last_edited_by' => $director?->id,
-            'director_last_edit_detail' => $director ? implode("\n", [
+        ]);
+        if ($director) {
+            $history = ApplicationEditHistory::query()->create([
+                'application_id' => $app2->id,
+                'user_id' => $director->id,
+                'edited_at' => now()->subHours(6),
+            ]);
+            $demoLines = [
                 'Желаемая дата поставки: '.Carbon::now()->addDays(10)->format('d.m.Y').' → '.Carbon::now()->addDays(12)->format('d.m.Y'),
                 'Добавлена позиция: «Нестандартный узел учёта (по согласованию)» × 1',
-            ]) : null,
-        ]);
+            ];
+            foreach ($demoLines as $i => $body) {
+                $history->lines()->create([
+                    'sort_order' => $i,
+                    'body' => $body,
+                ]);
+            }
+        }
         ApplicationItem::query()->create([
             'application_id' => $app2->id,
             'equipment_type_id' => null,
@@ -92,10 +99,7 @@ class ApplicationSeeder extends Seeder
         $app3 = Application::query()->create($base + [
             'subdivision_id' => $pickSub(2),
             'desired_delivery_date' => Carbon::now()->addDays(20),
-            'approved_at' => now()->subDay(),
-            'director_last_edited_at' => null,
-            'director_last_edited_by' => null,
-            'director_last_edit_detail' => null,
+            'approved_by_user_id' => $director?->id,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app3->id,
@@ -117,10 +121,7 @@ class ApplicationSeeder extends Seeder
         $app4 = Application::query()->create($base + [
             'subdivision_id' => $pickSub(3),
             'desired_delivery_date' => Carbon::now()->addDays(30),
-            'approved_at' => now()->subDays(2),
-            'director_last_edited_at' => null,
-            'director_last_edited_by' => null,
-            'director_last_edit_detail' => null,
+            'approved_by_user_id' => $director?->id,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app4->id,

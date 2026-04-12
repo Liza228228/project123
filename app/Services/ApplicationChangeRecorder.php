@@ -8,7 +8,7 @@ use App\Models\TransportOption;
 use App\Models\User;
 use Carbon\Carbon;
 
-final class ApplicationDirectorChangeRecorder
+final class ApplicationChangeRecorder
 {
     /**
      * @return array<string, mixed>
@@ -27,7 +27,7 @@ final class ApplicationDirectorChangeRecorder
             'responsible_user_id' => $application->responsible_user_id,
             'transport_option_id' => $application->transport_option_id,
             'desired_delivery_date' => $application->desired_delivery_date->format('Y-m-d'),
-            'approved_at' => $application->approved_at?->toIso8601String(),
+            'approved_by_user_id' => $application->approved_by_user_id,
             'items' => $application->items->mapWithKeys(fn ($i) => [
                 $i->id => [
                     'label' => $i->equipment_display_name,
@@ -82,7 +82,7 @@ final class ApplicationDirectorChangeRecorder
             $lines[] = 'Желаемая дата поставки: '.$oldD.' → '.$newD;
         }
 
-        if (! empty($before['approved_at']) && $after->approved_at === null) {
+        if (! empty($before['approved_by_user_id']) && $after->approved_by_user_id === null) {
             $lines[] = 'Согласование сброшено; заявка снова на рассмотрении.';
         }
 

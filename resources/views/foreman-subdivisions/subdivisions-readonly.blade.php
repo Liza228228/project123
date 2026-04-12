@@ -1,25 +1,25 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center justify-between">
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-2 w-full min-w-0">
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Подразделения и склады
             </h2>
             @if($canManage ?? false)
-                <a href="{{ route('foreman-subdivisions.assignments') }}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700">
+                <a href="{{ route('foreman-subdivisions.assignments') }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 whitespace-nowrap shrink-0 w-full sm:w-auto">
                     Назначения мастерам
                 </a>
             @endif
         </div>
     </x-slot>
 
-    <div class="py-10">
+    <div class="py-2 sm:py-8 md:py-10">
         <div class="max-w-6xl mx-auto sm:px-6 lg:px-8">
             @if (session('status'))
                 <div class="mb-4 px-4 py-3 rounded-md bg-orange-100 dark:bg-orange-900/40 text-black dark:text-white text-sm">
                     {{ session('status') }}
                 </div>
             @endif
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm sm:rounded-lg border border-orange-200 dark:border-orange-800">
+            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
                 <div class="p-4 sm:p-6">
                     @if($canManage ?? false)
                         <div class="mb-5 grid gap-4 lg:grid-cols-2">

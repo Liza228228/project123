@@ -19,6 +19,8 @@ return new class extends Migration
                 $table->string('equipment_in_warehouse')->nullable();
                 $table->unsignedInteger('quantity');
                 $table->date('desired_delivery_date');
+                // Кто нажал «Сохранить согласование» (аудит; user_id — кто создал заявку)
+                $table->foreignId('approved_by_user_id')->nullable()->constrained('users')->nullOnDelete();
                 $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
                 $table->timestamps();
             });
@@ -28,6 +30,22 @@ return new class extends Migration
                     $table->dropForeign(['warehouse_id']);
                 });
             }
+        }
+
+        if (Schema::hasTable('applications') && Schema::hasColumn('applications', 'approved_at')) {
+            Schema::table('applications', function (Blueprint $table) {
+                $table->dropColumn('approved_at');
+            });
+        }
+
+        if (Schema::hasTable('applications') && ! Schema::hasColumn('applications', 'approved_by_user_id')) {
+            Schema::table('applications', function (Blueprint $table) {
+                $table->foreignId('approved_by_user_id')
+                    ->nullable()
+                    ->after('desired_delivery_date')
+                    ->constrained('users')
+                    ->nullOnDelete();
+            });
         }
     }
 
