@@ -90,7 +90,6 @@ class ForemanSubdivisionAssignmentController extends Controller
             'is_primary' => (bool) ($validated['is_primary'] ?? false),
             'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
             'warehouse_type_id' => null,
-            'retail_price_type_id' => null,
         ]);
 
         return redirect()

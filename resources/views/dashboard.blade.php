@@ -36,6 +36,12 @@
                             </a>
                         @endif
 
+                        @if (Auth::user()->hasRoleId(2))
+                            <a href="{{ route('applications.report.index') }}" class="inline-flex w-full sm:w-auto justify-center items-center px-5 py-3.5 sm:px-6 sm:py-3 text-base font-semibold rounded-lg border border-orange-700 text-white bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950 [touch-action:manipulation]">
+                                Отчёт по заявкам
+                            </a>
+                        @endif
+
                         @if (Auth::user()->hasAnyRoleId([1, 6, 2, 3]))
                             <a href="{{ route('foreman-subdivisions.index') }}" class="inline-flex w-full sm:w-auto justify-center items-center px-5 py-3.5 sm:px-6 sm:py-3 text-base font-semibold rounded-lg border border-orange-700 text-white bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950 [touch-action:manipulation]">
                                Подразделения

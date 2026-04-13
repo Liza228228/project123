@@ -4,11 +4,18 @@
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Заявки
             </h2>
-            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
-                <a href="{{ route('applications.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 shrink-0 whitespace-nowrap w-full sm:w-auto">
-                    Создать заявку
-                </a>
-            @endif
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:shrink-0">
+                @if (Auth::user()->hasRoleId(2))
+                    <a href="{{ route('applications.report.index') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-orange-300 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/30 transition hover:bg-orange-100 dark:hover:bg-orange-900/50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap w-full sm:w-auto">
+                        Отчёт по заявкам
+                    </a>
+                @endif
+                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
+                    <a href="{{ route('applications.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap w-full sm:w-auto">
+                        Создать заявку
+                    </a>
+                @endif
+            </div>
         </div>
     </x-slot>
 
@@ -31,14 +38,14 @@
                                     class="w-full rounded-lg border-orange-300 dark:border-orange-600 bg-white dark:bg-orange-900/40 text-black dark:text-white text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
                             </div>
                             <div class="min-w-0">
-                                <label for="applications-equipment-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Оборудование по согласованию</label>
+                                <label for="applications-equipment-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Статус согласования</label>
                                 <select name="equipment_filter" id="applications-equipment-filter"
                                     class="w-full rounded-lg border-orange-300 dark:border-orange-600 bg-white dark:bg-orange-900/40 text-black dark:text-white text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
                                     <option value="all" @selected($equipmentFilter === 'all')>Все заявки</option>
                                     <option value="has_approved" @selected($equipmentFilter === 'has_approved')>Есть согласованные позиции</option>
                                     <option value="has_not_approved" @selected($equipmentFilter === 'has_not_approved')>Есть несогласованные позиции</option>
-                                    <option value="fully_approved" @selected($equipmentFilter === 'fully_approved')>Заявка полностью согласована</option>
-                                    <option value="on_approval" @selected($equipmentFilter === 'on_approval')>На согласовании (не завершено)</option>
+                                    <option value="fully_approved" @selected($equipmentFilter === 'fully_approved')>Все позиции согласованы</option>
+                                    <option value="on_approval" @selected($equipmentFilter === 'on_approval')>Заявка на согласовании</option>
                                 </select>
                             </div>
                         </div>
@@ -79,8 +86,12 @@
                                         <div class="shrink-0 text-end">
                                             @if($application->items->isEmpty())
                                                 <span class="text-xs text-black/50 dark:text-white/50">—</span>
-                                            @elseif($application->is_fully_approved)
-                                                <span class="inline-flex items-center rounded-full bg-orange-200 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">Согласовано</span>
+                                            @elseif($application->isStatusApproved())
+                                                <span class="inline-flex items-center rounded-full bg-orange-200 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">Согласована</span>
+                                            @elseif($application->isStatusPartial())
+                                                <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white">Частично</span>
+                                            @elseif($application->isStatusRejected())
+                                                <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white">Не согласована</span>
                                             @else
                                                 <span class="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">На согласовании</span>
                                             @endif
@@ -190,26 +201,26 @@
                                                 <span class="opacity-50">—</span>
                                             @else
                                                 @php
-                                                    $idxUnchecked = $application->items->where('is_checked', false)->sortBy('id');
-                                                    $idxChecked = $application->items->where('is_checked', true)->sortBy('id');
+                                                    $idxUnchecked = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id))->sortBy('id');
+                                                    $idxChecked = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id))->sortBy('id');
                                                 @endphp
                                                 @if($idxUnchecked->isNotEmpty())
-                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не одобрено</h4>
+                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не согласовано</h4>
                                                     <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden mb-6">
                                                         @foreach($idxUnchecked as $item)
                                                             <li class="px-4 py-3 bg-orange-50/80 dark:bg-orange-900/25">
                                                                 <span class="text-sm font-medium text-black dark:text-white">
                                                                     {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                                                 </span>
-                                                                @if($item->reason_not_selected)
-                                                                    <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $item->reason_not_selected }}</p>
+                                                                @if($application->itemLineRejectionReason($item->id))
+                                                                    <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                                                 @endif
                                                             </li>
                                                         @endforeach
                                                     </ul>
                                                 @endif
                                                 @if($idxChecked->isNotEmpty())
-                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Одобрено</h4>
+                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Согласовано</h4>
                                                     <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden">
                                                         @foreach($idxChecked as $item)
                                                             <li class="px-4 py-3 bg-orange-100/60 dark:bg-orange-900/30">
@@ -233,9 +244,17 @@
                                         <td class="px-4 py-3 text-sm align-top">
                                             @if($application->items->isEmpty())
                                                 <span class="text-black dark:text-white opacity-50">—</span>
-                                            @elseif($application->is_fully_approved)
+                                            @elseif($application->isStatusApproved())
                                                 <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">
-                                                    Согласовано
+                                                    Согласована
+                                                </span>
+                                            @elseif($application->isStatusPartial())
+                                                <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white">
+                                                    Частично
+                                                </span>
+                                            @elseif($application->isStatusRejected())
+                                                <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white">
+                                                    Не согласована
                                                 </span>
                                             @else
                                                 <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">

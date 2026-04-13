@@ -19,7 +19,7 @@ final class ApplicationChangeRecorder
             'subdivision',
             'responsibleUser',
             'transportOption',
-            'items.equipmentType',
+            'items.equipment',
         ]);
 
         return [
@@ -28,6 +28,7 @@ final class ApplicationChangeRecorder
             'transport_option_id' => $application->transport_option_id,
             'desired_delivery_date' => $application->desired_delivery_date->format('Y-m-d'),
             'approved_by_user_id' => $application->approved_by_user_id,
+            'application_status_id' => $application->application_status_id,
             'items' => $application->items->mapWithKeys(fn ($i) => [
                 $i->id => [
                     'label' => $i->equipment_display_name,
@@ -48,7 +49,7 @@ final class ApplicationChangeRecorder
             'subdivision',
             'responsibleUser',
             'transportOption',
-            'items.equipmentType',
+            'items.equipment',
         ]);
 
         $lines = [];
@@ -101,7 +102,60 @@ final class ApplicationChangeRecorder
                 continue;
             }
             if (! isset($afterItemsKeyed[$id])) {
-                $lines[] = 'Удалена позиция (не была одобрена): «'.$row['label'].'» × '.$row['quantity'];
+                $lines[] = 'Удалена позиция (не была согласована): «'.$row['label'].'» × '.$row['quantity'];
+            }
+        }
+
+        foreach ($afterItemsKeyed as $id => $row) {
+            if (! isset($beforeItems[$id])) {
+                $lines[] = 'Добавлена позиция: «'.$row['label'].'» × '.$row['quantity'];
+            }
+        }
+
+        foreach ($afterItemsKeyed as $id => $rowA) {
+            if (! isset($beforeItems[$id])) {
+                continue;
+            }
+            $rowB = $beforeItems[$id];
+            if ($rowB['is_checked']) {
+                continue;
+            }
+            if ($rowA['label'] !== $rowB['label'] || $rowA['quantity'] !== $rowB['quantity']) {
+                $lines[] = 'Изменена позиция: «'.$rowB['label'].'» × '.$rowB['quantity'].' → «'.$rowA['label'].'» × '.$rowA['quantity'];
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Только изменения по позициям оборудования (без подразделения, дат, транспорта и т.д.).
+     *
+     * @param  array<string, mixed>  $before
+     * @return list<string>
+     */
+    public static function equipmentDiff(array $before, Application $after): array
+    {
+        $after->loadMissing(['items.equipment']);
+
+        $lines = [];
+
+        /** @var array<int, array{label: string, quantity: int, is_checked: bool}> $beforeItems */
+        $beforeItems = $before['items'];
+        $afterItemsKeyed = $after->items->mapWithKeys(fn ($i) => [
+            $i->id => [
+                'label' => $i->equipment_display_name,
+                'quantity' => (int) $i->quantity,
+                'is_checked' => (bool) $i->is_checked,
+            ],
+        ])->all();
+
+        foreach ($beforeItems as $id => $row) {
+            if ($row['is_checked']) {
+                continue;
+            }
+            if (! isset($afterItemsKeyed[$id])) {
+                $lines[] = 'Удалена позиция (не была согласована): «'.$row['label'].'» × '.$row['quantity'];
             }
         }
 

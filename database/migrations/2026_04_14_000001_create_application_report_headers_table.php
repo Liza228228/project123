@@ -8,16 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('retail_price_types', function (Blueprint $table) {
+        Schema::create('application_report_headers', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->string('name', 255);
+            $table->json('settings');
             $table->timestamps();
-            $table->unique('name');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('retail_price_types');
+        Schema::dropIfExists('application_report_headers');
     }
 };

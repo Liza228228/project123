@@ -96,7 +96,6 @@ class WarehouseDataFrom1CsvSeeder extends Seeder
                     'name' => $name,
                     'subdivision_id' => $currentSubdivision->id,
                     'warehouse_type_id' => $warehouseTypeId,
-                    'retail_price_type_id' => null,
                     'comment' => $comment !== '' ? $comment : null,
                     'is_primary' => false,
                 ]

@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Application;
 use App\Models\ApplicationItem;
-use App\Models\EquipmentType;
+use App\Models\ApplicationStatus;
+use App\Models\Equipment;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
@@ -14,7 +15,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -31,67 +31,10 @@ class ApplicationController extends Controller
             $equipmentFilter = 'all';
         }
 
-        $applications = Application::query()
-            ->with(['subdivision', 'responsibleUser', 'items.equipmentType', 'user', 'approvedBy', 'sourceApplication', 'transportOption']);
-
-        if ($search !== '') {
-            $like = '%'.addcslashes($search, '%_\\').'%';
-            $applications->where(function ($query) use ($search, $like) {
-                $query->whereRaw('0 = 1');
-                if (ctype_digit($search)) {
-                    $id = (int) $search;
-                    $query->orWhere('id', $id)->orWhere('source_application_id', $id);
-                }
-                $query->orWhereHas('subdivision', fn ($q) => $q->where('name', 'like', $like))
-                    ->orWhereHas('responsibleUser', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('user', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('approvedBy', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('transportOption', fn ($q) => $q->where('name', 'like', $like))
-                    ->orWhereHas('items', function ($q) use ($like) {
-                        $q->where('equipment_name', 'like', $like)
-                            ->orWhereHas('equipmentType', fn ($eq) => $eq->where('name', 'like', $like));
-                    });
-            });
-        }
-
-        match ($equipmentFilter) {
-            'has_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', true)),
-            'has_not_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', false)),
-            'fully_approved' => $applications
-                ->whereHas('items')
-                ->whereDoesntHave('items', function ($q) {
-                    $q->where('is_checked', false)
-                        ->where(function ($q2) {
-                            $q2->whereNull('reason_not_selected')
-                                ->orWhereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                        });
-                }),
-            'on_approval' => $applications->where(function ($query) {
-                $query->whereDoesntHave('items')
-                    ->orWhereHas('items', function ($q) {
-                        $q->where('is_checked', false)
-                            ->where(function ($q2) {
-                                $q2->whereNull('reason_not_selected')
-                                    ->orWhereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                            });
-                    });
-            }),
-            default => null,
-        };
-
-        $applications = $applications->orderByDesc('created_at')->get();
+        $applications = Application::listingQuery($request)
+            ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'sourceApplication', 'transportOption', 'applicationStatus'])
+            ->orderByDesc('created_at')
+            ->get();
 
         return view('applications.index', compact('applications', 'search', 'equipmentFilter'));
     }
@@ -101,7 +44,7 @@ class ApplicationController extends Controller
         $this->authorizeCanCreateApplications($request);
 
         $subdivisions = $this->availableSubdivisionsForCreate($request);
-        $equipmentTypes = EquipmentType::orderBy('name')->get();
+        $equipment = Equipment::orderBy('name')->get();
         $users = User::query()
             ->where('role_id', 4)
             ->orderBy('surname')
@@ -115,7 +58,7 @@ class ApplicationController extends Controller
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
+        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function repeat(Request $request, Application $application): View
@@ -124,7 +67,7 @@ class ApplicationController extends Controller
 
         $application->load(['items']);
         $subdivisions = $this->availableSubdivisionsForCreate($request);
-        $equipmentTypes = EquipmentType::orderBy('name')->get();
+        $equipment = Equipment::orderBy('name')->get();
         $users = User::query()
             ->where('role_id', 4)
             ->orderBy('surname')
@@ -137,7 +80,7 @@ class ApplicationController extends Controller
             'transport_option_id' => $application->transport_option_id,
             'desired_delivery_date' => now()->toDateString(),
             'items' => $application->items->map(fn (ApplicationItem $item): array => [
-                'equipment_type_id' => $item->equipment_type_id ?? '',
+                'equipment_id' => $item->equipment_id ?? '',
                 'equipment_name' => $item->equipment_name ?? '',
                 'quantity' => $item->quantity,
             ])->all(),
@@ -149,7 +92,7 @@ class ApplicationController extends Controller
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
 
-        return view('applications.create', compact('subdivisions', 'equipmentTypes', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
+        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -168,7 +111,7 @@ class ApplicationController extends Controller
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
+            'items.*.equipment_id' => ['nullable', 'exists:equipment,id'],
             'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'transport_option_id' => ['nullable', 'exists:transport_options,id'],
@@ -190,25 +133,25 @@ class ApplicationController extends Controller
             isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
         );
 
-        $equipmentTypeNames = EquipmentType::query()
+        $equipmentCatalogNames = Equipment::query()
             ->pluck('name')
             ->map(fn ($name) => mb_strtolower(trim((string) $name)))
             ->filter()
             ->flip();
         foreach ($validated['items'] as $index => $item) {
-            $typeId = $item['equipment_type_id'] ?? null;
+            $typeId = $item['equipment_id'] ?? null;
             $name = trim((string) ($item['equipment_name'] ?? ''));
             if (! empty($typeId) || $name === '') {
                 continue;
             }
-            if ($equipmentTypeNames->has(mb_strtolower($name))) {
+            if ($equipmentCatalogNames->has(mb_strtolower($name))) {
                 throw ValidationException::withMessages([
                     "items.{$index}.equipment_name" => 'Такое оборудование уже есть в списке. ',
                 ]);
             }
         }
 
-        $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_type_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
+        $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
         );
         $hasCommercialOffer = $request->hasFile('commercial_offer');
         if (! $hasValidItem && ! $hasCommercialOffer) {
@@ -221,7 +164,6 @@ class ApplicationController extends Controller
         } elseif (empty($validated['responsible_user_id'])) {
             $validated['responsible_user_id'] = $request->user()->id;
         }
-        $validated['equipment_in_warehouse'] = null;
         $commercialOfferPath = null;
         if ($request->hasFile('commercial_offer')) {
             $file = $request->file('commercial_offer');
@@ -241,18 +183,18 @@ class ApplicationController extends Controller
             'transport_option_id' => $validated['transport_option_id'] ?? null,
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
-            'equipment_in_warehouse' => $validated['equipment_in_warehouse'],
             'commercial_offer_path' => $commercialOfferPath,
+            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING),
         ]);
 
         foreach ($validated['items'] as $item) {
-            $typeId = $item['equipment_type_id'] ?? null;
+            $typeId = $item['equipment_id'] ?? null;
             $name = trim($item['equipment_name'] ?? '');
             if (empty($typeId) && $name === '') {
                 continue;
             }
             $application->items()->create([
-                'equipment_type_id' => $typeId ?: null,
+                'equipment_id' => $typeId ?: null,
                 'equipment_name' => $typeId ? null : $name,
                 'quantity' => (int) ($item['quantity'] ?? 1),
                 'is_checked' => false,
@@ -271,11 +213,11 @@ class ApplicationController extends Controller
             'responsibleUser',
             'user',
             'approvedBy',
-            'items.equipmentType',
+            'items.equipment',
             'sourceApplication',
             'transportOption',
+            'applicationStatus',
             'latestEditHistory.user.role',
-            'latestEditHistory.lines',
         ]);
 
         return view('applications.show', compact('application'));
@@ -308,7 +250,7 @@ class ApplicationController extends Controller
         $this->authorizeCanEditApplications($request);
 
         $subdivisions = Subdivision::orderBy('name')->get();
-        $equipmentTypes = EquipmentType::orderBy('name')->get();
+        $equipment = Equipment::orderBy('name')->get();
         $users = User::query()
             ->where('role_id', 4)
             ->orderBy('surname')
@@ -319,12 +261,12 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
 
-        $application->load(['items.equipmentType']);
+        $application->load(['items.equipment', 'applicationStatus']);
 
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
 
-        return view('applications.edit', compact('application', 'subdivisions', 'equipmentTypes', 'users', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
+        return view('applications.edit', compact('application', 'subdivisions', 'equipment', 'users', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman'));
     }
 
     public function update(Request $request, Application $application): RedirectResponse
@@ -332,7 +274,7 @@ class ApplicationController extends Controller
         $this->authorizeCanEditApplications($request);
 
         $isSiteForeman = $request->user()->hasRoleId(4);
-        $application->load(['items.equipmentType']);
+        $application->load(['items.equipment', 'applicationStatus']);
 
         $shouldRecordManagementEdit = $request->user()->hasAnyRoleId($this->managementEditorRoleIds());
         $snapshotBefore = $shouldRecordManagementEdit ? ApplicationChangeRecorder::snapshot($application) : null;
@@ -351,7 +293,7 @@ class ApplicationController extends Controller
                 'integer',
                 Rule::exists('application_items', 'id')->where('application_id', $application->id),
             ],
-            'items.*.equipment_type_id' => ['nullable', 'exists:equipment_types,id'],
+            'items.*.equipment_id' => ['nullable', 'exists:equipment,id'],
             'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'transport_option_id' => ['nullable', 'exists:transport_options,id'],
@@ -364,18 +306,18 @@ class ApplicationController extends Controller
             isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
         );
 
-        $equipmentTypeNames = EquipmentType::query()
+        $equipmentCatalogNames = Equipment::query()
             ->pluck('name')
             ->map(fn ($name) => mb_strtolower(trim((string) $name)))
             ->filter()
             ->flip();
         foreach ($validated['items'] as $index => $row) {
-            $typeId = $row['equipment_type_id'] ?? null;
+            $typeId = $row['equipment_id'] ?? null;
             $name = trim((string) ($row['equipment_name'] ?? ''));
             if (! empty($typeId) || $name === '') {
                 continue;
             }
-            if ($equipmentTypeNames->has(mb_strtolower($name))) {
+            if ($equipmentCatalogNames->has(mb_strtolower($name))) {
                 throw ValidationException::withMessages([
                     "items.{$index}.equipment_name" => 'Такое оборудование уже есть в списке.',
                 ]);
@@ -394,7 +336,7 @@ class ApplicationController extends Controller
 
         foreach ($validated['items'] as $index => $row) {
             $itemId = isset($row['item_id']) ? (int) $row['item_id'] : null;
-            $typeId = $row['equipment_type_id'] ?? null;
+            $typeId = $row['equipment_id'] ?? null;
             $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
             $name = trim((string) ($row['equipment_name'] ?? ''));
             $qty = (int) ($row['quantity'] ?? 1);
@@ -408,14 +350,14 @@ class ApplicationController extends Controller
                 }
 
                 if ($existing->is_checked) {
-                    $existingTypeId = $existing->equipment_type_id !== null ? (int) $existing->equipment_type_id : null;
+                    $existingTypeId = $existing->equipment_id !== null ? (int) $existing->equipment_id : null;
                     if (
                         $typeId !== $existingTypeId
                         || $name !== trim((string) ($existing->equipment_name ?? ''))
                         || $qty !== (int) $existing->quantity
                     ) {
                         throw ValidationException::withMessages([
-                            'equipment' => 'Одобренное оборудование нельзя изменять.',
+                            'equipment' => 'Согласованное оборудование нельзя изменять.',
                         ]);
                     }
 
@@ -424,7 +366,7 @@ class ApplicationController extends Controller
 
                 if ($typeId === null && $name === '') {
                     throw ValidationException::withMessages([
-                        "items.{$index}.equipment_type_id" => 'Укажите оборудование или удалите строку.',
+                        "items.{$index}.equipment_id" => 'Укажите оборудование или удалите строку.',
                     ]);
                 }
 
@@ -438,7 +380,7 @@ class ApplicationController extends Controller
             }
 
             $toCreate[] = [
-                'equipment_type_id' => $typeId,
+                'equipment_id' => $typeId,
                 'equipment_name' => $typeId ? null : $name,
                 'quantity' => $qty,
             ];
@@ -450,7 +392,9 @@ class ApplicationController extends Controller
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
-        DB::transaction(function () use ($application, $validated, $seenUnapprovedIds, $toCreate, $request, $isSiteForeman) {
+        $submittedItemIds = $itemIdsInRequest->values()->all();
+
+        DB::transaction(function () use ($application, $validated, $toCreate, $request, $isSiteForeman, $submittedItemIds) {
             $responsibleUserId = $validated['responsible_user_id'] ?? null;
             if ($isSiteForeman) {
                 $responsibleUserId = $request->user()->id;
@@ -462,11 +406,13 @@ class ApplicationController extends Controller
                 'transport_option_id' => $validated['transport_option_id'] ?? null,
                 'desired_delivery_date' => $validated['desired_delivery_date'],
                 'approved_by_user_id' => null,
+                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING),
+                'approval_rejection_reason' => null,
             ]);
 
             $application->items()
                 ->where('is_checked', false)
-                ->whereNotIn('id', $seenUnapprovedIds)
+                ->whereNotIn('id', $submittedItemIds)
                 ->delete();
 
             foreach ($validated['items'] as $row) {
@@ -480,12 +426,12 @@ class ApplicationController extends Controller
                     continue;
                 }
 
-                $typeId = $row['equipment_type_id'] ?? null;
+                $typeId = $row['equipment_id'] ?? null;
                 $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
                 $name = trim((string) ($row['equipment_name'] ?? ''));
 
                 $existing->update([
-                    'equipment_type_id' => $typeId ?: null,
+                    'equipment_id' => $typeId ?: null,
                     'equipment_name' => $typeId ? null : $name,
                     'quantity' => (int) ($row['quantity'] ?? 1),
                 ]);
@@ -493,35 +439,34 @@ class ApplicationController extends Controller
 
             foreach ($toCreate as $payload) {
                 $application->items()->create([
-                    'equipment_type_id' => $payload['equipment_type_id'] ?: null,
+                    'equipment_id' => $payload['equipment_id'] ?: null,
                     'equipment_name' => $payload['equipment_name'],
                     'quantity' => $payload['quantity'],
                     'is_checked' => false,
                     'reason_not_selected' => null,
                 ]);
             }
+
+            $application->items()->update([
+                'is_checked' => false,
+                'reason_not_selected' => null,
+            ]);
         });
 
         if ($shouldRecordManagementEdit && $snapshotBefore !== null) {
             $application->refresh();
-            $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipmentType']);
-            $changeLines = ApplicationChangeRecorder::diff($snapshotBefore, $application);
-            $managementReason = trim((string) ($validated['management_change_reason'] ?? ''));
-            if ($managementReason !== '') {
-                array_unshift($changeLines, 'Причина изменения: '.$managementReason);
-            }
-            if ($changeLines !== []) {
-                DB::transaction(function () use ($application, $request, $changeLines) {
-                    $history = $application->editHistories()->create([
+            $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipment']);
+            $equipmentLines = ApplicationChangeRecorder::equipmentDiff($snapshotBefore, $application);
+            $equipmentChange = $equipmentLines === [] ? '' : implode("\n", $equipmentLines);
+            $changeReason = trim((string) ($validated['management_change_reason'] ?? ''));
+            if ($equipmentChange !== '' || $changeReason !== '') {
+                DB::transaction(function () use ($application, $request, $equipmentChange, $changeReason) {
+                    $application->editHistories()->create([
                         'user_id' => $request->user()->id,
                         'edited_at' => now(),
+                        'equipment_change' => $equipmentChange !== '' ? $equipmentChange : null,
+                        'change_reason' => $changeReason !== '' ? $changeReason : null,
                     ]);
-                    foreach (array_values($changeLines) as $i => $line) {
-                        $history->lines()->create([
-                            'sort_order' => $i,
-                            'body' => $line,
-                        ]);
-                    }
                 });
             }
         }
@@ -558,7 +503,7 @@ class ApplicationController extends Controller
             if (! $isChecked) {
                 $reason = trim((string) ($row['reason_not_selected'] ?? ''));
                 if ($reason === '') {
-                    $errors["items.{$item->id}.reason_not_selected"] = 'Укажите причину не одобрения.';
+                    $errors["items.{$item->id}.reason_not_selected"] = 'Укажите причину не согласования.';
                 } elseif (mb_strlen($reason) > 500) {
                     $errors["items.{$item->id}.reason_not_selected"] = 'Причина не может быть длиннее 500 символов.';
                 }
@@ -571,7 +516,7 @@ class ApplicationController extends Controller
                 ->withInput();
         }
 
-        DB::transaction(function () use ($application, $itemsInput) {
+        DB::transaction(function () use ($application, $itemsInput, $request) {
             foreach ($application->items as $item) {
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
                 $checkedRaw = $row['is_checked'] ?? '0';
@@ -581,65 +526,19 @@ class ApplicationController extends Controller
                     'reason_not_selected' => $isChecked ? null : trim((string) ($row['reason_not_selected'] ?? '')),
                 ]);
             }
+
+            $application->refresh();
+            $application->load('items');
+            $payload = Application::aggregateApprovalPayloadFromItems($application->items);
+            $application->update([
+                'application_status_id' => $payload['application_status_id'],
+                'approval_rejection_reason' => $payload['approval_rejection_reason'],
+                'approved_by_user_id' => $request->user()->id,
+            ]);
         });
 
-        $application->refresh();
-        $application->update([
-            'approved_by_user_id' => $request->user()->id,
-        ]);
-
         return redirect()->route('applications.show', $application)
-            ->with('status', 'Согласование сохранено.');
-    }
-
-    public function toggleCheck(Request $request, ApplicationItem $item): RedirectResponse
-    {
-        $newChecked = ! $item->is_checked;
-
-        // При снятии отметки заявка не обновляется, пока не указана причина
-        if (! $newChecked) {
-            // Пользователь передумал: галочка уже снята на экране, нажал снова — вернуть отметку без причины
-            if ($item->is_checked && $request->boolean('restore')) {
-                return redirect()->route('applications.show', $item->application_id)
-                    ->with('status', 'Отметка сохранена.');
-            }
-
-            return redirect()->route('applications.show', $item->application_id)
-                ->with('require_reason_item_id', $item->id);
-        }
-
-        $item->update([
-            'is_checked' => $newChecked,
-            'reason_not_selected' => null,
-        ]);
-
-        return redirect()->route('applications.show', $item->application_id)
-            ->with('status', 'Отметка обновлена.');
-    }
-
-    public function updateReason(Request $request, ApplicationItem $item): RedirectResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'reason_not_selected' => ['required', 'string', 'min:1', 'max:500'],
-        ], [
-            'reason_not_selected.required' => 'Обязательно укажите причину, почему оборудование не было выбрано.',
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->route('applications.show', $item->application_id)
-                ->withErrors($validator)
-                ->with('reason_error_item_id', $item->id)
-                ->with('require_reason_item_id', $item->is_checked ? $item->id : null);
-        }
-
-        $reason = trim($request->input('reason_not_selected'));
-        $item->update([
-            'reason_not_selected' => $reason,
-            'is_checked' => false,
-        ]);
-
-        return redirect()->route('applications.show', $item->application_id)
-            ->with('status', 'Сохранено');
+            ->with('status', 'Согласование по позициям сохранено.');
     }
 
     private function authorizeCanCreateApplications(Request $request): void

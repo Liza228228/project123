@@ -2,10 +2,10 @@
 
 namespace Database\Seeders;
 
-use App\Models\EquipmentType;
+use App\Models\Equipment;
 use Illuminate\Database\Seeder;
 
-class EquipmentTypeSeeder extends Seeder
+class EquipmentSeeder extends Seeder
 {
     public function run(): void
     {
@@ -48,7 +48,7 @@ class EquipmentTypeSeeder extends Seeder
         ];
 
         foreach ($names as $name) {
-            EquipmentType::firstOrCreate(['name' => $name]);
+            Equipment::firstOrCreate(['name' => $name]);
         }
     }
 }

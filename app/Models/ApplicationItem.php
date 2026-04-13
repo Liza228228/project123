@@ -16,7 +16,7 @@ class ApplicationItem extends Model
 
     protected $fillable = [
         'application_id',
-        'equipment_type_id',
+        'equipment_id',
         'equipment_name',
         'quantity',
         'is_checked',
@@ -36,15 +36,15 @@ class ApplicationItem extends Model
         return $this->belongsTo(Application::class);
     }
 
-    public function equipmentType(): BelongsTo
+    public function equipment(): BelongsTo
     {
-        return $this->belongsTo(EquipmentType::class);
+        return $this->belongsTo(Equipment::class);
     }
 
     public function getEquipmentDisplayNameAttribute(): string
     {
-        if ($this->equipment_type_id && $this->equipmentType) {
-            return $this->equipmentType->name;
+        if ($this->equipment_id && $this->equipment) {
+            return $this->equipment->name;
         }
 
         return trim($this->equipment_name ?? '') ?: '—';

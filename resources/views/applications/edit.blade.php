@@ -12,18 +12,18 @@
 
     @php
         $defaultItems = $application->items
-            ->sortBy(fn ($i) => $i->is_checked ? 0 : 1)
+            ->sortBy(fn ($i) => $application->itemLineIsApproved($i->id) ? 0 : 1)
             ->values()
             ->map(fn ($i) => [
                 'item_id' => $i->id,
-                'equipment_type_id' => $i->equipment_type_id ?? '',
+                'equipment_id' => $i->equipment_id ?? '',
                 'equipment_name' => $i->equipment_name ?? '',
                 'quantity' => $i->quantity,
             ])
             ->all();
         $items = old('items', $defaultItems);
         if (empty($items)) {
-            $items = [['item_id' => null, 'equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
+            $items = [['item_id' => null, 'equipment_id' => '', 'equipment_name' => '', 'quantity' => 1]];
         }
         $preserveSubdivisionIdsForFilter = collect([
             $application->subdivision_id,
@@ -40,7 +40,7 @@
         <div class="bg-white dark:bg-orange-800 border border-orange-200 dark:border-orange-700 rounded-lg shadow-sm overflow-hidden">
             <div class="p-4 sm:p-8">
                 <p class="text-sm text-black dark:text-white border-l-2 border-orange-300 dark:border-orange-600 pl-4 py-0.5 mb-6">
-                    Согласованное оборудование отображается только для просмотра. Неодобренное оборудование можно изменить, удалить или дополнить новыми.
+                    Позиции с отметкой «согласовано» только для просмотра. Остальные можно менять, удалять или дополнять. После сохранения заявки отметки согласования по позициям сбрасываются.
                 </p>
 
                 <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" class="space-y-6">
@@ -113,8 +113,8 @@
                                 @php
                                     $itemId = $item['item_id'] ?? null;
                                     $dbItem = $itemId !== null && $itemId !== '' ? $application->items->firstWhere('id', (int) $itemId) : null;
-                                    $locked = (bool) ($dbItem && $dbItem->is_checked);
-                                    $typeId = $item['equipment_type_id'] ?? '';
+                                    $locked = (bool) ($dbItem && $application->itemLineIsApproved($dbItem->id));
+                                    $typeId = $item['equipment_id'] ?? '';
                                     $eqName = trim($item['equipment_name'] ?? '');
                                     $isCustomRow = ! $locked && (($typeId === '' || $typeId === null) && $eqName !== '');
                                 @endphp
@@ -126,21 +126,21 @@
                                         </div>
                                         <p class="text-sm font-medium text-black dark:text-white">
                                             @if($typeId !== '' && $typeId !== null)
-                                                {{ $equipmentTypes->firstWhere('id', (int) $typeId)?->name ?? '—' }}
+                                                {{ $equipment->firstWhere('id', (int) $typeId)?->name ?? '—' }}
                                             @else
                                                 {{ $eqName !== '' ? $eqName : '—' }}
                                             @endif
                                             <span class="text-black dark:text-white font-normal">× {{ (int) ($item['quantity'] ?? 1) }}</span>
                                         </p>
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
-                                        <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="{{ $typeId }}" />
+                                        <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" />
                                         <input type="hidden" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" />
                                     </div>
                                 @elseif($isCustomRow)
                                     <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
-                                        <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="" />
+                                        <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
                                             <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
@@ -159,9 +159,9 @@
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
                                             @php
-                                                $selectedType = ($typeId ?? '') !== '' ? $equipmentTypes->firstWhere('id', (int) $typeId) : null;
+                                                $selectedType = ($typeId ?? '') !== '' ? $equipment->firstWhere('id', (int) $typeId) : null;
                                             @endphp
-                                            <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
+                                            <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
                                             <input
                                                 type="text"
                                                 value="{{ $selectedType?->name ?? '' }}"
@@ -219,7 +219,7 @@
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" class="equipment-type-id" />
+                <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
                 <input
                     type="text"
                     placeholder="Начните вводить оборудование"
@@ -241,7 +241,7 @@
     <script type="text/template" id="equipment-row-custom-tpl">
         <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
             <input type="hidden" name="items[__INDEX__][item_id]" value="" />
-            <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" />
+            <input type="hidden" name="items[__INDEX__][equipment_id]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
                 <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
@@ -271,7 +271,7 @@
                     'select[name="transport_option_id"], ' +
                     'input[name="desired_delivery_date"], ' +
                     'input[name^="items["][name$="[item_id]"], ' +
-                    'input[name^="items["][name$="[equipment_type_id]"], ' +
+                    'input[name^="items["][name$="[equipment_id]"], ' +
                     'input[name^="items["][name$="[equipment_name]"], ' +
                     'input[name^="items["][name$="[quantity]"]'
                 ));
@@ -382,9 +382,9 @@
             var nextIndex = container.querySelectorAll('.equipment-row').length;
             var equipmentMap = {};
             var equipmentList = [];
-            @foreach($equipmentTypes as $et)
-            equipmentMap[@json(mb_strtolower($et->name))] = @json((string) $et->id);
-            equipmentList.push({ id: @json((string) $et->id), name: @json($et->name), key: @json(mb_strtolower($et->name)) });
+            @foreach($equipment as $eq)
+            equipmentMap[@json(mb_strtolower($eq->name))] = @json((string) $eq->id);
+            equipmentList.push({ id: @json((string) $eq->id), name: @json($eq->name), key: @json(mb_strtolower($eq->name)) });
             @endforeach
             var equipmentNameSet = {};
             equipmentList.forEach(function(item) {

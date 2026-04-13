@@ -8,17 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('equipment', function (Blueprint $table) {
+        Schema::create('application_report_footers', function (Blueprint $table) {
             $table->id();
-            $table->string('name', 150);
+            $table->string('name', 255);
+            $table->json('settings');
             $table->timestamps();
-
-            $table->unique('name');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('equipment');
+        Schema::dropIfExists('application_report_footers');
     }
 };

@@ -8,8 +8,12 @@
                 </h2>
                 @if($application->items->isEmpty())
                     <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900 dark:text-white shrink-0">Нет позиций</span>
-                @elseif($application->is_fully_approved)
-                    <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white shrink-0">Согласовано</span>
+                @elseif($application->isStatusApproved())
+                    <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white shrink-0">Согласована</span>
+                @elseif($application->isStatusPartial())
+                    <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white shrink-0">Частично согласована</span>
+                @elseif($application->isStatusRejected())
+                    <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white shrink-0">Не согласована</span>
                 @else
                     <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white shrink-0">На согласовании</span>
                 @endif
@@ -154,8 +158,8 @@
 
                     @if(Auth::user()->hasRoleId(4) && $application->latestEditHistory)
                         @php
-                            $editDetailLines = $application->lastEditDetailLines();
-                            $lastEditor = $application->latestEditHistory->user;
+                            $hist = $application->latestEditHistory;
+                            $lastEditor = $hist->user;
                             $editorRoleLabel = $lastEditor?->role?->name;
                         @endphp
                         <div class="rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50/80 dark:bg-orange-900/25 p-4 space-y-2">
@@ -167,23 +171,27 @@
                                         <span class="text-xs font-normal opacity-80">({{ $editorRoleLabel }})</span>
                                     @endif
                                 @endif
-                                <span class="text-xs font-normal opacity-80"> — {{ $application->latestEditHistory->edited_at->format('d.m.Y H:i') }}</span>
+                                <span class="text-xs font-normal opacity-80"> — {{ $hist->edited_at->format('d.m.Y H:i') }}</span>
                             </p>
-                            @if(count($editDetailLines) > 0)
- 
-                                <ul class="list-disc list-inside text-sm text-black dark:text-white space-y-1">
-                                    @foreach($editDetailLines as $line)
-                                        <li>{{ $line }}</li>
-                                    @endforeach
-                                </ul>
+                            @if(filled($hist->equipment_change))
+                                <div class="text-sm text-black dark:text-white">
+                                    <span class="font-medium">Оборудование:</span>
+                                    <p class="mt-1 whitespace-pre-line">{{ $hist->equipment_change }}</p>
+                                </div>
+                            @endif
+                            @if(filled($hist->change_reason))
+                                <div class="text-sm text-black dark:text-white">
+                                    <span class="font-medium">Причина:</span>
+                                    <p class="mt-1 whitespace-pre-line">{{ $hist->change_reason }}</p>
+                                </div>
                             @endif
                         </div>
                     @endif
 
                     @php
                         $canManageApproval = Auth::user()->hasAnyRoleId([1, 6, 2]);
-                        $uncheckedItems = $application->items->where('is_checked', false);
-                        $checkedItems = $application->items->where('is_checked', true);
+                        $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id));
+                        $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id));
                     @endphp
                     <div>
                         <h3 class="text-sm font-medium text-black dark:text-white mb-3">Оборудование</h3>
@@ -196,36 +204,33 @@
 
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" id="approval-check-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
-                                        Одобрить все
+                                        Согласовать все
                                     </button>
                                     <button type="button" id="approval-uncheck-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
                                         Снять со всех
                                     </button>
                                 </div>
-                                @if(Auth::user()->hasAnyRoleId([1, 6, 2]))
-                                    <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
-                                        <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
-                                            Общая причина для неодобренного оборудования
-                                        </label>
-                                        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
-                                            <input
-                                                id="bulk-unchecked-reason"
-                                                type="text"
-                                                maxlength="500"
-                                                placeholder="Например: нет на складе поставщика"
-                                                class="w-full min-w-0 sm:min-w-[200px] sm:flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
-                                            />
-                                            <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex w-full shrink-0 items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800 sm:w-auto">
-                                                Применить к несогласованному оборудованию
-                                            </button>
-                                        </div>
-                                      
+                                <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
+                                    <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
+                                        Общая причина для несогласованных позиций
+                                    </label>
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+                                        <input
+                                            id="bulk-unchecked-reason"
+                                            type="text"
+                                            maxlength="500"
+                                            placeholder="Например: нет на складе поставщика"
+                                            class="w-full min-w-0 sm:min-w-[200px] sm:flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                        />
+                                        <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex w-full shrink-0 items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800 sm:w-auto">
+                                            Применить к несогласованным
+                                        </button>
                                     </div>
-                                @endif
+                                </div>
                                 <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-200 dark:border-orange-700 overflow-hidden">
                                     @foreach($application->items->sortBy('id') as $item)
                                         @php
-                                            $oldChecked = old("items.{$item->id}.is_checked", $item->is_checked ? '1' : '0');
+                                            $oldChecked = old("items.{$item->id}.is_checked", $application->itemLineIsApproved($item->id) ? '1' : '0');
                                             $isCheckedOld = (string) $oldChecked === '1';
                                         @endphp
                                         <li class="approval-row px-4 py-3 bg-white dark:bg-orange-950/80 space-y-2">
@@ -244,12 +249,12 @@
                                                 </div>
                                             </div>
                                             <div class="approval-reason-block pl-8 sm:pl-9 {{ $isCheckedOld ? 'hidden' : '' }}">
-                                                <label class="block text-xs text-black dark:text-white mb-0.5" for="reason-{{ $item->id }}">Причина неодобрения</label>
+                                                <label class="block text-xs text-black dark:text-white mb-0.5" for="reason-{{ $item->id }}">Причина не согласования</label>
                                                 <input type="text"
                                                     id="reason-{{ $item->id }}"
                                                     name="items[{{ $item->id }}][reason_not_selected]"
-                                                    value="{{ $isCheckedOld ? '' : old("items.{$item->id}.reason_not_selected", $item->reason_not_selected) }}"
-                                                    placeholder="Обязательно, пока нет галочки"
+                                                    value="{{ $isCheckedOld ? '' : old("items.{$item->id}.reason_not_selected", $application->itemLineRejectionReason($item->id) ?? '') }}"
+                                                    placeholder="Обязательно, если позиция не согласована"
                                                     maxlength="500"
                                                     class="approval-reason-input block w-full rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white shadow-sm text-sm focus:ring-orange-500 focus:border-orange-500 @error('items.'.$item->id.'.reason_not_selected') border-red-500 dark:border-red-400 @enderror"
                                                 />
@@ -262,7 +267,7 @@
                                 </ul>
                                 <div>
                                     <button type="submit" class="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white rounded-lg bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
-                                        Сохранить согласованное оборудование
+                                        Сохранить согласование
                                     </button>
                                 </div>
                             </form>
@@ -323,15 +328,15 @@
                             </script>
                         @else
                             @if($uncheckedItems->isNotEmpty())
-                                <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не одобрено</h4>
+                                <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не согласовано</h4>
                                 <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden mb-6">
-                                    @foreach($uncheckedItems as $item)
+                                    @foreach($uncheckedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-orange-50/80 dark:bg-orange-900/25">
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                             </span>
-                                            @if($item->reason_not_selected)
-                                                <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $item->reason_not_selected }}</p>
+                                            @if($application->itemLineRejectionReason($item->id))
+                                                <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                             @endif
                                         </li>
                                     @endforeach
@@ -339,9 +344,9 @@
                             @endif
 
                             @if($checkedItems->isNotEmpty())
-                                <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Одобрено</h4>
+                                <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Согласовано</h4>
                                 <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden">
-                                    @foreach($checkedItems as $item)
+                                    @foreach($checkedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-orange-100/60 dark:bg-orange-900/30">
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity }}

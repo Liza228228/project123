@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\RetailPriceType;
 use App\Models\Warehouse;
 use App\Models\WarehouseType;
 use Illuminate\Console\Command;
@@ -90,7 +89,6 @@ class ImportExcelDataCommand extends Command
             $name = trim($data['Наименование'] ?? $data['Íàèìåíîâàíèå'] ?? '');
             $code = trim($data['Код'] ?? $data['Êîä'] ?? '');
             $warehouseTypeName = trim($data['Тип склада'] ?? $data['Òèï ñêëàäà'] ?? '');
-            $retailPriceTypeName = trim($data['Тип цен розничной торговли'] ?? $data['Òèï öåí ðîçíè÷íîé òîðãîâëè'] ?? '');
             $comment = trim($data['Комментарий'] ?? $data['Êîììåíòàðèé'] ?? '');
 
             if ($name === '' || $code === '') {
@@ -106,19 +104,10 @@ class ImportExcelDataCommand extends Command
                     ['name' => $warehouseTypeName]
                 )->id;
             }
-            $retailPriceTypeId = null;
-            if ($retailPriceTypeName !== '') {
-                $retailPriceTypeId = RetailPriceType::firstOrCreate(
-                    ['name' => $retailPriceTypeName],
-                    ['name' => $retailPriceTypeName]
-                )->id;
-            }
-
             $warehouse = Warehouse::firstOrNew(['code' => $code]);
             $warehouse->is_primary = $isPrimary;
             $warehouse->name = $name;
             $warehouse->warehouse_type_id = $warehouseTypeId;
-            $warehouse->retail_price_type_id = $retailPriceTypeId;
             $warehouse->comment = $comment !== '' ? $comment : null;
             if ($warehouse->exists) {
                 $warehouse->save();

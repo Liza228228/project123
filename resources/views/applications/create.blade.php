@@ -100,9 +100,9 @@
                     </div>
 
                     @php
-                        $items = old('items', $prefill['items'] ?? [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
+                        $items = old('items', $prefill['items'] ?? [['equipment_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
                         if (empty($items)) {
-                            $items = [['equipment_type_id' => '', 'equipment_name' => '', 'quantity' => 1]];
+                            $items = [['equipment_id' => '', 'equipment_name' => '', 'quantity' => 1]];
                         }
                     @endphp
                     <div class="space-y-3">
@@ -113,13 +113,13 @@
                         <div id="equipment-items" class="space-y-3">
                             @foreach($items as $idx => $item)
                                 @php
-                                    $typeId = $item['equipment_type_id'] ?? '';
+                                    $typeId = $item['equipment_id'] ?? '';
                                     $eqName = trim($item['equipment_name'] ?? '');
                                     $isCustomRow = ($typeId === '' || $typeId === null) && $eqName !== '';
                                 @endphp
                                 @if($isCustomRow)
                                     <div class="equipment-row equipment-row--custom flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
-                                        <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="" />
+                                        <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
                                             <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $item['equipment_name'] ?? '' }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
@@ -134,12 +134,12 @@
                                 @else
                                     <div class="equipment-row equipment-row--list flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
                                         @php
-                                            $selectedType = ($item['equipment_type_id'] ?? '') !== '' ? $equipmentTypes->firstWhere('id', (int) $item['equipment_type_id']) : null;
+                                            $selectedType = ($item['equipment_id'] ?? '') !== '' ? $equipment->firstWhere('id', (int) $item['equipment_id']) : null;
                                         @endphp
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                                            <input type="hidden" name="items[{{ $idx }}][equipment_type_id]" value="{{ $item['equipment_type_id'] ?? '' }}" class="equipment-type-id" />
+                                            <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $item['equipment_id'] ?? '' }}" class="equipment-type-id" />
                                             <input
                                                 type="text"
                                                 value="{{ $selectedType?->name ?? '' }}"
@@ -196,7 +196,7 @@
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" class="equipment-type-id" />
+                <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
                 <input
                     type="text"
                     placeholder="Начните вводить оборудование"
@@ -217,7 +217,7 @@
     </script>
     <script type="text/template" id="equipment-row-custom-tpl">
         <div class="equipment-row equipment-row--custom flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
-            <input type="hidden" name="items[__INDEX__][equipment_type_id]" value="" />
+            <input type="hidden" name="items[__INDEX__][equipment_id]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
                 <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
@@ -290,9 +290,9 @@
             var nextIndex = container.querySelectorAll('.equipment-row').length;
             var equipmentMap = {};
             var equipmentList = [];
-            @foreach($equipmentTypes as $et)
-            equipmentMap[@json(mb_strtolower($et->name))] = @json((string) $et->id);
-            equipmentList.push({ id: @json((string) $et->id), name: @json($et->name), key: @json(mb_strtolower($et->name)) });
+            @foreach($equipment as $eq)
+            equipmentMap[@json(mb_strtolower($eq->name))] = @json((string) $eq->id);
+            equipmentList.push({ id: @json((string) $eq->id), name: @json($eq->name), key: @json(mb_strtolower($eq->name)) });
             @endforeach
             var equipmentNameSet = {};
             equipmentList.forEach(function(item) {

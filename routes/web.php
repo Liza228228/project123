@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\ApplicationController;
+use App\Http\Controllers\ApplicationReportController;
+use App\Http\Controllers\ApplicationReportFooterController;
+use App\Http\Controllers\ApplicationReportHeaderController;
 use App\Http\Controllers\ForemanSubdivisionAssignmentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
@@ -32,6 +35,14 @@ Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(fun
     Route::post('/{user}/unblock', [UserController::class, 'unblock'])->name('unblock');
 });
 
+Route::middleware(['auth', 'applications', 'supply_head'])->prefix('applications/report')->name('applications.report.')->group(function () {
+    Route::get('/', [ApplicationReportController::class, 'index'])->name('index');
+    Route::post('/layout', [ApplicationReportController::class, 'updateLayout'])->name('layout');
+    Route::post('/preview', [ApplicationReportController::class, 'preview'])->name('preview');
+    Route::resource('headers', ApplicationReportHeaderController::class)->except(['show'])->names('headers');
+    Route::resource('footers', ApplicationReportFooterController::class)->except(['show'])->names('footers');
+});
+
 Route::middleware(['auth', 'applications'])->prefix('applications')->name('applications.')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('index');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
@@ -39,8 +50,6 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/{application}/commercial-offer', [ApplicationController::class, 'viewCommercialOffer'])->name('commercial-offer.view');
     Route::get('/{application}/commercial-offer/download', [ApplicationController::class, 'downloadCommercialOffer'])->name('commercial-offer.download');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
-    Route::post('/items/{item}/toggle', [ApplicationController::class, 'toggleCheck'])->name('items.toggle');
-    Route::put('/items/{item}/reason', [ApplicationController::class, 'updateReason'])->name('items.reason');
     Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');

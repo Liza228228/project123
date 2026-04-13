@@ -11,11 +11,11 @@ return new class extends Migration
         Schema::create('warehouses', function (Blueprint $table) {
             $table->id();
             $table->boolean('is_primary')->default(false); // приоритет да нет
-            $table->string('name');
-            $table->string('code');
-            $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete(); // тип склада (оптовый склад)
-            $table->foreignId('retail_price_type_id')->nullable()->constrained('retail_price_types')->nullOnDelete()->comment('Тип цен розничной торговли');
-            $table->text('comment')->nullable()->comment('Комментарий');
+            $table->string('name', 150);
+            $table->string('code', 10);
+            $table->foreignId('subdivision_id')->nullable()->constrained('subdivisions')->nullOnDelete();
+            $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete();  
+            $table->text('comment')->nullable();
             $table->timestamps();
             $table->unique('code');
         });

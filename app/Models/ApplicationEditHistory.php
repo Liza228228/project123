@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApplicationEditHistory extends Model
 {
@@ -12,6 +11,8 @@ class ApplicationEditHistory extends Model
         'application_id',
         'user_id',
         'edited_at',
+        'equipment_change',
+        'change_reason',
     ];
 
     protected function casts(): array
@@ -29,18 +30,5 @@ class ApplicationEditHistory extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function lines(): HasMany
-    {
-        return $this->hasMany(ApplicationEditHistoryLine::class)->orderBy('sort_order');
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function lineBodies(): array
-    {
-        return $this->lines()->pluck('body')->all();
     }
 }

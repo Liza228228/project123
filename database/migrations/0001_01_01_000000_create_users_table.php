@@ -13,11 +13,11 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('surname');
-            $table->string('name');
-            $table->string('patronymic');
-            $table->string('email')->unique();
-            $table->string('password');
+            $table->string('surname', 45);
+            $table->string('name', 45);
+            $table->string('patronymic', 45);
+            $table->string('email', 50)->unique();
+            $table->string('password', 255);
             $table->unsignedBigInteger('role_id');
             $table->boolean('is_blocked')->default(false);
             $table->timestamps();
