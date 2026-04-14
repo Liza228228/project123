@@ -6,12 +6,12 @@
             </h2>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:shrink-0">
                 @if (Auth::user()->hasRoleId(2))
-                    <a href="{{ route('applications.report.index') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-orange-300 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/30 transition hover:bg-orange-100 dark:hover:bg-orange-900/50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap w-full sm:w-auto">
+                    <a href="{{ route('applications.report.index') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 transition hover:bg-stone-100 dark:hover:bg-stone-900/50 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:focus:ring-offset-stone-950 whitespace-nowrap w-full sm:w-auto">
                         Отчёт по заявкам
                     </a>
                 @endif
                 @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
-                    <a href="{{ route('applications.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap w-full sm:w-auto">
+                    <a href="{{ route('applications.create') }}" class="ui-btn ui-btn--primary gap-2 whitespace-nowrap w-full sm:w-auto">
                         Создать заявку
                     </a>
                 @endif
@@ -20,27 +20,27 @@
     </x-slot>
 
     <div class="py-2 sm:py-8 md:py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="max-w-[96rem] mx-auto sm:px-6 lg:px-8">
             @if (session('status'))
-                <div class="mb-4 px-4 py-3 rounded-md bg-orange-100 dark:bg-orange-900/40 text-black dark:text-white text-sm">
+                <div class="mb-4 px-4 py-3 rounded-md bg-stone-100 dark:bg-stone-900/40 text-black dark:text-white text-sm">
                     {{ session('status') }}
                 </div>
             @endif
 
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
+            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4">
-                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] lg:items-end">
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)_minmax(14rem,20rem)] lg:items-end">
                             <div class="min-w-0">
                                 <label for="applications-q" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Поиск</label>
                                 <input type="search" name="q" id="applications-q" value="{{ $search }}"
                                     placeholder="Подразделение, автор, согласовавший, ответственный, оборудование…"
-                                    class="w-full rounded-lg border-orange-300 dark:border-orange-600 bg-white dark:bg-orange-900/40 text-black dark:text-white text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
+                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
                             </div>
                             <div class="min-w-0">
                                 <label for="applications-equipment-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Статус согласования</label>
                                 <select name="equipment_filter" id="applications-equipment-filter"
-                                    class="w-full rounded-lg border-orange-300 dark:border-orange-600 bg-white dark:bg-orange-900/40 text-black dark:text-white text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
+                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
                                     <option value="all" @selected($equipmentFilter === 'all')>Все заявки</option>
                                     <option value="has_approved" @selected($equipmentFilter === 'has_approved')>Есть согласованные позиции</option>
                                     <option value="has_not_approved" @selected($equipmentFilter === 'has_not_approved')>Есть несогласованные позиции</option>
@@ -48,13 +48,27 @@
                                     <option value="on_approval" @selected($equipmentFilter === 'on_approval')>Заявка на согласовании</option>
                                 </select>
                             </div>
+                            @unless($isSiteForeman)
+                                <div class="min-w-0">
+                                    <label for="applications-foreman-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Мастер участка</label>
+                                    <select name="foreman_user_id" id="applications-foreman-filter"
+                                        class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                        <option value="">Все мастера участка</option>
+                                        @foreach($foremen as $foreman)
+                                            <option value="{{ $foreman->id }}" @selected($selectedForemanId === (int) $foreman->id)>
+                                                {{ trim($foreman->surname.' '.$foreman->name.' '.$foreman->patronymic) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            @endunless
                         </div>
                         <div class="flex flex-col sm:flex-row flex-wrap gap-2 pt-1 sm:justify-end">
-                            <button type="submit" class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-3 sm:py-2.5 text-sm font-semibold text-white rounded-lg bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap shrink-0 [touch-action:manipulation]">
+                            <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[44px] py-3 sm:min-h-0 sm:w-auto sm:py-2 whitespace-nowrap shrink-0 [touch-action:manipulation]">
                                 Применить
                             </button>
-                            @if($search !== '' || $equipmentFilter !== 'all')
-                                <a href="{{ route('applications.index') }}" class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-3 sm:py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-orange-300 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 whitespace-nowrap shrink-0 [touch-action:manipulation]">
+                            @if($search !== '' || $equipmentFilter !== 'all' || $selectedForemanId !== null)
+                                <a href="{{ route('applications.index') }}" class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-3 sm:py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap shrink-0 [touch-action:manipulation]">
                                     Сбросить
                                 </a>
                             @endif
@@ -63,7 +77,7 @@
 
                     @if($applications->isEmpty())
                         <p class="md:hidden py-6 text-center text-sm text-black dark:text-white">
-                            @if($search !== '' || $equipmentFilter !== 'all')
+                            @if($search !== '' || $equipmentFilter !== 'all' || $selectedForemanId !== null)
                                 По заданным условиям заявок не найдено.
                             @else
                                 Заявок пока нет.
@@ -72,13 +86,13 @@
                     @else
                         <div class="md:hidden space-y-4">
                             @foreach($applications as $application)
-                                <article class="rounded-xl border border-orange-200 dark:border-orange-800 bg-orange-50/30 dark:bg-orange-900/20 p-4 space-y-3 shadow-sm">
+                                <article class="rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20 p-4 space-y-3 shadow-sm">
                                     <div class="flex justify-between gap-3 items-start">
                                         <div class="min-w-0 flex-1">
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Подразделение</p>
                                             <p class="text-sm font-medium text-black dark:text-white break-words">{{ $application->subdivision->name }}</p>
                                             @if($application->source_application_id)
-                                                <span class="mt-1 inline-flex w-fit items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/40 dark:text-white">
+                                                <span class="mt-1 inline-flex w-fit items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/40 dark:text-white">
                                                     Повторная к №{{ $application->source_application_id }}
                                                 </span>
                                             @endif
@@ -87,13 +101,13 @@
                                             @if($application->items->isEmpty())
                                                 <span class="text-xs text-black/50 dark:text-white/50">—</span>
                                             @elseif($application->isStatusApproved())
-                                                <span class="inline-flex items-center rounded-full bg-orange-200 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">Согласована</span>
+                                                <span class="inline-flex items-center rounded-full bg-stone-200 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white">Согласована</span>
                                             @elseif($application->isStatusPartial())
-                                                <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white">Частично</span>
+                                                <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">Частично</span>
                                             @elseif($application->isStatusRejected())
-                                                <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white">Не согласована</span>
+                                                <span class="inline-flex items-center rounded-full bg-stone-300/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/70 dark:text-white">Не согласована</span>
                                             @else
-                                                <span class="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">На согласовании</span>
+                                                <span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">На согласовании</span>
                                             @endif
                                         </div>
                                     </div>
@@ -138,7 +152,7 @@
                                             </p>
                                         </div>
                                     </div>
-                                    <a href="{{ route('applications.show', $application) }}" class="flex w-full items-center justify-center px-4 py-3 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 [touch-action:manipulation]">
+                                    <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary flex w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]">
                                         Просмотр
                                     </a>
                                 </article>
@@ -146,8 +160,8 @@
                         </div>
                     @endif
 
-                    <div class="hidden md:block overflow-x-auto">
-                        <table class="min-w-full divide-y divide-orange-200 dark:divide-orange-800">
+                    <div class="hidden md:block app-table-shell">
+                        <table class="min-w-full">
                             <thead>
                                 <tr>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Подразделение</th>
@@ -161,14 +175,14 @@
                                     <th class="px-4 py-3 text-right text-xs font-medium text-black dark:text-white uppercase w-[1%] whitespace-nowrap"><span class="sr-only">Действия</span></th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-orange-200 dark:divide-orange-800">
+                            <tbody>
                                 @forelse($applications as $application)
                                     <tr class="align-top">
                                         <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
                                             <div class="flex flex-col gap-1">
                                                 <span>{{ $application->subdivision->name }}</span>
                                                 @if($application->source_application_id)
-                                                    <span class="inline-flex w-fit items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-orange-900/40 dark:text-white">
+                                                    <span class="inline-flex w-fit items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/40 dark:text-white">
                                                         Повторная к заявке №{{ $application->source_application_id }}
                                                     </span>
                                                 @endif
@@ -206,9 +220,9 @@
                                                 @endphp
                                                 @if($idxUnchecked->isNotEmpty())
                                                     <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не согласовано</h4>
-                                                    <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden mb-6">
+                                                    <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden mb-6">
                                                         @foreach($idxUnchecked as $item)
-                                                            <li class="px-4 py-3 bg-orange-50/80 dark:bg-orange-900/25">
+                                                            <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25">
                                                                 <span class="text-sm font-medium text-black dark:text-white">
                                                                     {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                                                 </span>
@@ -221,9 +235,9 @@
                                                 @endif
                                                 @if($idxChecked->isNotEmpty())
                                                     <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Согласовано</h4>
-                                                    <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden">
+                                                    <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden">
                                                         @foreach($idxChecked as $item)
-                                                            <li class="px-4 py-3 bg-orange-100/60 dark:bg-orange-900/30">
+                                                            <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30">
                                                                 <span class="text-sm font-medium text-black dark:text-white">
                                                                     {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                                                 </span>
@@ -245,25 +259,25 @@
                                             @if($application->items->isEmpty())
                                                 <span class="text-black dark:text-white opacity-50">—</span>
                                             @elseif($application->isStatusApproved())
-                                                <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white">
+                                                <span class="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white">
                                                     Согласована
                                                 </span>
                                             @elseif($application->isStatusPartial())
-                                                <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white">
+                                                <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">
                                                     Частично
                                                 </span>
                                             @elseif($application->isStatusRejected())
-                                                <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white">
+                                                <span class="inline-flex items-center rounded-full bg-stone-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/70 dark:text-white">
                                                     Не согласована
                                                 </span>
                                             @else
-                                                <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white">
+                                                <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">
                                                     На согласовании
                                                 </span>
                                             @endif
                                         </td>
                                         <td class="px-4 py-3 text-right align-top whitespace-nowrap w-[1%]">
-                                            <a href="{{ route('applications.show', $application) }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
+                                            <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary">
                                                 Просмотр
                                             </a>
                                         </td>
@@ -271,7 +285,7 @@
                                 @empty
                                     <tr>
                                         <td colspan="9" class="px-4 py-6 text-center text-sm text-black dark:text-white">
-                                            @if($search !== '' || $equipmentFilter !== 'all')
+                                            @if($search !== '' || $equipmentFilter !== 'all' || $selectedForemanId !== null)
                                                 По заданным условиям заявок не найдено.
                                             @else
                                                 Заявок пока нет.
@@ -282,6 +296,12 @@
                             </tbody>
                         </table>
                     </div>
+
+                    @if($applications->hasPages())
+                        <div class="pt-2">
+                            {{ $applications->links() }}
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

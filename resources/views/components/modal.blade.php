@@ -60,12 +60,12 @@ $maxWidth = [
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
     >
-        <div class="absolute inset-0 bg-orange-900/60 dark:bg-orange-950/90 opacity-75"></div>
+        <div class="absolute inset-0 bg-stone-900/40 dark:bg-orange-950/75 opacity-90"></div>
     </div>
 
     <div
         x-show="show"
-        class="mb-6 bg-white dark:bg-orange-950 rounded-lg overflow-hidden shadow-xl border border-orange-200 dark:border-orange-800 transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
+        class="mb-6 bg-white dark:bg-stone-950 rounded-lg overflow-hidden shadow-xl border border-stone-200 dark:border-orange-950/40 transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
         x-transition:enter="ease-out duration-300"
         x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"

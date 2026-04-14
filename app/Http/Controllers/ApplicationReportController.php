@@ -6,7 +6,9 @@ use App\Models\Application;
 use App\Models\ApplicationReportFooter;
 use App\Models\ApplicationReportHeader;
 use App\Models\ApplicationReportTemplate;
+use App\Models\User;
 use App\Support\ReportFontChoices;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -28,17 +30,24 @@ class ApplicationReportController extends Controller
 
         $headers = ApplicationReportHeader::query()->orderBy('name')->get();
         $footers = ApplicationReportFooter::query()->orderBy('name')->get();
+        $directors = User::query()
+            ->where('role_id', 1)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get();
         $fontOptions = ReportFontChoices::options();
 
         $applications = Application::listingQuery($request)
             ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'transportOption', 'applicationStatus'])
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return view('applications.report.index', compact(
             'template',
             'headers',
             'footers',
+            'directors',
             'fontOptions',
             'applications',
             'search',
@@ -57,6 +66,7 @@ class ApplicationReportController extends Controller
             'report_header_id' => ['nullable', 'integer', 'exists:application_report_headers,id'],
             'report_footer_id' => ['nullable', 'integer', 'exists:application_report_footers,id'],
             'main_body_text' => ['nullable', 'string', 'max:60000'],
+            'footer_text' => ['nullable', 'string', 'max:60000'],
             'main_font_family' => ['required', Rule::in(ReportFontChoices::values())],
             'table_font_family' => ['required', Rule::in(ReportFontChoices::values())],
         ]);
@@ -66,6 +76,7 @@ class ApplicationReportController extends Controller
             'report_header_id' => $validated['report_header_id'] ?? null,
             'report_footer_id' => $validated['report_footer_id'] ?? null,
             'main_body_text' => $validated['main_body_text'] ?? null,
+            'footer_text' => $validated['footer_text'] ?? null,
             'main_font_family' => $validated['main_font_family'],
             'table_font_family' => $validated['table_font_family'],
         ]);
@@ -86,50 +97,20 @@ class ApplicationReportController extends Controller
 
     public function preview(Request $request): View
     {
-        $request->merge([
-            'report_header_id' => $request->filled('report_header_id') ? (int) $request->input('report_header_id') : null,
-            'report_footer_id' => $request->filled('report_footer_id') ? (int) $request->input('report_footer_id') : null,
+        return view('applications.report.preview', $this->buildPreviewPayload($request) + [
+            'showToolbar' => true,
         ]);
+    }
 
-        $validated = $request->validate([
-            'report_header_id' => ['nullable', 'integer', 'exists:application_report_headers,id'],
-            'report_footer_id' => ['nullable', 'integer', 'exists:application_report_footers,id'],
-            'main_body_text' => ['nullable', 'string', 'max:60000'],
-            'main_font_family' => ['required', Rule::in(ReportFontChoices::values())],
-            'table_font_family' => ['required', Rule::in(ReportFontChoices::values())],
-            'application_ids' => ['required', 'array', 'min:1'],
-            'application_ids.*' => ['integer', 'exists:applications,id'],
-        ]);
+    public function pdf(Request $request)
+    {
+        $payload = $this->buildPreviewPayload($request);
+        $payload = $this->forcePdfSafeFonts($payload);
+        $pdf = Pdf::loadView('applications.report.preview', $payload + ['showToolbar' => false])
+            ->setOption('defaultFont', 'DejaVu Sans')
+            ->setPaper('a4');
 
-        $applications = Application::query()
-            ->whereIn('id', $validated['application_ids'])
-            ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'transportOption', 'applicationStatus'])
-            ->orderByDesc('created_at')
-            ->get();
-
-        $header = isset($validated['report_header_id'])
-            ? ApplicationReportHeader::query()->find($validated['report_header_id'])
-            : null;
-        $footer = isset($validated['report_footer_id'])
-            ? ApplicationReportFooter::query()->find($validated['report_footer_id'])
-            : null;
-
-        $headerSettings = $header?->mergedSettings();
-        $footerSettings = $footer?->mergedSettings();
-
-        $tableRows = $this->buildActTableRows($applications);
-        $blankTailRows = 5;
-
-        return view('applications.report.preview', [
-            'headerSettings' => $headerSettings,
-            'footerSettings' => $footerSettings,
-            'mainBodyText' => $validated['main_body_text'] ?? '',
-            'mainFont' => $validated['main_font_family'],
-            'tableFont' => $validated['table_font_family'],
-            'applications' => $applications,
-            'tableRows' => $tableRows,
-            'blankTailRows' => $blankTailRows,
-        ]);
+        return $pdf->download('applications-report-'.now()->format('Ymd_His').'.pdf');
     }
 
     /**
@@ -173,5 +154,132 @@ class ApplicationReportController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildPreviewPayload(Request $request): array
+    {
+        $request->merge([
+            'report_header_id' => $request->filled('report_header_id') ? (int) $request->input('report_header_id') : null,
+            'report_footer_id' => $request->filled('report_footer_id') ? (int) $request->input('report_footer_id') : null,
+        ]);
+
+        $validated = $request->validate([
+            'report_header_id' => ['nullable', 'integer', 'exists:application_report_headers,id'],
+            'report_footer_id' => ['nullable', 'integer', 'exists:application_report_footers,id'],
+            'director_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'main_body_text' => ['nullable', 'string', 'max:60000'],
+            'footer_text' => ['nullable', 'string', 'max:60000'],
+            'include_applications_table' => ['nullable', 'boolean'],
+            'main_font_family' => ['required', Rule::in(ReportFontChoices::values())],
+            'table_font_family' => ['required', Rule::in(ReportFontChoices::values())],
+        ]);
+
+        $includeApplicationsTable = (bool) ($validated['include_applications_table'] ?? false);
+        $applications = collect();
+
+        if ($includeApplicationsTable) {
+            $appValidated = $request->validate([
+                'application_ids' => ['required', 'array', 'min:1'],
+                'application_ids.*' => ['integer', 'exists:applications,id'],
+            ]);
+
+            $applications = Application::query()
+                ->whereIn('id', $appValidated['application_ids'])
+                ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'transportOption', 'applicationStatus'])
+                ->orderByDesc('created_at')
+                ->get();
+        }
+
+        $header = isset($validated['report_header_id'])
+            ? ApplicationReportHeader::query()->find($validated['report_header_id'])
+            : null;
+        $footer = isset($validated['report_footer_id'])
+            ? ApplicationReportFooter::query()->find($validated['report_footer_id'])
+            : null;
+        $director = isset($validated['director_user_id'])
+            ? User::query()->find($validated['director_user_id'])
+            : null;
+        $directorFio = $director ? $this->formatUserFio($director) : '';
+
+        $headerSettings = $header?->mergedSettings();
+        if (is_array($headerSettings)) {
+            if ($directorFio !== '') {
+                $headerSettings['approval_name'] = $directorFio;
+            }
+            $headerSettings = $this->replaceDirectorPlaceholderInArray($headerSettings, $directorFio);
+        }
+
+        $footerSettings = $footer?->mergedSettings();
+        if (is_array($footerSettings)) {
+            $footerSettings = $this->replaceDirectorPlaceholderInArray($footerSettings, $directorFio);
+        }
+
+        return [
+            'headerSettings' => $headerSettings,
+            'footerSettings' => $footerSettings,
+            'mainBodyText' => str_replace('{{director_fio}}', $directorFio, (string) ($validated['main_body_text'] ?? '')),
+            'footerText' => str_replace('{{director_fio}}', $directorFio, (string) ($validated['footer_text'] ?? '')),
+            'includeApplicationsTable' => $includeApplicationsTable,
+            'directorFio' => $directorFio,
+            'mainFont' => $validated['main_font_family'],
+            'tableFont' => $validated['table_font_family'],
+            'applications' => $applications,
+            'tableRows' => $this->buildActTableRows($applications),
+            'blankTailRows' => 5,
+        ];
+    }
+
+    private function formatUserFio(User $user): string
+    {
+        return trim(implode(' ', array_filter([
+            trim((string) $user->surname),
+            trim((string) $user->name),
+            trim((string) $user->patronymic),
+        ], fn ($part) => $part !== '')));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function replaceDirectorPlaceholderInArray(array $data, string $directorFio): array
+    {
+        foreach ($data as $key => $value) {
+            if (is_string($value)) {
+                $data[$key] = str_replace('{{director_fio}}', $directorFio, $value);
+                continue;
+            }
+            if (is_array($value)) {
+                $data[$key] = $this->replaceDirectorPlaceholderInArray($value, $directorFio);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function forcePdfSafeFonts(array $payload): array
+    {
+        $pdfFont = 'DejaVu Sans, sans-serif';
+
+        $payload['mainFont'] = $pdfFont;
+        $payload['tableFont'] = $pdfFont;
+
+        if (is_array($payload['headerSettings'] ?? null)) {
+            $payload['headerSettings']['font_family'] = $pdfFont;
+            $payload['headerSettings']['title_font_family'] = $pdfFont;
+        }
+
+        if (is_array($payload['footerSettings'] ?? null)) {
+            $payload['footerSettings']['font_family'] = $pdfFont;
+        }
+
+        return $payload;
     }
 }

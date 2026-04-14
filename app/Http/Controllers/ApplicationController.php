@@ -24,6 +24,8 @@ class ApplicationController extends Controller
 {
     public function index(Request $request): View
     {
+        $user = $request->user();
+        $isSiteForeman = $user?->hasRoleId(4) ?? false;
         $search = trim((string) $request->input('q', ''));
         $equipmentFilter = (string) $request->input('equipment_filter', 'all');
         $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval'];
@@ -31,12 +33,33 @@ class ApplicationController extends Controller
             $equipmentFilter = 'all';
         }
 
-        $applications = Application::listingQuery($request)
+        $foremen = User::query()
+            ->where('role_id', 4)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get(['id', 'surname', 'name', 'patronymic']);
+        $selectedForemanId = null;
+        if ($isSiteForeman && $user) {
+            $selectedForemanId = (int) $user->id;
+        } else {
+            $candidateForemanId = (int) $request->integer('foreman_user_id');
+            if ($candidateForemanId > 0 && $foremen->contains('id', $candidateForemanId)) {
+                $selectedForemanId = $candidateForemanId;
+            }
+        }
+
+        $applicationsQuery = Application::listingQuery($request);
+        if ($selectedForemanId !== null) {
+            $applicationsQuery->where('user_id', $selectedForemanId);
+        }
+
+        $applications = $applicationsQuery
             ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'sourceApplication', 'transportOption', 'applicationStatus'])
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('applications.index', compact('applications', 'search', 'equipmentFilter'));
+        return view('applications.index', compact('applications', 'search', 'equipmentFilter', 'isSiteForeman', 'foremen', 'selectedForemanId'));
     }
 
     public function create(Request $request): View
@@ -274,6 +297,7 @@ class ApplicationController extends Controller
         $this->authorizeCanEditApplications($request);
 
         $isSiteForeman = $request->user()->hasRoleId(4);
+        $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
         $application->load(['items.equipment', 'applicationStatus']);
 
         $shouldRecordManagementEdit = $request->user()->hasAnyRoleId($this->managementEditorRoleIds());
@@ -301,6 +325,13 @@ class ApplicationController extends Controller
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
+
+        if ($isSiteForeman && ! $allowedSubdivisionIds->contains((int) $validated['subdivision_id'])) {
+            throw ValidationException::withMessages([
+                'subdivision_id' => 'Вы не можете изменить заявку для этого подразделения.',
+            ]);
+        }
+
         $this->validateSubdivisionAllowedForResponsibleUser(
             (int) $validated['subdivision_id'],
             isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null

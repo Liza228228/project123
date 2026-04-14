@@ -7,25 +7,25 @@
                     Просмотр заявки
                 </h2>
                 @if($application->items->isEmpty())
-                    <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900 dark:text-white shrink-0">Нет позиций</span>
+                    <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900 dark:text-white shrink-0">Нет позиций</span>
                 @elseif($application->isStatusApproved())
-                    <span class="inline-flex items-center rounded-full bg-orange-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/60 dark:text-white shrink-0">Согласована</span>
+                    <span class="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white shrink-0">Согласована</span>
                 @elseif($application->isStatusPartial())
-                    <span class="inline-flex items-center rounded-full bg-amber-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-amber-900/50 dark:text-white shrink-0">Частично согласована</span>
+                    <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white shrink-0">Частично согласована</span>
                 @elseif($application->isStatusRejected())
-                    <span class="inline-flex items-center rounded-full bg-orange-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/70 dark:text-white shrink-0">Не согласована</span>
+                    <span class="inline-flex items-center rounded-full bg-stone-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/70 dark:text-white shrink-0">Не согласована</span>
                 @else
-                    <span class="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-orange-900/50 dark:text-white shrink-0">На согласовании</span>
+                    <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white shrink-0">На согласовании</span>
                 @endif
             </div>
             <div class="flex flex-col sm:flex-row flex-wrap gap-2">
                 @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]))
-                    <a href="{{ route('applications.edit', $application) }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap shrink-0 w-full sm:w-auto">
+                    <a href="{{ route('applications.edit', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto">
                         Изменить
                     </a>
                 @endif
                 @if (Auth::user()->hasRoleId(4))
-                    <a href="{{ route('applications.repeat', $application) }}" class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white rounded-lg bg-orange-700 shadow-sm transition hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950 whitespace-nowrap shrink-0 w-full sm:w-auto">
+                    <a href="{{ route('applications.repeat', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto">
                         Создать повторную
                     </a>
                 @endif
@@ -36,11 +36,11 @@
     <div class="py-2 sm:py-8 md:py-12">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             @if (session('status'))
-                <div class="mb-4 px-4 py-3 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-black dark:text-white text-sm">
+                <div class="mb-4 px-4 py-3 rounded-lg bg-stone-100 dark:bg-stone-900/40 text-black dark:text-white text-sm">
                     {{ session('status') }}
                 </div>
             @endif
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
+            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <div>
                         <h3 class="text-sm font-medium text-black dark:text-white">Данные заявки</h3>
@@ -53,7 +53,7 @@
                                 <div class="sm:col-span-2">
                                     <dt class="text-xs text-black dark:text-white">Склады подразделения</dt>
                                     <dd class="mt-1">
-                                        <ul class="rounded-lg border border-orange-200 dark:border-orange-700 divide-y divide-orange-200 dark:divide-orange-800 max-h-52 overflow-y-auto">
+                                        <ul class="rounded-lg border border-stone-200 dark:border-stone-700 divide-y divide-stone-200 dark:divide-stone-800 max-h-52 overflow-y-auto">
                                             @foreach($application->subdivision->warehouses as $wh)
                                                 <li class="px-3 py-2 text-sm text-black dark:text-white">
                                                     <span class="font-mono text-xs opacity-80">{{ $wh->code }}</span>
@@ -121,13 +121,13 @@
                                                 href="{{ route('applications.commercial-offer.view', $application) }}"
                                                 target="_blank"
                                                 rel="noopener"
-                                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700"
+                                                class="ui-btn ui-btn--primary ui-btn--sm"
                                             >
                                                 Открыть файл
                                             </a>
                                             <a
                                                 href="{{ route('applications.commercial-offer.download', $application) }}"
-                                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-black dark:text-white rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-900/30 transition hover:bg-orange-50 dark:hover:bg-orange-900/50"
+                                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900/30 transition hover:bg-stone-50 dark:hover:bg-stone-900/50"
                                             >
                                                 Скачать
                                             </a>
@@ -162,7 +162,7 @@
                             $lastEditor = $hist->user;
                             $editorRoleLabel = $lastEditor?->role?->name;
                         @endphp
-                        <div class="rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50/80 dark:bg-orange-900/25 p-4 space-y-2">
+                        <div class="rounded-lg border border-stone-300 dark:border-stone-700 bg-stone-50/80 dark:bg-stone-900/25 p-4 space-y-2">
                             <p class="text-sm text-black dark:text-white">
                                 <span class="font-medium">В заявку внесены изменения</span>
                                 @if($lastEditor)
@@ -203,14 +203,14 @@
                                 @csrf
 
                                 <div class="flex flex-wrap gap-2">
-                                    <button type="button" id="approval-check-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
+                                    <button type="button" id="approval-check-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-black dark:text-white hover:bg-stone-50 dark:hover:bg-stone-800">
                                         Согласовать все
                                     </button>
-                                    <button type="button" id="approval-uncheck-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800">
+                                    <button type="button" id="approval-uncheck-all" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-black dark:text-white hover:bg-stone-50 dark:hover:bg-stone-800">
                                         Снять со всех
                                     </button>
                                 </div>
-                                <div class="rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 p-3 space-y-2">
+                                <div class="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/25 p-3 space-y-2">
                                     <label for="bulk-unchecked-reason" class="block text-xs font-medium text-black dark:text-white">
                                         Общая причина для несогласованных позиций
                                     </label>
@@ -220,26 +220,26 @@
                                             type="text"
                                             maxlength="500"
                                             placeholder="Например: нет на складе поставщика"
-                                            class="w-full min-w-0 sm:min-w-[200px] sm:flex-1 rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                            class="w-full min-w-0 sm:min-w-[200px] sm:flex-1 rounded-lg border-stone-200 dark:border-stone-700 dark:bg-stone-950 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                         />
-                                        <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex w-full shrink-0 items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-900 text-black dark:text-white hover:bg-orange-50 dark:hover:bg-orange-800 sm:w-auto">
+                                        <button type="button" id="apply-bulk-unchecked-reason" class="inline-flex w-full shrink-0 items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-black dark:text-white hover:bg-stone-50 dark:hover:bg-stone-800 sm:w-auto">
                                             Применить к несогласованным
                                         </button>
                                     </div>
                                 </div>
-                                <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-200 dark:border-orange-700 overflow-hidden">
+                                <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 overflow-hidden">
                                     @foreach($application->items->sortBy('id') as $item)
                                         @php
                                             $oldChecked = old("items.{$item->id}.is_checked", $application->itemLineIsApproved($item->id) ? '1' : '0');
                                             $isCheckedOld = (string) $oldChecked === '1';
                                         @endphp
-                                        <li class="approval-row px-4 py-3 bg-white dark:bg-orange-950/80 space-y-2">
+                                        <li class="approval-row px-4 py-3 bg-white dark:bg-stone-950/80 space-y-2">
                                             <div class="flex items-start gap-3">
                                                 <input type="hidden" name="items[{{ $item->id }}][is_checked]" value="0">
                                                 <input type="checkbox"
                                                     name="items[{{ $item->id }}][is_checked]"
                                                     value="1"
-                                                    class="approval-item-checkbox mt-0.5 h-5 w-5 shrink-0 rounded border-orange-200 text-black shadow-sm focus:ring-orange-500 dark:border-orange-700 dark:bg-orange-900 dark:checked:bg-orange-600"
+                                                    class="approval-item-checkbox mt-0.5 h-5 w-5 shrink-0 rounded border-stone-200 text-black shadow-sm focus:ring-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:checked:bg-stone-700"
                                                     @checked($isCheckedOld)
                                                 />
                                                 <div class="min-w-0 flex-1">
@@ -256,7 +256,7 @@
                                                     value="{{ $isCheckedOld ? '' : old("items.{$item->id}.reason_not_selected", $application->itemLineRejectionReason($item->id) ?? '') }}"
                                                     placeholder="Обязательно, если позиция не согласована"
                                                     maxlength="500"
-                                                    class="approval-reason-input block w-full rounded-lg border-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-white shadow-sm text-sm focus:ring-orange-500 focus:border-orange-500 @error('items.'.$item->id.'.reason_not_selected') border-red-500 dark:border-red-400 @enderror"
+                                                    class="approval-reason-input block w-full rounded-lg border-stone-200 dark:border-stone-700 dark:bg-stone-950 dark:text-white shadow-sm text-sm focus:ring-stone-500 focus:border-stone-500 @error('items.'.$item->id.'.reason_not_selected') border-red-500 dark:border-red-400 @enderror"
                                                 />
                                                 @error('items.'.$item->id.'.reason_not_selected')
                                                     <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -266,7 +266,7 @@
                                     @endforeach
                                 </ul>
                                 <div>
-                                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white rounded-lg bg-orange-600 shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
+                                    <button type="submit" class="ui-btn ui-btn--primary">
                                         Сохранить согласование
                                     </button>
                                 </div>
@@ -329,9 +329,9 @@
                         @else
                             @if($uncheckedItems->isNotEmpty())
                                 <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не согласовано</h4>
-                                <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden mb-6">
+                                <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden mb-6">
                                     @foreach($uncheckedItems->sortBy('id') as $item)
-                                        <li class="px-4 py-3 bg-orange-50/80 dark:bg-orange-900/25">
+                                        <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25">
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                             </span>
@@ -345,9 +345,9 @@
 
                             @if($checkedItems->isNotEmpty())
                                 <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Согласовано</h4>
-                                <ul class="divide-y divide-orange-200 dark:divide-orange-800 rounded-lg border border-orange-300 dark:border-orange-700 overflow-hidden">
+                                <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden">
                                     @foreach($checkedItems->sortBy('id') as $item)
-                                        <li class="px-4 py-3 bg-orange-100/60 dark:bg-orange-900/30">
+                                        <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30">
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity }}
                                             </span>

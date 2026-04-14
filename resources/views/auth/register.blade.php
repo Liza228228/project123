@@ -28,7 +28,7 @@
 
         <div class="mt-4">
             <x-input-label for="role_id" value="Роль" />
-            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-orange-200 dark:border-orange-800 dark:bg-orange-950 dark:text-white shadow-sm focus:ring-orange-500 dark:focus:ring-orange-400 dark:focus:ring-offset-orange-950" required>
+            <select id="role_id" name="role_id" class="block mt-1 w-full rounded-md border-stone-200 dark:border-stone-800 dark:bg-stone-950 dark:text-white shadow-sm focus:ring-stone-500 dark:focus:ring-stone-400 dark:focus:ring-offset-stone-950" required>
                 @foreach($roles as $role)
                     <option value="{{ $role->id }}" @selected((string) old('role_id') === (string) $role->id)>{{ $role->name }}</option>
                 @endforeach
@@ -49,7 +49,7 @@
         </div>
 
         <div class="flex items-center justify-end mt-4">
-            <a class="underline text-sm text-black dark:text-white hover:text-black dark:hover:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 dark:focus:ring-offset-orange-950" href="{{ route('login') }}">
+            <a class="underline text-sm text-black dark:text-white hover:text-black dark:hover:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-500 dark:focus:ring-offset-stone-950" href="{{ route('login') }}">
                 Уже зарегистрированы?
             </a>
 

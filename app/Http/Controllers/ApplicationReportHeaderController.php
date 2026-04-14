@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApplicationReportHeader;
+use App\Models\Role;
+use App\Models\User;
 use App\Support\ReportFontChoices;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,8 +24,9 @@ class ApplicationReportHeaderController extends Controller
     {
         $settings = ApplicationReportHeader::defaultSettings();
         $fontOptions = ReportFontChoices::options();
+        [$approverRoles, $approversByRole] = $this->approverMeta();
 
-        return view('applications.report.headers.create', compact('settings', 'fontOptions'));
+        return view('applications.report.headers.create', compact('settings', 'fontOptions', 'approverRoles', 'approversByRole'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -45,7 +48,7 @@ class ApplicationReportHeaderController extends Controller
             'settings.approval_name_caption' => ['nullable', 'string', 'max:500'],
             'settings.title' => ['nullable', 'string', 'max:2000'],
             'settings.title_font_pt' => ['nullable', 'integer', 'min:8', 'max:36'],
-            'settings.date_text' => ['nullable', 'string', 'max:500'],
+            'settings.date_text' => ['nullable', 'date_format:Y-m-d'],
             'settings.city_text' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -65,8 +68,9 @@ class ApplicationReportHeaderController extends Controller
     {
         $settings = $header->mergedSettings();
         $fontOptions = ReportFontChoices::options();
+        [$approverRoles, $approversByRole] = $this->approverMeta();
 
-        return view('applications.report.headers.edit', compact('header', 'settings', 'fontOptions'));
+        return view('applications.report.headers.edit', compact('header', 'settings', 'fontOptions', 'approverRoles', 'approversByRole'));
     }
 
     public function update(Request $request, ApplicationReportHeader $header): RedirectResponse
@@ -88,7 +92,7 @@ class ApplicationReportHeaderController extends Controller
             'settings.approval_name_caption' => ['nullable', 'string', 'max:500'],
             'settings.title' => ['nullable', 'string', 'max:2000'],
             'settings.title_font_pt' => ['nullable', 'integer', 'min:8', 'max:36'],
-            'settings.date_text' => ['nullable', 'string', 'max:500'],
+            'settings.date_text' => ['nullable', 'date_format:Y-m-d'],
             'settings.city_text' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -126,5 +130,32 @@ class ApplicationReportHeaderController extends Controller
         $merged['title_font_family'] = $titleFf;
 
         return $merged;
+    }
+
+    /**
+     * @return array{0:\Illuminate\Support\Collection<int,\App\Models\Role>,1:array<int,list<array{id:int,fio:string}>>}
+     */
+    private function approverMeta(): array
+    {
+        $approverRoles = Role::query()
+            ->where('id', '!=', 3)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $users = User::query()
+            ->where('role_id', '!=', 3)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get(['id', 'surname', 'name', 'patronymic', 'role_id']);
+
+        $approversByRole = [];
+        foreach ($users as $user) {
+            $approversByRole[(int) $user->role_id][] = [
+                'id' => (int) $user->id,
+                'fio' => trim($user->surname.' '.$user->name.' '.$user->patronymic),
+            ];
+        }
+
+        return [$approverRoles, $approversByRole];
     }
 }

@@ -12,7 +12,7 @@
 
     <div class="py-2 sm:py-8 md:py-10">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-orange-950 overflow-hidden shadow-sm rounded-lg border border-orange-200 dark:border-orange-800">
+            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6">
                     <div class="mb-4">
                         <p class="text-sm text-black dark:text-white opacity-80">Мастер участка</p>
@@ -34,7 +34,7 @@
                                 @else
                                     <div class="flex flex-wrap gap-1.5">
                                         @foreach($foreman->assignedSubdivisions as $assigned)
-                                            <span class="inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900/40 px-2.5 py-0.5 text-xs text-black dark:text-white">
+                                            <span class="inline-flex items-center rounded-full bg-stone-100 dark:bg-stone-900/40 px-2.5 py-0.5 text-xs text-black dark:text-white">
                                                 {{ $assigned->name }}
                                             </span>
                                         @endforeach
@@ -49,10 +49,10 @@
                                     id="subdivision-search"
                                     type="text"
                                     placeholder="Поиск по подразделениям..."
-                                    class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                    class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                 />
                             </div>
-                            <div class="max-h-80 overflow-y-auto rounded-lg border border-orange-200 dark:border-orange-800 p-3">
+                            <div class="max-h-80 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-800 p-3">
                                 <div id="subdivision-list" class="grid gap-2 sm:grid-cols-2">
                                     @foreach($subdivisions as $subdivision)
                                         <label class="subdivision-option inline-flex items-center gap-2 text-sm text-black dark:text-white" data-name="{{ mb_strtolower($subdivision->name) }}">
@@ -61,7 +61,7 @@
                                                 name="subdivision_ids[]"
                                                 value="{{ $subdivision->id }}"
                                                 @checked($foreman->assignedSubdivisions->contains('id', $subdivision->id))
-                                                class="rounded border-orange-300 text-orange-600 shadow-sm focus:ring-orange-500"
+                                                class="rounded border-stone-300 text-stone-600 shadow-sm focus:ring-stone-500"
                                             >
                                             <span>{{ $subdivision->name }}</span>
                                         </label>
@@ -73,8 +73,8 @@
                             <x-input-error :messages="$errors->get('subdivision_ids.*')" class="mt-2" />
                         </div>
 
-                        <div class="pt-2 border-t border-orange-200 dark:border-orange-800">
-                            <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white rounded-lg bg-orange-600 shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
+                        <div class="pt-2 border-t border-stone-200 dark:border-stone-800">
+                            <button type="submit" class="ui-btn ui-btn--primary">
                                 Назначить
                             </button>
                         </div>

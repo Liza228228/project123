@@ -16,7 +16,7 @@ return new class extends Migration
         });
 
         Schema::table('application_report_templates', function (Blueprint $table) {
-            $table->dropColumn(['header_text', 'footer_text']);
+            $table->dropColumn(['header_text']);
         });
     }
 
@@ -24,7 +24,6 @@ return new class extends Migration
     {
         Schema::table('application_report_templates', function (Blueprint $table) {
             $table->text('header_text')->nullable();
-            $table->text('footer_text')->nullable();
         });
 
         Schema::table('application_report_templates', function (Blueprint $table) {

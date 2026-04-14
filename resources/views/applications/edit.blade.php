@@ -37,9 +37,9 @@
     @endphp
 
     <div class="py-2 sm:py-8 md:py-10 max-w-2xl mx-auto sm:px-6 lg:px-8">
-        <div class="bg-white dark:bg-orange-800 border border-orange-200 dark:border-orange-700 rounded-lg shadow-sm overflow-hidden">
+        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm overflow-hidden">
             <div class="p-4 sm:p-8">
-                <p class="text-sm text-black dark:text-white border-l-2 border-orange-300 dark:border-orange-600 pl-4 py-0.5 mb-6">
+                <p class="text-sm text-black dark:text-white border-l-2 border-stone-300 dark:border-stone-600 pl-4 py-0.5 mb-6">
                     Позиции с отметкой «согласовано» только для просмотра. Остальные можно менять, удалять или дополнять. После сохранения заявки отметки согласования по позициям сбрасываются.
                 </p>
 
@@ -49,7 +49,7 @@
 
                     <div class="space-y-1.5">
                         <x-input-label for="subdivision_id" value="Подразделение" />
-                        <select id="subdivision_id" name="subdivision_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" required>
+                        <select id="subdivision_id" name="subdivision_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required>
                             <option value="">Выберите подразделение</option>
                             @foreach($subdivisions as $sub)
                                 <option value="{{ $sub->id }}" @selected(old('subdivision_id', $application->subdivision_id) == $sub->id)>{{ $sub->name }}</option>
@@ -63,7 +63,7 @@
                     @if (! Auth::user()->hasRoleId(4))
                         <div class="space-y-1.5">
                             <x-input-label for="responsible_user_id" value="Ответственный" />
-                            <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
+                            <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
                                 <option value="">Не назначен / выбрать автоматически</option>
                                 @foreach($users as $u)
                                     <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
@@ -83,7 +83,7 @@
                                 name="management_change_reason"
                                 rows="3"
                                 maxlength="500"
-                                class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                             >{{ old('management_change_reason') }}</textarea>
 
                             <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1" />
@@ -92,7 +92,7 @@
 
                     <div class="space-y-1.5">
                         <x-input-label for="transport_option_id" value="Способ доставки" />
-                        <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500">
+                        <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
                             <option value="">Не указан</option>
                             @foreach($transportOptions as $t)
                                 <option value="{{ $t->id }}" @selected(old('transport_option_id', $application->transport_option_id) == $t->id)>
@@ -120,7 +120,7 @@
                                 @endphp
 
                                 @if($locked)
-                                    <div class="equipment-row equipment-row--locked flex flex-col gap-2 p-3 rounded-lg border border-orange-300 dark:border-orange-500 bg-orange-100/70 dark:bg-orange-900/50">
+                                    <div class="equipment-row equipment-row--locked flex flex-col gap-2 p-3 rounded-lg border border-stone-300 dark:border-stone-500 bg-stone-100/70 dark:bg-stone-900/50">
                                         <div class="flex flex-wrap items-center justify-between gap-2">
                                             <span class="text-xs font-semibold uppercase tracking-wide text-black dark:text-white">Согласовано </span>
                                         </div>
@@ -138,22 +138,22 @@
                                         <input type="hidden" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" />
                                     </div>
                                 @elseif($isCustomRow)
-                                    <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
+                                    <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
                                             <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
                                         </div>
                                         <div class="w-20">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" required />
+                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
                                         </div>
-                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
                                 @else
-                                    <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
+                                    <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
                                         <div class="flex-1 min-w-[200px]">
@@ -170,15 +170,15 @@
                                                 autocorrect="off"
                                                 autocapitalize="off"
                                                 spellcheck="false"
-                                                class="equipment-search block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                                                class="equipment-search block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                             />
-                                            <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-950 shadow-sm"></div>
+                                            <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 shadow-sm"></div>
                                         </div>
                                         <div class="w-20">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" required />
+                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
                                         </div>
-                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
                                 @endif
                             @endforeach
@@ -196,12 +196,12 @@
 
                     <div class="space-y-1.5">
                         <x-input-label for="desired_delivery_date" value="Желаемая дата поставки" />
-                        <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                        <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
                         <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1" />
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-4 pt-2 border-t border-orange-200 dark:border-orange-700">
-                        <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-500 border border-transparent rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950">
+                    <div class="flex flex-wrap items-center gap-4 pt-2 border-t border-stone-200 dark:border-stone-700">
+                        <button type="submit" class="ui-btn ui-btn--primary">
                             Сохранить изменения
                         </button>
                         <a href="{{ route('applications.index') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white">
@@ -214,7 +214,7 @@
     </div>
 
     <script type="text/template" id="equipment-row-from-list-tpl">
-        <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
+        <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
             <input type="hidden" name="items[__INDEX__][item_id]" value="" />
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
             <div class="flex-1 min-w-[200px]">
@@ -227,31 +227,31 @@
                     autocorrect="off"
                     autocapitalize="off"
                     spellcheck="false"
-                    class="equipment-search block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500"
+                    class="equipment-search block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                 />
-                <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-orange-200 dark:border-orange-700 bg-white dark:bg-orange-950 shadow-sm"></div>
+                <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 shadow-sm"></div>
             </div>
             <div class="w-20">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" required />
+                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
             </div>
-            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
     <script type="text/template" id="equipment-row-custom-tpl">
-        <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-orange-200 dark:border-orange-600 bg-orange-50/80 dark:bg-orange-900/40">
+        <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
             <input type="hidden" name="items[__INDEX__][item_id]" value="" />
             <input type="hidden" name="items[__INDEX__][equipment_id]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" />
+                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
                 <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
             </div>
             <div class="w-20">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white text-sm shadow-sm focus:ring-orange-500 focus:border-orange-500" required />
+                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
             </div>
-            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
+            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
     <script>
@@ -435,7 +435,7 @@
                         }
 
                         box.innerHTML = matches.map(function(item) {
-                            return '<button type="button" class="equipment-suggestion-item block w-full px-3 py-2 text-left text-sm text-black dark:text-white hover:bg-orange-100 dark:hover:bg-orange-900/40" data-id="' + item.id + '" data-name="' + item.name.replace(/"/g, '&quot;') + '">' + item.name + '</button>';
+                            return '<button type="button" class="equipment-suggestion-item block w-full px-3 py-2 text-left text-sm text-black dark:text-white hover:bg-stone-100 dark:hover:bg-stone-900/40" data-id="' + item.id + '" data-name="' + item.name.replace(/"/g, '&quot;') + '">' + item.name + '</button>';
                         }).join('');
                         box.classList.remove('hidden');
 

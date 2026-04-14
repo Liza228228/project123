@@ -3,7 +3,7 @@
 ])
 
 @php
-    $base = 'group relative shrink-0 rounded-full border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:focus:ring-offset-orange-950';
+    $base = 'group relative shrink-0 rounded-full border shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/45 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-stone-950';
     $sizes = $variant === 'compact'
         ? 'h-8 w-14'
         : 'h-9 w-16';
@@ -12,12 +12,12 @@
 <button
     type="button"
     data-theme-toggle
-    {{ $attributes->merge(['class' => $base.' '.$sizes.' border-orange-300 bg-gradient-to-b from-white to-orange-50 hover:border-orange-400 dark:border-orange-600 dark:from-orange-900 dark:to-orange-950 dark:hover:border-orange-500']) }}
+    {{ $attributes->merge(['class' => $base.' '.$sizes.' border-stone-300 bg-gradient-to-b from-white to-orange-50/60 hover:border-orange-200 dark:border-stone-600 dark:from-stone-900 dark:to-orange-950/40 dark:hover:border-orange-800/50']) }}
     title="Переключить светлую и тёмную тему"
 >
     <span class="sr-only">Переключить тему оформления</span>
     <span
-        class="pointer-events-none absolute top-1 left-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-amber-500 shadow-md ring-1 ring-orange-200/80 transition-transform duration-200 ease-out dark:translate-x-7 dark:bg-orange-100 dark:text-orange-900 dark:ring-orange-400/50"
+        class="pointer-events-none absolute top-1 left-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-orange-700/90 shadow-md ring-1 ring-orange-200/70 transition-transform duration-200 ease-out dark:translate-x-7 dark:bg-stone-100 dark:text-orange-950 dark:ring-orange-300/40"
     >
         {{-- Светлая тема активна: показываем солнце --}}
         <svg class="h-4 w-4 dark:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

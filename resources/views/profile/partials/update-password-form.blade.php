@@ -15,24 +15,24 @@
 
         <div>
             <x-input-label for="update_password_current_password" value="Текущий пароль" />
-            <x-text-input id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="current-password" />
+            <x-text-input id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white focus:border-stone-500 focus:ring-stone-500" autocomplete="current-password" />
             <x-input-error :messages="$errors->updatePassword->get('current_password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password" value="Новый пароль" />
-            <x-text-input id="update_password_password" name="password" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
+            <x-text-input id="update_password_password" name="password" type="password" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white focus:border-stone-500 focus:ring-stone-500" autocomplete="new-password" />
             <x-input-error :messages="$errors->updatePassword->get('password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password_confirmation" value="Подтверждение пароля" />
-            <x-text-input id="update_password_password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full rounded-lg border-orange-300 dark:border-orange-600 dark:bg-orange-900 dark:text-white focus:border-orange-500 focus:ring-orange-500" autocomplete="new-password" />
+            <x-text-input id="update_password_password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white focus:border-stone-500 focus:ring-stone-500" autocomplete="new-password" />
             <x-input-error :messages="$errors->updatePassword->get('password_confirmation')" class="mt-2" />
         </div>
 
         <div class="flex items-center gap-4">
-            <button type="submit" class="inline-flex items-center rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:bg-orange-600 dark:text-white dark:hover:bg-orange-500 dark:focus:ring-offset-orange-950">
+            <button type="submit" class="ui-btn ui-btn--primary">
                 Сохранить
             </button>
 

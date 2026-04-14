@@ -11,6 +11,7 @@ class ApplicationReportTemplate extends Model
         'report_header_id',
         'report_footer_id',
         'main_body_text',
+        'footer_text',
         'main_font_family',
         'table_font_family',
     ];
@@ -36,6 +37,7 @@ class ApplicationReportTemplate extends Model
             'report_header_id' => null,
             'report_footer_id' => null,
             'main_body_text' => null,
+            'footer_text' => null,
             'main_font_family' => 'Times New Roman, Times, serif',
             'table_font_family' => 'Times New Roman, Times, serif',
         ]);

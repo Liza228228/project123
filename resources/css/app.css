@@ -8,21 +8,91 @@
     }
 
     body {
-        @apply font-sans text-black dark:text-white;
+        @apply font-sans text-stone-900 dark:text-stone-100;
     }
 }
 
 @layer components {
     .ambient-grid {
         background-image:
-            linear-gradient(to right, rgb(234 88 12 / 0.05) 1px, transparent 1px),
-            linear-gradient(to bottom, rgb(234 88 12 / 0.05) 1px, transparent 1px);
+            linear-gradient(to right, rgb(120 113 108 / 0.035) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(194 65 12 / 0.028) 1px, transparent 1px);
         background-size: 2.5rem 2.5rem;
     }
 
     .dark .ambient-grid {
         background-image:
-            linear-gradient(to right, rgb(253 186 116 / 0.06) 1px, transparent 1px),
-            linear-gradient(to bottom, rgb(253 186 116 / 0.06) 1px, transparent 1px);
+            linear-gradient(to right, rgb(168 162 158 / 0.04) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(234 88 12 / 0.04) 1px, transparent 1px);
+    }
+
+    /**
+     * Оформление таблиц: белый блок, тёплая рамка, шапка и зебра на светлом фоне.
+     */
+    .app-table-shell {
+        @apply overflow-x-auto rounded-xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35;
+    }
+
+    .app-table-shell > table {
+        @apply min-w-full border-collapse text-sm;
+    }
+
+    .app-table-shell > table > thead {
+        @apply bg-orange-50 dark:bg-orange-950/35;
+    }
+
+    .app-table-shell > table > thead > tr {
+        @apply border-b border-orange-200/80 dark:border-orange-800/50;
+    }
+
+    .app-table-shell > table > thead > tr > th {
+        @apply text-stone-700 dark:text-stone-200;
+    }
+
+    .app-table-shell > table > tbody {
+        @apply divide-y divide-orange-100/90 bg-white dark:divide-orange-900/35 dark:bg-stone-950;
+    }
+
+    .app-table-shell > table > tbody > tr {
+        @apply transition-colors duration-150;
+    }
+
+    .app-table-shell > table > tbody > tr:nth-child(odd) {
+        @apply bg-orange-50/40 dark:bg-stone-900/55;
+    }
+
+    .app-table-shell > table > tbody > tr:nth-child(even) {
+        @apply bg-white dark:bg-stone-950;
+    }
+
+    .app-table-shell > table > tbody > tr:hover {
+        @apply bg-orange-100/55 dark:bg-orange-950/30;
+    }
+
+    /**
+     * Единые кнопки: один размер скругления, без «пружины» и лишних теней.
+     */
+    .ui-btn {
+        @apply inline-flex items-center justify-center gap-1.5 rounded-md px-4 py-2 text-center text-sm font-medium leading-5 text-black transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-stone-900 disabled:pointer-events-none disabled:opacity-50;
+    }
+
+    .ui-btn--primary {
+        @apply border border-orange-500/70 bg-orange-400 text-black hover:bg-orange-500 active:bg-orange-600 focus-visible:ring-orange-500/60 dark:border-orange-700 dark:bg-orange-700 dark:text-black dark:hover:bg-orange-600 dark:active:bg-orange-500;
+    }
+
+    .ui-btn--secondary {
+        @apply border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 focus-visible:ring-stone-400/60 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 dark:focus-visible:ring-stone-500/50;
+    }
+
+    .ui-btn--danger {
+        @apply border border-transparent bg-rose-600 text-black hover:bg-rose-700 active:bg-rose-800 focus-visible:ring-rose-500/70 dark:bg-rose-600 dark:text-black dark:hover:bg-rose-500 dark:active:bg-rose-700;
+    }
+
+    .ui-btn--sm {
+        @apply px-3 py-1.5 text-xs;
+    }
+
+    .ui-btn--lg {
+        @apply px-6 py-3 text-base font-semibold;
     }
 }

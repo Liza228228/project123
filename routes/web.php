@@ -39,6 +39,7 @@ Route::middleware(['auth', 'applications', 'supply_head'])->prefix('applications
     Route::get('/', [ApplicationReportController::class, 'index'])->name('index');
     Route::post('/layout', [ApplicationReportController::class, 'updateLayout'])->name('layout');
     Route::post('/preview', [ApplicationReportController::class, 'preview'])->name('preview');
+    Route::post('/pdf', [ApplicationReportController::class, 'pdf'])->name('pdf');
     Route::resource('headers', ApplicationReportHeaderController::class)->except(['show'])->names('headers');
     Route::resource('footers', ApplicationReportFooterController::class)->except(['show'])->names('footers');
 });

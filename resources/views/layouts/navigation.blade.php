@@ -1,13 +1,13 @@
-﻿<nav x-data="{ open: false }" class="sticky top-0 z-50 bg-orange-50/75 dark:bg-orange-900/75 backdrop-blur-md border-b border-orange-200/80 dark:border-orange-700/80 shadow-sm shadow-orange-950/[0.04] dark:shadow-black/25 text-black dark:text-white pt-[max(0px,env(safe-area-inset-top))]">
-    <div class="h-0.5 w-full bg-gradient-to-r from-transparent via-orange-400/60 to-transparent dark:via-orange-500/40" aria-hidden="true"></div>
+﻿<nav x-data="{ open: false }" class="sticky top-0 z-50 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md border-b border-orange-400/70 dark:border-orange-800/60 shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100 pt-[max(0px,env(safe-area-inset-top))]">
+    <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center gap-3">
-                    <a href="{{ route('dashboard') }}" class="group flex items-center gap-2 rounded-xl px-1 py-1 -ms-1 ring-1 ring-transparent hover:ring-orange-300/50 dark:hover:ring-orange-600/40 transition-shadow">
-                        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md shadow-orange-600/25 group-hover:shadow-lg group-hover:shadow-orange-600/30 transition-shadow">
+                    <a href="{{ route('dashboard') }}" class="group flex items-center gap-2 rounded-xl px-1 py-1 -ms-1 ring-1 ring-transparent hover:ring-orange-300/45 dark:hover:ring-orange-800/35 transition-shadow">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-600 to-orange-800 text-white shadow-sm shadow-orange-700/20 group-hover:shadow-md group-hover:shadow-orange-700/25 transition-shadow">
                             <svg class="h-5 w-5 opacity-95" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                             </svg>
@@ -32,7 +32,7 @@
                 </div>
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-black dark:text-white bg-transparent hover:opacity-80 focus:outline-none transition ease-in-out duration-150">
+                        <button type="button" class="ui-btn ui-btn--secondary px-3 py-2 gap-2">
                             <div class="text-end">
                                 <div>{{ Auth::user()->name }}</div>
                                 <div class="text-xs font-normal text-black/60 dark:text-white/60 max-w-[14rem] truncate" title="{{ Auth::user()->role?->name ?? '' }}">
@@ -69,7 +69,7 @@
 
             <!-- Hamburger -->
             <div class="-me-2 flex items-center sm:hidden">
-                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-black dark:text-white hover:opacity-80 hover:bg-orange-100 dark:hover:bg-orange-800 focus:outline-none focus:bg-orange-100 dark:focus:bg-orange-800 transition duration-150 ease-in-out">
+                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-black dark:text-white hover:opacity-80 hover:bg-stone-100 dark:hover:bg-stone-800 focus:outline-none focus:bg-stone-100 dark:focus:bg-stone-800 transition duration-150 ease-in-out">
                     <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
                         <path :class="{'hidden': open, 'inline-flex': ! open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                         <path :class="{'hidden': ! open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -88,8 +88,8 @@
         </div>
 
         <!-- Responsive Settings Options -->
-        <div class="pt-4 pb-1 border-t border-orange-200 dark:border-orange-700">
-            <div class="px-4 py-3 flex items-center justify-between gap-3 border-b border-orange-100 dark:border-orange-800/80">
+        <div class="pt-4 pb-1 border-t border-stone-200 dark:border-stone-700">
+            <div class="px-4 py-3 flex items-center justify-between gap-3 border-b border-stone-100 dark:border-stone-800/80">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-wider text-black/50 dark:text-white/50">Оформление</p>
                     <p class="mt-0.5 text-xs text-black/60 dark:text-white/60">Светлая или тёмная тема</p>
@@ -99,7 +99,7 @@
             <div class="px-4 pt-3">
                 <div class="font-medium text-base text-black dark:text-white">{{ Auth::user()->name }}</div>
                 <div class="font-medium text-sm text-black dark:text-white opacity-80">{{ Auth::user()->email }}</div>
-                <div class="mt-1 text-xs text-orange-800 dark:text-orange-200 font-medium">
+                <div class="mt-1 text-xs text-orange-900 dark:text-orange-200/90 font-medium">
                     Роль: {{ Auth::user()->role?->name ?? 'не назначена' }}
                 </div>
             </div>

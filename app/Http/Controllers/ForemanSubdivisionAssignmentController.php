@@ -18,11 +18,15 @@ class ForemanSubdivisionAssignmentController extends Controller
         $subdivisions = Subdivision::query()
             ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
-            ->get();
+            ->paginate(10)
+            ->withQueryString();
+        $subdivisionOptions = Subdivision::query()
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $canManage = $this->canManageSubdivisionsAndWarehouses($request);
 
-        return view('foreman-subdivisions.subdivisions-readonly', compact('subdivisions', 'canManage'));
+        return view('foreman-subdivisions.subdivisions-readonly', compact('subdivisions', 'subdivisionOptions', 'canManage'));
     }
 
     public function assignments(Request $request): View

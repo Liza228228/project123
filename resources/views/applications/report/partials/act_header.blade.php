@@ -3,6 +3,15 @@
     $ff = $s['font_family'];
     $titleFf = ($s['title_font_family'] ?? '') !== '' ? $s['title_font_family'] : $ff;
     $titlePt = (int) ($s['title_font_pt'] ?? 14);
+    $dateTextRaw = trim((string) ($s['date_text'] ?? ''));
+    $dateTextDisplay = $dateTextRaw;
+    if ($dateTextRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTextRaw) === 1) {
+        try {
+            $dateTextDisplay = \Illuminate\Support\Carbon::parse($dateTextRaw)->locale('ru')->translatedFormat('«d» F Y г.');
+        } catch (\Throwable $e) {
+            $dateTextDisplay = $dateTextRaw;
+        }
+    }
 @endphp
 <div class="act-document-header" style="font-family: {{ $ff }};">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.25rem; margin-bottom:1rem;">
@@ -41,7 +50,7 @@
 
     @if(trim((string) ($s['date_text'] ?? '')) !== '' || trim((string) ($s['city_text'] ?? '')) !== '')
         <div style="display:flex; justify-content:space-between; gap:1rem; margin-bottom:0.5rem;">
-            <span>{{ $s['date_text'] }}</span>
+            <span>{{ $dateTextDisplay }}</span>
             <span>{{ $s['city_text'] }}</span>
         </div>
     @endif

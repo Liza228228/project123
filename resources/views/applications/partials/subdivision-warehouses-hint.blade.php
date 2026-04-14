@@ -4,7 +4,7 @@
 @if(count($warehousesBySubdivision) > 0)
     <div
         id="subdivision-warehouses-panel"
-        class="hidden rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50/70 dark:bg-orange-900/25 px-3 py-2 text-black dark:text-white"
+        class="hidden rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/25 px-3 py-2 text-black dark:text-white"
     >
         <p class="text-xs font-medium text-black dark:text-white mb-1">Склады выбранного подразделения</p>
 
@@ -36,7 +36,7 @@
                 list.innerHTML = rows
                     .map(function (r) {
                         return (
-                            '<li class="py-1 border-b border-orange-200 dark:border-orange-800 last:border-0 last:pb-0">' +
+                            '<li class="py-1 border-b border-stone-200 dark:border-stone-800 last:border-0 last:pb-0">' +
                             '<span class="font-mono text-xs opacity-80">' +
                             escapeHtml(r.code) +
                             '</span> — ' +
