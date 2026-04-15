@@ -244,7 +244,7 @@
                                                 />
                                                 <div class="min-w-0 flex-1">
                                                     <span class="text-sm font-medium text-black dark:text-white">
-                                                        {{ $item->equipment_display_name }} × {{ $item->quantity }}
+                                                        {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                     </span>
                                                 </div>
                                             </div>
@@ -333,7 +333,7 @@
                                     @foreach($uncheckedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25">
                                             <span class="text-sm font-medium text-black dark:text-white">
-                                                {{ $item->equipment_display_name }} × {{ $item->quantity }}
+                                                {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                             @if($application->itemLineRejectionReason($item->id))
                                                 <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
@@ -349,7 +349,7 @@
                                     @foreach($checkedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30">
                                             <span class="text-sm font-medium text-black dark:text-white">
-                                                {{ $item->equipment_display_name }} × {{ $item->quantity }}
+                                                {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                         </li>
                                     @endforeach
@@ -357,6 +357,84 @@
                             @endif
                         @endif
                     </div>
+
+                    @if(Auth::user()->hasAnyRoleId([1, 2]))
+                        @php
+                            $approvedForIssue = $application->items->filter(fn ($item) => $item->is_checked && $item->equipment_id);
+                        @endphp
+                        <div class="pt-2 border-t border-stone-200 dark:border-stone-800">
+                            <h3 class="text-sm font-medium text-black dark:text-white mb-3">Списание со склада по заявке</h3>
+
+                            @if(!$mainWarehouse)
+                                <p class="text-sm text-red-700 dark:text-red-400">
+                                    Не найден основной склад «Администрация». Назначьте основной склад, чтобы списывать оборудование по заявкам.
+                                </p>
+                            @elseif($approvedForIssue->isEmpty())
+                                <p class="text-sm text-black dark:text-white opacity-80">
+                                    Нет согласованных позиций из справочника оборудования для списания.
+                                </p>
+                            @else
+                                @error('stock')
+                                    <div class="mb-3 text-sm text-red-700 dark:text-red-400">{{ $message }}</div>
+                                @enderror
+
+                                <p class="text-xs text-black dark:text-white opacity-80 mb-2">
+                                    Склад списания: <span class="font-medium">{{ $mainWarehouse->name }}</span>
+                                </p>
+
+                                <form method="POST" action="{{ route('applications.issue-stock', $application) }}" class="space-y-3">
+                                    @csrf
+                                    <div class="rounded-lg border border-stone-200 dark:border-stone-700 overflow-hidden">
+                                        <table class="min-w-full text-sm">
+                                            <thead class="bg-stone-50 dark:bg-stone-900/40">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left text-black dark:text-white">Позиция</th>
+                                                    <th class="px-3 py-2 text-right text-black dark:text-white">Согласовано</th>
+                                                    <th class="px-3 py-2 text-right text-black dark:text-white">Списано</th>
+                                                    <th class="px-3 py-2 text-right text-black dark:text-white">Осталось</th>
+                                                    <th class="px-3 py-2 text-right text-black dark:text-white">Списать сейчас</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-stone-200 dark:divide-stone-800">
+                                                @foreach($approvedForIssue->sortBy('id') as $item)
+                                                    @php
+                                                        $issued = (float) ($issuedByItemId[$item->id] ?? 0);
+                                                        $remaining = (float) ($remainingByItemId[$item->id] ?? max(0, (float) $item->quantity - $issued));
+                                                    @endphp
+                                                    <tr class="bg-white dark:bg-stone-950/70">
+                                                        <td class="px-3 py-2 text-black dark:text-white">{{ $item->equipment_display_name }}</td>
+                                                        <td class="px-3 py-2 text-right text-black dark:text-white">{{ number_format((float) $item->quantity, 3, '.', ' ') }}</td>
+                                                        <td class="px-3 py-2 text-right text-black dark:text-white">{{ number_format($issued, 3, '.', ' ') }}</td>
+                                                        <td class="px-3 py-2 text-right text-black dark:text-white font-medium">{{ number_format($remaining, 3, '.', ' ') }}</td>
+                                                        <td class="px-3 py-2 text-right">
+                                                            <input
+                                                                type="number"
+                                                                step="0.001"
+                                                                min="0"
+                                                                max="{{ number_format($remaining, 3, '.', '') }}"
+                                                                name="items[{{ $item->id }}][quantity]"
+                                                                value="0"
+                                                                class="w-28 rounded-lg border-stone-300 dark:border-stone-700 dark:bg-stone-900 dark:text-white text-sm"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div>
+                                        <label for="issue-comment" class="block text-xs text-black dark:text-white mb-1">Комментарий к списанию (необязательно)</label>
+                                        <textarea id="issue-comment" name="comment" rows="2" class="block w-full rounded-lg border-stone-300 dark:border-stone-700 dark:bg-stone-900 dark:text-white text-sm"></textarea>
+                                    </div>
+
+                                    <button type="submit" class="ui-btn ui-btn--primary">
+                                        Списать со склада по заявке
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

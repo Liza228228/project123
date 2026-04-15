@@ -114,9 +114,7 @@
                                     </option>
                                 @endforeach
                             </select>
-                            <p class="mt-1 text-xs text-black/60 dark:text-white/60">
-                                ФИО выбранного директора автоматически подставляется в подпись и в текст по шаблону <code>&#123;&#123;director_fio&#125;&#125;</code>.
-                            </p>
+
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

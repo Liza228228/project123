@@ -8,15 +8,8 @@ class ApplicationReportFooter extends Model
 {
     protected $fillable = [
         'name',
-        'settings',
+        'font_size',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'settings' => 'array',
-        ];
-    }
 
     /**
      * @return array<string, mixed>
@@ -25,6 +18,7 @@ class ApplicationReportFooter extends Model
     {
         return [
             'font_family' => 'Times New Roman, Times, serif',
+            'font_size' => 14,
             'chairman_align' => 'left',
             'chairman_label' => 'Председатель',
             'chairman_sig_caption' => '(подпись)',
@@ -42,6 +36,10 @@ class ApplicationReportFooter extends Model
      */
     public function mergedSettings(): array
     {
-        return array_replace_recursive(static::defaultSettings(), $this->settings ?? []);
+        $fontSize = max(8, min(36, (int) ($this->font_size ?? 14)));
+
+        return array_replace_recursive(static::defaultSettings(), [
+            'font_size' => $fontSize,
+        ]);
     }
 }

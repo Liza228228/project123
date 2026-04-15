@@ -5,7 +5,7 @@
                 Заявки
             </h2>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:shrink-0">
-                @if (Auth::user()->hasRoleId(2))
+                @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
                     <a href="{{ route('applications.report.index') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 transition hover:bg-stone-100 dark:hover:bg-stone-900/50 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:focus:ring-offset-stone-950 whitespace-nowrap w-full sm:w-auto">
                         Отчёт по заявкам
                     </a>
@@ -30,7 +30,7 @@
             <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4">
-                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)_minmax(14rem,20rem)] lg:items-end">
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-4 lg:items-end">
                             <div class="min-w-0">
                                 <label for="applications-q" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Поиск</label>
                                 <input type="search" name="q" id="applications-q" value="{{ $search }}"
@@ -62,12 +62,69 @@
                                     </select>
                                 </div>
                             @endunless
+                            <div class="min-w-0">
+                                <label for="applications-per-page" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">На странице</label>
+                                <select name="per_page" id="applications-per-page"
+                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                    @foreach([10, 25, 50] as $size)
+                                        <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="min-w-0 lg:col-span-4">
+                                <p class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Сортировка</p>
+                                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <select name="sort_primary_field"
+                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            <option value="created_at" @selected(($sortState['primary_field'] ?? '') === 'created_at')>Дата создания</option>
+                                            <option value="desired_delivery_date" @selected(($sortState['primary_field'] ?? '') === 'desired_delivery_date')>Желаемая дата поставки</option>
+                                            <option value="subdivision" @selected(($sortState['primary_field'] ?? '') === 'subdivision')>Подразделение</option>
+                                            <option value="responsible" @selected(($sortState['primary_field'] ?? '') === 'responsible')>Ответственный</option>
+                                            <option value="author" @selected(($sortState['primary_field'] ?? '') === 'author')>Автор заявки</option>
+                                            <option value="approved_by" @selected(($sortState['primary_field'] ?? '') === 'approved_by')>Согласовавший</option>
+                                            <option value="status" @selected(($sortState['primary_field'] ?? '') === 'status')>Статус</option>
+                                        </select>
+                                        <select name="sort_primary_direction"
+                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            <option value="asc" @selected(($sortState['primary_direction'] ?? '') === 'asc')>По возрастанию</option>
+                                            <option value="desc" @selected(($sortState['primary_direction'] ?? '') === 'desc')>По убыванию</option>
+                                        </select>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <select name="sort_secondary_field"
+                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            <option value="" @selected(empty($sortState['secondary_field']))>Без второго поля</option>
+                                            <option value="created_at" @selected(($sortState['secondary_field'] ?? '') === 'created_at')>Дата создания</option>
+                                            <option value="desired_delivery_date" @selected(($sortState['secondary_field'] ?? '') === 'desired_delivery_date')>Желаемая дата поставки</option>
+                                            <option value="subdivision" @selected(($sortState['secondary_field'] ?? '') === 'subdivision')>Подразделение</option>
+                                            <option value="responsible" @selected(($sortState['secondary_field'] ?? '') === 'responsible')>Ответственный</option>
+                                            <option value="author" @selected(($sortState['secondary_field'] ?? '') === 'author')>Автор заявки</option>
+                                            <option value="approved_by" @selected(($sortState['secondary_field'] ?? '') === 'approved_by')>Согласовавший</option>
+                                            <option value="status" @selected(($sortState['secondary_field'] ?? '') === 'status')>Статус</option>
+                                        </select>
+                                        <select name="sort_secondary_direction"
+                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            <option value="asc" @selected(($sortState['secondary_direction'] ?? '') === 'asc')>По возрастанию</option>
+                                            <option value="desc" @selected(($sortState['secondary_direction'] ?? '') === 'desc')>По убыванию</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="flex flex-col sm:flex-row flex-wrap gap-2 pt-1 sm:justify-end">
                             <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[44px] py-3 sm:min-h-0 sm:w-auto sm:py-2 whitespace-nowrap shrink-0 [touch-action:manipulation]">
                                 Применить
                             </button>
-                            @if($search !== '' || $equipmentFilter !== 'all' || $selectedForemanId !== null)
+                            @if(
+                                $search !== ''
+                                || $equipmentFilter !== 'all'
+                                || $selectedForemanId !== null
+                                || (($sortState['primary_field'] ?? 'created_at') !== 'created_at')
+                                || (($sortState['primary_direction'] ?? 'desc') !== 'desc')
+                                || !empty($sortState['secondary_field'])
+                                || (($sortState['secondary_direction'] ?? 'asc') !== 'asc')
+                            )
                                 <a href="{{ route('applications.index') }}" class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-3 sm:py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap shrink-0 [touch-action:manipulation]">
                                     Сбросить
                                 </a>
@@ -224,7 +281,7 @@
                                                         @foreach($idxUnchecked as $item)
                                                             <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25">
                                                                 <span class="text-sm font-medium text-black dark:text-white">
-                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity }}
+                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                                 </span>
                                                                 @if($application->itemLineRejectionReason($item->id))
                                                                     <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
@@ -239,7 +296,7 @@
                                                         @foreach($idxChecked as $item)
                                                             <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30">
                                                                 <span class="text-sm font-medium text-black dark:text-white">
-                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity }}
+                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                                 </span>
                                                             </li>
                                                         @endforeach

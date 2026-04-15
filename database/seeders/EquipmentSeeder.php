@@ -3,12 +3,23 @@
 namespace Database\Seeders;
 
 use App\Models\Equipment;
+use App\Models\MeasurementUnit;
+use App\Models\UnitType;
 use Illuminate\Database\Seeder;
 
 class EquipmentSeeder extends Seeder
 {
     public function run(): void
     {
+        $pieceTypeId = (int) UnitType::query()
+            ->where('code', 'piece')
+            ->value('id');
+
+        $pieceUnitId = (int) MeasurementUnit::query()
+            ->where('unit_type_id', $pieceTypeId)
+            ->where('code', 'шт')
+            ->value('id');
+
         $names = [
             'Труба стальная в ППУ изоляции Ду 50',
             'Труба стальная в ППУ изоляции Ду 80',
@@ -45,10 +56,53 @@ class EquipmentSeeder extends Seeder
             'Электродвигатель насоса',
             'Изоляция трубопровода (скорлупа ППУ)',
             'Тепловая камера (дверь, люк)',
+            '00-000111 — 058 А ВЕ авто кран МАЗ',
+            'БП-000155 — 076 Е НС миксер МАЗ/арендован',
+            'БП-000142 — 2140- Каток SAKAI TW500W',
+            'БП-000163 — 216 В3 CATERPILAR',
+            '00-000112 — 226 А ВЕ авто кран КАМАЗ 70',
+            'БП-000164 — 447 М-ВА 138 Тойота ленд крузер 150',
+            'БП-000146 — 4479- Бульдозер Shantyu',
+            'БП-000140 — 484 Кан борт HOWO',
+            'БП-000154 — 546 С 193 ВТ автовышка/арендован',
+            '00-000132 — 5552-КАТО',
+            'БП-000145 — 6994- Каток SAKAI TW41',
+            'БП-000162 — 6995- Асфальтоуклвдчик',
+            'БП-000153 — 847 С 123 СО авто кран Камаз/арендован',
+            'БП-000139 — 9307-Экскав. Хёндай 200',
+            'БП-000143 — 9324-SMART 350 min-(Т.К- 4507)',
+            '00-000120 — Прицеп Аляска',
+            '00-000131 — Хлебников ГСМ и зап.части',
         ];
 
         foreach ($names as $name) {
-            Equipment::firstOrCreate(['name' => $name]);
+            [$baseName, $sizeValue] = $this->splitEquipmentName($name);
+
+            Equipment::query()->updateOrCreate(
+                ['name' => $name],
+                [
+                    'base_name' => $baseName,
+                    'size_value' => $sizeValue,
+                    'measurement_unit_id' => $pieceUnitId > 0 ? $pieceUnitId : null,
+                ]
+            );
         }
+    }
+
+    /**
+     * @return array{0:string,1:?string}
+     */
+    private function splitEquipmentName(string $name): array
+    {
+        $clean = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+        if ($clean === '') {
+            return ['—', null];
+        }
+
+        if (preg_match('/^(.*)\s+(Ду\s*\d+.*)$/u', $clean, $matches)) {
+            return [trim((string) $matches[1]), trim((string) $matches[2])];
+        }
+
+        return [$clean, null];
     }
 }

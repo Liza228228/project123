@@ -9,10 +9,7 @@
 
         @include('partials.theme-init-script')
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
+        
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
@@ -34,7 +31,7 @@
             @endisset
 
             <!-- Page Content -->
-            <main class="flex-1 bg-orange-50 dark:bg-stone-950 py-6 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <main class="flex-1 bg-orange-50 dark:bg-orange-950/80 py-6 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 {{ $slot }}
             </main>
 

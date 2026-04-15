@@ -15,6 +15,39 @@ use Illuminate\Database\Seeder;
  */
 class WarehouseDataFrom1CsvSeeder extends Seeder
 {
+    /**
+     * Коды, которые должны учитываться как оборудование, а не как склады.
+     *
+     * @var array<int, string>
+     */
+    private const EXCLUDED_WAREHOUSE_CODES = [
+        'БП-000150',
+        '00-000061',
+        '00-000059',
+        '00-000060',
+        'БП-000147',
+        '00-000082',
+        'БП-000144',
+        'БП-000151',
+        '00-000111',
+        'БП-000155',
+        'БП-000142',
+        'БП-000163',
+        '00-000112',
+        'БП-000164',
+        'БП-000146',
+        'БП-000140',
+        'БП-000154',
+        '00-000132',
+        'БП-000145',
+        'БП-000162',
+        'БП-000153',
+        'БП-000139',
+        'БП-000143',
+        '00-000120',
+        '00-000131',
+    ];
+
     public function run(): void
     {
         $dataPath = __DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'warehouse_1_csv.php';
@@ -35,6 +68,11 @@ class WarehouseDataFrom1CsvSeeder extends Seeder
         );
 
         $currentSubdivision = null;
+
+        // Удаляем ранее импортированные записи, которые должны быть оборудованием.
+        Warehouse::query()
+            ->whereIn('code', self::EXCLUDED_WAREHOUSE_CODES)
+            ->delete();
 
         foreach ($lines as $index => $line) {
             $line = trim($line);
@@ -79,6 +117,10 @@ class WarehouseDataFrom1CsvSeeder extends Seeder
             if ($code === '') {
                 $this->command?->warn("Пропуск склада без кода: {$name}");
 
+                continue;
+            }
+
+            if (in_array($code, self::EXCLUDED_WAREHOUSE_CODES, true)) {
                 continue;
             }
 

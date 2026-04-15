@@ -28,6 +28,9 @@
                             <a href="{{ route('users.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
                                 Управление пользователями
                             </a>
+                            <a href="{{ route('admin.database.restore.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
+                                Backup / Восстановление БД
+                            </a>
                         @endif
 
                         @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3]))
@@ -36,9 +39,15 @@
                             </a>
                         @endif
 
-                        @if (Auth::user()->hasRoleId(2))
+                        @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
                             <a href="{{ route('applications.report.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
                                 Отчёт по заявкам
+                            </a>
+                        @endif
+
+                        @if (Auth::user()->hasAnyRoleId([1, 2]))
+                            <a href="{{ route('materials.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
+                                Учёт оборудования
                             </a>
                         @endif
 

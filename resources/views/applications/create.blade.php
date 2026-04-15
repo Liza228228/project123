@@ -100,9 +100,23 @@
                     </div>
 
                     @php
-                        $items = old('items', $prefill['items'] ?? [['equipment_id' => '', 'equipment_name' => '', 'quantity' => 1]]);
+                        $items = old('items', $prefill['items'] ?? [[
+                            'equipment_id' => '',
+                            'equipment_name' => '',
+                            'quantity' => 1,
+                            'size_value' => '',
+                            'measurement_type' => 'piece',
+                            'quantity_unit' => 'шт',
+                        ]]);
                         if (empty($items)) {
-                            $items = [['equipment_id' => '', 'equipment_name' => '', 'quantity' => 1]];
+                            $items = [[
+                                'equipment_id' => '',
+                                'equipment_name' => '',
+                                'quantity' => 1,
+                                'size_value' => '',
+                                'measurement_type' => 'piece',
+                                'quantity_unit' => 'шт',
+                            ]];
                         }
                     @endphp
                     <div class="space-y-3">
@@ -125,9 +139,25 @@
                                             <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $item['equipment_name'] ?? '' }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
                                             <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
                                         </div>
-                                        <div class="w-20">
+                                        <div class="w-20 quantity-wrap">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
                                             <input type="number" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] ?? 1 }}" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
+                                        </div>
+                                        <div class="w-24">
+                                            <label class="block text-xs text-black dark:text-white mb-0.5">Тип</label>
+                                            <select name="items[{{ $idx }}][measurement_type]" class="measurement-type block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
+                                                @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
+                                                    <option value="{{ $typeCode }}" @selected(($item['measurement_type'] ?? 'piece') === $typeCode)>{{ $typeName }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="w-24">
+                                            <label class="block text-xs text-black dark:text-white mb-0.5">Ед.</label>
+                                            <select name="items[{{ $idx }}][quantity_unit]" class="measurement-unit block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" data-current="{{ $item['quantity_unit'] ?? 'шт' }}"></select>
+                                        </div>
+                                        <div class="w-32 size-value-wrap">
+                                            <label class="block text-xs text-black dark:text-white mb-0.5">Размер одежды</label>
+                                            <input type="text" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" placeholder="M, ПТ ХП..." class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
                                         </div>
                                         <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
@@ -137,6 +167,9 @@
                                             $selectedType = ($item['equipment_id'] ?? '') !== '' ? $equipment->firstWhere('id', (int) $item['equipment_id']) : null;
                                         @endphp
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
+                                        <input type="hidden" name="items[{{ $idx }}][measurement_type]" value="{{ $item['measurement_type'] ?? 'piece' }}" />
+                                        <input type="hidden" name="items[{{ $idx }}][quantity_unit]" value="{{ $item['quantity_unit'] ?? 'шт' }}" />
+                                        <input type="hidden" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" />
                                         <div class="flex-1 min-w-[200px]">
                                             <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
                                             <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $item['equipment_id'] ?? '' }}" class="equipment-type-id" />
@@ -194,6 +227,9 @@
     <script type="text/template" id="equipment-row-from-list-tpl">
         <div class="equipment-row equipment-row--list flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
+            <input type="hidden" name="items[__INDEX__][measurement_type]" value="piece" />
+            <input type="hidden" name="items[__INDEX__][quantity_unit]" value="шт" />
+            <input type="hidden" name="items[__INDEX__][size_value]" value="" />
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
                 <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
@@ -208,7 +244,7 @@
                 />
                 <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 shadow-sm"></div>
             </div>
-            <div class="w-20">
+            <div class="w-20 quantity-wrap">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
                 <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
             </div>
@@ -226,6 +262,22 @@
             <div class="w-20">
                 <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
                 <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
+            </div>
+            <div class="w-24">
+                <label class="block text-xs text-black dark:text-white mb-0.5">Тип</label>
+                <select name="items[__INDEX__][measurement_type]" class="measurement-type block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
+                    @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
+                        <option value="{{ $typeCode }}" @selected($typeCode === 'piece')>{{ $typeName }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="w-24">
+                <label class="block text-xs text-black dark:text-white mb-0.5">Ед.</label>
+                <select name="items[__INDEX__][quantity_unit]" class="measurement-unit block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" data-current="шт"></select>
+            </div>
+            <div class="w-32 size-value-wrap">
+                <label class="block text-xs text-black dark:text-white mb-0.5">Размер одежды</label>
+                <input type="text" name="items[__INDEX__][size_value]" value="" placeholder="M, ПТ ХП..." class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
             </div>
             <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
@@ -298,6 +350,7 @@
             equipmentList.forEach(function(item) {
                 equipmentNameSet[item.key] = true;
             });
+            var measurementUnits = @json($measurementMeta['unitsByType'] ?? ['piece' => ['шт']]);
 
             function bindSearchInputs() {
                 container.querySelectorAll('.equipment-search').forEach(function(input) {
@@ -420,12 +473,63 @@
                 });
             }
 
+            function syncMeasurementRow(row) {
+                var typeSelect = row.querySelector('.measurement-type');
+                var unitSelect = row.querySelector('.measurement-unit');
+                if (!typeSelect || !unitSelect) return;
+                var selectedType = typeSelect.value || 'piece';
+                var options = measurementUnits[selectedType] || measurementUnits.piece;
+                var current = unitSelect.dataset.current || unitSelect.value || options[0];
+                var qtyLabel = row.querySelector('.quantity-wrap label');
+                var sizeWrap = row.querySelector('.size-value-wrap');
+                unitSelect.innerHTML = '';
+                options.forEach(function(u) {
+                    var opt = new Option(u, u);
+                    if (u === current) opt.selected = true;
+                    unitSelect.add(opt);
+                });
+                if (!options.includes(current)) {
+                    unitSelect.value = options[0];
+                }
+                unitSelect.dataset.current = unitSelect.value;
+
+                if (qtyLabel) {
+                    qtyLabel.textContent = selectedType === 'length' ? 'Сколько нужно' : 'Кол-во';
+                }
+                if (sizeWrap) {
+                    sizeWrap.classList.toggle('hidden', selectedType !== 'clothing_size');
+                }
+            }
+
+            function bindMeasurementInputs() {
+                container.querySelectorAll('.measurement-type').forEach(function(select) {
+                    if (select.dataset.bound === '1') return;
+                    select.addEventListener('change', function() {
+                        var row = select.closest('.equipment-row');
+                        if (!row) return;
+                        var unitSelect = row.querySelector('.measurement-unit');
+                        if (unitSelect) unitSelect.dataset.current = '';
+                        syncMeasurementRow(row);
+                    });
+                    select.dataset.bound = '1';
+                });
+                container.querySelectorAll('.measurement-unit').forEach(function(select) {
+                    if (select.dataset.bound === '1') return;
+                    select.addEventListener('change', function() {
+                        select.dataset.current = select.value;
+                    });
+                    select.dataset.bound = '1';
+                });
+                container.querySelectorAll('.equipment-row').forEach(syncMeasurementRow);
+            }
+
             function appendFromTemplate(tpl) {
                 var html = tpl.replace(/__INDEX__/g, nextIndex++);
                 container.insertAdjacentHTML('beforeend', html);
                 bindRemoveButtons();
                 bindSearchInputs();
                 bindCustomInputs();
+                bindMeasurementInputs();
             }
 
             document.getElementById('add-equipment-from-list').addEventListener('click', function() {
@@ -446,6 +550,7 @@
             bindRemoveButtons();
             bindSearchInputs();
             bindCustomInputs();
+            bindMeasurementInputs();
 
             var addCommercialOfferBtn = document.getElementById('add-commercial-offer-btn');
             var commercialOfferBlock = document.getElementById('commercial-offer-block');

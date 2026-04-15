@@ -3,6 +3,7 @@
     $ff = $s['font_family'];
     $titleFf = ($s['title_font_family'] ?? '') !== '' ? $s['title_font_family'] : $ff;
     $titlePt = (int) ($s['title_font_pt'] ?? 14);
+    $fontSizePt = (int) ($s['font_size'] ?? $titlePt);
     $dateTextRaw = trim((string) ($s['date_text'] ?? ''));
     $dateTextDisplay = $dateTextRaw;
     if ($dateTextRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTextRaw) === 1) {
@@ -13,7 +14,7 @@
         }
     }
 @endphp
-<div class="act-document-header" style="font-family: {{ $ff }};">
+<div class="act-document-header" style="font-family: {{ $ff }}; font-size: {{ $fontSizePt }}pt;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.25rem; margin-bottom:1rem;">
         <div style="flex:1; min-width:0; text-align: {{ $s['org_align'] }};">
             @if(trim((string) ($s['org_name'] ?? '')) !== '')

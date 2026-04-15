@@ -1,6 +1,7 @@
 @php
     /** @var array<string, mixed> $s */
     $ff = $s['font_family'];
+    $fontSizePt = (int) ($s['font_size'] ?? 14);
     $count = max(1, min(12, (int) ($s['members_count'] ?? 3)));
     $chairJust = match ($s['chairman_align'] ?? 'left') {
         'right' => 'flex-end',
@@ -13,7 +14,7 @@
         default => 'flex-start',
     };
 @endphp
-<div class="act-document-footer act-footer-block" style="font-family: {{ $ff }};">
+<div class="act-document-footer act-footer-block" style="font-family: {{ $ff }}; font-size: {{ $fontSizePt }}pt;">
     <div style="text-align: {{ $s['chairman_align'] }};">
         @if(trim((string) ($s['chairman_label'] ?? '')) !== '')
             <div style="font-weight:600; margin-bottom:0.35rem;">{{ $s['chairman_label'] }}</div>

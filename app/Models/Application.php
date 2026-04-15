@@ -84,22 +84,44 @@ class Application extends Model
 
     public function isStatusApproved(): bool
     {
-        return $this->applicationStatus?->code === ApplicationStatus::CODE_APPROVED;
+        return $this->resolvedStatusCode() === ApplicationStatus::CODE_APPROVED;
     }
 
     public function isStatusRejected(): bool
     {
-        return $this->applicationStatus?->code === ApplicationStatus::CODE_REJECTED;
+        return $this->resolvedStatusCode() === ApplicationStatus::CODE_REJECTED;
     }
 
     public function isStatusPending(): bool
     {
-        return $this->applicationStatus?->code === ApplicationStatus::CODE_PENDING;
+        return $this->resolvedStatusCode() === ApplicationStatus::CODE_PENDING;
     }
 
     public function isStatusPartial(): bool
     {
-        return $this->applicationStatus?->code === ApplicationStatus::CODE_PARTIAL;
+        return $this->resolvedStatusCode() === ApplicationStatus::CODE_PARTIAL;
+    }
+
+    private function resolvedStatusCode(): string
+    {
+        $this->loadMissing('items', 'applicationStatus');
+
+        if ($this->items->isEmpty()) {
+            return ApplicationStatus::CODE_PENDING;
+        }
+
+        $checkedCount = $this->items->where('is_checked', true)->count();
+        $totalCount = $this->items->count();
+
+        if ($checkedCount === $totalCount) {
+            return ApplicationStatus::CODE_APPROVED;
+        }
+
+        if ($checkedCount === 0) {
+            return ApplicationStatus::CODE_REJECTED;
+        }
+
+        return ApplicationStatus::CODE_PARTIAL;
     }
 
     public function itemLineIsApproved(int $itemId): bool
@@ -234,7 +256,7 @@ class Application extends Model
     /** Краткое отображение позиций: «Позиция 1, Позиция 2» или одна строка */
     public function getEquipmentSummaryAttribute(): string
     {
-        $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
+        $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);
 
         return $names->isEmpty() ? '—' : $names->implode('; ');
     }
@@ -248,7 +270,7 @@ class Application extends Model
             ->where('is_checked', true)
             ->sortBy('id')
             ->values()
-            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
+            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);
     }
 
     /**
@@ -260,7 +282,7 @@ class Application extends Model
             ->where('is_checked', false)
             ->sortBy('id')
             ->values()
-            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity);
+            ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);
     }
 
     public function getIsFullyApprovedAttribute(): bool

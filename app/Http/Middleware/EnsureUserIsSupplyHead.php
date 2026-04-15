@@ -11,8 +11,8 @@ class EnsureUserIsSupplyHead
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
-        if (! $user || ! $user->hasRoleId(2)) {
-            abort(403, 'Раздел доступен только начальнику отдела снабжения.');
+        if (! $user || ! $user->hasAnyRoleId([1, 6, 2])) {
+            abort(403, 'Раздел доступен только директору, техническому директору и начальнику отдела снабжения.');
         }
 
         return $next($request);

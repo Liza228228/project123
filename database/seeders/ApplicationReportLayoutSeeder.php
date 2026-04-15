@@ -16,19 +16,12 @@ class ApplicationReportLayoutSeeder extends Seeder
 
         ApplicationReportHeader::query()->create([
             'name' => 'Пример: акт (как образец)',
-            'settings' => array_replace_recursive(ApplicationReportHeader::defaultSettings(), [
-                'org_name' => 'ООО «Вера»',
-                'approval_position' => 'Генеральный директор',
-                'approval_name' => 'Потапов А.А.',
-                'title' => 'Акт установки материальных ценностей',
-                'date_text' => '«23» декабря 2019 г.',
-                'city_text' => 'г. Воронеж',
-            ]),
+            'font_size' => 14,
         ]);
 
         ApplicationReportFooter::query()->create([
             'name' => 'Пример: подписи комиссии',
-            'settings' => ApplicationReportFooter::defaultSettings(),
+            'font_size' => 14,
         ]);
     }
 }

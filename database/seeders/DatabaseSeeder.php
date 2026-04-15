@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             SubdivisionSeeder::class,
             WarehouseDataFrom1CsvSeeder::class,
+            MeasurementUnitSeeder::class,
             EquipmentSeeder::class,
             TransportOptionSeeder::class,
             ApplicationSeeder::class,

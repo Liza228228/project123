@@ -13,10 +13,21 @@ return new class extends Migration
             $table->string('name', 50);
             $table->timestamps();
         });
+
+        Schema::table('applications', function (Blueprint $table) {
+            $table->foreign('transport_option_id')
+                ->references('id')
+                ->on('transport_options')
+                ->nullOnDelete();
+        });
     }
 
     public function down(): void
     {
+        Schema::table('applications', function (Blueprint $table) {
+            $table->dropForeign(['transport_option_id']);
+        });
+
         Schema::dropIfExists('transport_options');
     }
 };

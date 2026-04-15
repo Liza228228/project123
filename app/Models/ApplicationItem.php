@@ -18,7 +18,12 @@ class ApplicationItem extends Model
         'application_id',
         'equipment_id',
         'equipment_name',
+        'base_name',
+        'size_value',
         'quantity',
+        'measurement_type',
+        'quantity_unit',
+        'raw_input',
         'is_checked',
         'reason_not_selected',
     ];
@@ -43,10 +48,23 @@ class ApplicationItem extends Model
 
     public function getEquipmentDisplayNameAttribute(): string
     {
+        $baseName = trim((string) ($this->base_name ?? ''));
+        $size = trim((string) ($this->size_value ?? ''));
+        if ($baseName !== '') {
+            return trim($baseName.($size !== '' ? ' '.$size : ''));
+        }
+
         if ($this->equipment_id && $this->equipment) {
             return $this->equipment->name;
         }
 
         return trim($this->equipment_name ?? '') ?: '—';
+    }
+
+    public function getQuantityWithUnitAttribute(): string
+    {
+        $unit = trim((string) ($this->quantity_unit ?? '')) ?: 'шт';
+
+        return ((int) $this->quantity).' '.$unit;
     }
 }
