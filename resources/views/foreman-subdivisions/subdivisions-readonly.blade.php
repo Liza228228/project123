@@ -112,10 +112,33 @@
                                     <option value="without">Только без складов</option>
                                 </select>
                             </div>
+                            <form method="GET" action="{{ route('foreman-subdivisions.index') }}" class="w-full sm:w-auto sm:ml-auto">
+                                <label for="subdivisions-per-page" class="block text-xs font-medium text-black dark:text-white mb-1">На странице</label>
+                                <div class="flex items-center gap-2">
+                                    <select
+                                        id="subdivisions-per-page"
+                                        name="per_page"
+                                        class="block w-full sm:w-32 rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
+                                    >
+                                        @foreach([10, 25, 50] as $size)
+                                            <option value="{{ $size }}" @selected(($perPage ?? 10) === $size)>{{ $size }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="submit" class="ui-btn ui-btn--primary whitespace-nowrap">
+                                        Применить
+                                    </button>
+                                    @if(($perPage ?? 10) !== 10)
+                                        <a
+                                            href="{{ route('foreman-subdivisions.index') }}"
+                                            class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap"
+                                        >
+                                            Сбросить
+                                        </a>
+                                    @endif
+                                </div>
+                            </form>
                         </div>
-                        <p class="mt-2 text-xs text-black dark:text-white opacity-80">
-                            Можно искать по названию подразделения, коду склада и названию склада.
-                        </p>
+
                     </div>
 
                     <div id="subdivision-filter-empty" class="hidden mb-4 rounded-lg border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/20 px-4 py-3 text-sm text-black dark:text-white">

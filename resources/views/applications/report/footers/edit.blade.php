@@ -1,9 +1,6 @@
 <x-app-layout>
     @php
-        $fontSizeValue = (int) old('font_size', $fontSize ?? 14);
-        $previewSettings = array_replace_recursive(\App\Models\ApplicationReportFooter::defaultSettings(), [
-            'font_size' => $fontSizeValue,
-        ]);
+        $previewSettings = array_replace_recursive(\App\Models\ApplicationReportFooter::defaultSettings(), old('settings', $settings));
     @endphp
     <x-slot name="header">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between w-full min-w-0">
@@ -17,7 +14,7 @@
             <form method="post" action="{{ route('applications.report.footers.update', $footer) }}" class="bg-white dark:bg-stone-950 rounded-lg border border-stone-200 dark:border-stone-800 shadow-sm p-4 sm:p-6 space-y-6">
                 @csrf
                 @method('PUT')
-                @include('applications.report.footers._fields', ['fontSize' => $fontSize, 'nameValue' => old('name', $footer->name)])
+                @include('applications.report.footers._fields', ['settings' => $settings, 'fontOptions' => $fontOptions, 'nameValue' => old('name', $footer->name)])
                 <div class="report-form-preview border border-stone-200 dark:border-stone-800 rounded-lg p-4 bg-stone-50/70 dark:bg-stone-900/40">
                     <h3 class="text-sm font-semibold text-black dark:text-white mb-3">Предпросмотр подвала</h3>
                     @include('applications.report.partials.form_preview_styles')

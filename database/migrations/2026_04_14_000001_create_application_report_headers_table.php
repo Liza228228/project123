@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('application_report_headers', function (Blueprint $table) {
             $table->id();
             $table->string('name', 255);
+            $table->json('settings')->nullable();
             $table->unsignedTinyInteger('font_size')->default(14);
             $table->timestamps();
         });

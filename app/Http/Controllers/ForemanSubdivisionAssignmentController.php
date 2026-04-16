@@ -14,11 +14,16 @@ class ForemanSubdivisionAssignmentController extends Controller
     public function index(Request $request): View
     {
         $this->authorizeForView($request);
+        $allowedPerPage = [10, 25, 50];
+        $perPage = (int) $request->integer('per_page', 10);
+        if (! in_array($perPage, $allowedPerPage, true)) {
+            $perPage = 10;
+        }
 
         $subdivisions = Subdivision::query()
             ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
-            ->paginate(10)
+            ->paginate($perPage)
             ->withQueryString();
         $subdivisionOptions = Subdivision::query()
             ->orderBy('name')
@@ -26,7 +31,7 @@ class ForemanSubdivisionAssignmentController extends Controller
 
         $canManage = $this->canManageSubdivisionsAndWarehouses($request);
 
-        return view('foreman-subdivisions.subdivisions-readonly', compact('subdivisions', 'subdivisionOptions', 'canManage'));
+        return view('foreman-subdivisions.subdivisions-readonly', compact('subdivisions', 'subdivisionOptions', 'canManage', 'perPage'));
     }
 
     public function assignments(Request $request): View

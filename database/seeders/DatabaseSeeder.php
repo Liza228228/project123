@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             SubdivisionSeeder::class,
+            ForemanSubdivisionSeeder::class,
             WarehouseDataFrom1CsvSeeder::class,
             MeasurementUnitSeeder::class,
             EquipmentSeeder::class,

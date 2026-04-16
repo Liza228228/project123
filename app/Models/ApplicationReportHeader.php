@@ -8,8 +8,15 @@ class ApplicationReportHeader extends Model
 {
     protected $fillable = [
         'name',
-        'font_size',
+        'settings',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'settings' => 'array',
+        ];
+    }
 
     /**
      * @return array<string, mixed>
@@ -31,7 +38,6 @@ class ApplicationReportHeader extends Model
             'title' => '',
             'title_align' => 'center',
             'title_font_pt' => 14,
-            'font_size' => 14,
             'date_text' => '',
             'city_text' => '',
         ];
@@ -42,11 +48,6 @@ class ApplicationReportHeader extends Model
      */
     public function mergedSettings(): array
     {
-        $fontSize = max(8, min(36, (int) ($this->font_size ?? 14)));
-
-        return array_replace_recursive(static::defaultSettings(), [
-            'font_size' => $fontSize,
-            'title_font_pt' => $fontSize,
-        ]);
+        return array_replace_recursive(static::defaultSettings(), $this->settings ?? []);
     }
 }
