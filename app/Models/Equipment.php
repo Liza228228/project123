@@ -15,7 +15,15 @@ class Equipment extends Model
         'base_name',
         'size_value',
         'measurement_unit_id',
+        'is_catalog',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_catalog' => 'boolean',
+        ];
+    }
 
     public function applicationItems(): HasMany
     {

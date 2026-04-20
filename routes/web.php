@@ -1,10 +1,11 @@
 <?php
 
 use App\Http\Controllers\ApplicationController;
-use App\Http\Controllers\ApplicationReportController;
-use App\Http\Controllers\ApplicationReportFooterController;
-use App\Http\Controllers\ApplicationReportHeaderController;
-use App\Http\Controllers\AdminDatabaseRestoreController;
+use App\Http\Controllers\BoilerChiefDocumentHeaderLayoutController;
+use App\Http\Controllers\BoilerChiefLayoutApplicationController;
+use App\Http\Controllers\BoilerChiefRequestLayoutController;
+use App\Http\Controllers\BoilerChiefSubdivisionAssignmentController;
+use App\Http\Controllers\DadataAddressController;
 use App\Http\Controllers\ForemanSubdivisionAssignmentController;
 use App\Http\Controllers\MaterialAccountingController;
 use App\Http\Controllers\ProfileController;
@@ -25,6 +26,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::prefix('api/dadata/address')->name('api.dadata.address.')->middleware('throttle:30,1')->group(function () {
+        Route::get('/suggest', [DadataAddressController::class, 'suggest'])->name('suggest');
+        Route::post('/clean', [DadataAddressController::class, 'clean'])->name('clean');
+    });
 });
 
 Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(function () {
@@ -37,30 +43,47 @@ Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(fun
     Route::post('/{user}/unblock', [UserController::class, 'unblock'])->name('unblock');
 });
 
-Route::middleware(['auth', 'admin'])->prefix('admin/database')->name('admin.database.')->group(function () {
-    Route::get('/restore', [AdminDatabaseRestoreController::class, 'index'])->name('restore.index');
-    Route::post('/restore', [AdminDatabaseRestoreController::class, 'restore'])->name('restore.store');
-    Route::post('/backup', [AdminDatabaseRestoreController::class, 'backup'])->name('backup.store');
-});
-
-Route::middleware(['auth', 'applications', 'supply_head'])->prefix('applications/report')->name('applications.report.')->group(function () {
-    Route::get('/', [ApplicationReportController::class, 'index'])->name('index');
-    Route::post('/layout', [ApplicationReportController::class, 'updateLayout'])->name('layout');
-    Route::post('/preview', [ApplicationReportController::class, 'preview'])->name('preview');
-    Route::post('/pdf', [ApplicationReportController::class, 'pdf'])->name('pdf');
-    Route::resource('headers', ApplicationReportHeaderController::class)->except(['show'])->names('headers');
-    Route::resource('footers', ApplicationReportFooterController::class)->except(['show'])->names('footers');
-});
-
 Route::middleware(['auth', 'applications'])->prefix('applications')->name('applications.')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('index');
+    Route::get('/archive', function () {
+        $query = array_merge(
+            request()->except('page'),
+            ['archive' => 'archived']
+        );
+
+        return redirect()->route('applications.index', $query);
+    })->name('archive');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
+    Route::get('/installation-act/upload', [ApplicationController::class, 'createInstallationActUpload'])->name('installation-act.upload');
+    Route::post('/installation-act/upload', [ApplicationController::class, 'storeInstallationActUpload'])->name('installation-act.upload.store');
+    Route::get('/installation-act/browse', [ApplicationController::class, 'browseInstallationActs'])->name('installation-act.browse');
+    Route::get('/installation-act/layout-fill', [BoilerChiefRequestLayoutController::class, 'foremanFillIndex'])->name('installation-act.layout-fill.index');
+    Route::get('/installation-act/layout-fill/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'foremanFill'])->name('installation-act.layout-fill.fill');
+    Route::post('/installation-act/layout-fill/{requestLayout}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanDownloadFilledPdf'])->name('installation-act.layout-fill.pdf');
+    Route::get('/custom-equipment-to-order', [ApplicationController::class, 'customEquipmentToOrder'])->name('custom-equipment-to-order');
+    Route::get('/{application}/custom-equipment-order', [ApplicationController::class, 'customEquipmentOrderForm'])->name('custom-equipment-order');
+    Route::post('/{application}/custom-equipment-order/ordered', [ApplicationController::class, 'markCustomEquipmentOrderedBulk'])->name('custom-equipment-order.ordered');
+    Route::post('/{application}/custom-equipment-order/on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouseBulk'])->name('custom-equipment-order.on-warehouse');
     Route::get('/{application}/repeat', [ApplicationController::class, 'repeat'])->name('repeat');
+    Route::get('/{application}/installation-act/photos/{installationActPhoto}', [ApplicationController::class, 'viewInstallationActPhoto'])
+        ->name('installation-act.photo');
+    Route::get('/{application}/installation-act/download', [ApplicationController::class, 'downloadInstallationAct'])->name('installation-act.download');
+    Route::get('/{application}/installation-act', [ApplicationController::class, 'viewInstallationAct'])->name('installation-act.view');
     Route::get('/{application}/commercial-offer', [ApplicationController::class, 'viewCommercialOffer'])->name('commercial-offer.view');
     Route::get('/{application}/commercial-offer/download', [ApplicationController::class, 'downloadCommercialOffer'])->name('commercial-offer.download');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
+    Route::post('/{application}/archive-completion', [ApplicationController::class, 'tryArchiveCompletion'])->name('archive-completion');
     Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
+    Route::post('/{application}/boiler-chief-approval', [ApplicationController::class, 'saveBoilerChiefApproval'])->name('boiler-chief-approval');
+    Route::post('/{application}/delivery-in-transit', [ApplicationController::class, 'markApplicationDeliveryInTransit'])->name('delivery-in-transit');
+    Route::post('/{application}/items/{item}/delivery-delivered', [ApplicationController::class, 'markItemDeliveryDelivered'])->name('delivery-delivered');
+    Route::post('/{application}/items/{item}/custom-supply-ordered', [ApplicationController::class, 'markCustomEquipmentOrdered'])->name('custom-supply-ordered');
+    Route::post('/{application}/items/{item}/custom-supply-in-transit', [ApplicationController::class, 'markCustomEquipmentSupplyInTransit'])->name('custom-supply-in-transit');
+    Route::post('/{application}/items/{item}/custom-supply-on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouse'])->name('custom-supply-on-warehouse');
+    Route::post('/{application}/items/{item}/custom-target-warehouse', [ApplicationController::class, 'saveCustomItemTargetWarehouse'])->name('custom-target-warehouse');
+    Route::post('/{application}/items/{item}/custom-foreman-in-transit', [ApplicationController::class, 'markCustomForemanInTransitToTarget'])->name('custom-foreman-in-transit');
     Route::post('/{application}/issue-stock', [ApplicationController::class, 'issueStock'])->name('issue-stock');
+    Route::post('/{application}/issue-delivered-warehouse-stock', [ApplicationController::class, 'issueDeliveredWarehouseStock'])->name('issue-delivered-warehouse-stock');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');
@@ -75,10 +98,49 @@ Route::middleware('auth')->prefix('foreman-subdivisions')->name('foreman-subdivi
     Route::put('/{foreman}', [ForemanSubdivisionAssignmentController::class, 'update'])->name('update');
 });
 
+Route::middleware('auth')->prefix('boiler-chief-subdivisions')->name('boiler-chief-subdivisions.')->group(function () {
+    Route::get('/assignments', [BoilerChiefSubdivisionAssignmentController::class, 'assignments'])->name('assignments');
+    Route::get('/{chief}/edit', [BoilerChiefSubdivisionAssignmentController::class, 'edit'])->name('edit');
+    Route::put('/{chief}', [BoilerChiefSubdivisionAssignmentController::class, 'update'])->name('update');
+});
+
+Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/layout-applications')->name('boiler-chief.layout-applications.')->group(function () {
+    Route::get('/', [BoilerChiefLayoutApplicationController::class, 'index'])->name('index');
+    Route::get('/create', [BoilerChiefLayoutApplicationController::class, 'create'])->name('create');
+    Route::post('/', [BoilerChiefLayoutApplicationController::class, 'store'])->name('store');
+    Route::get('/submissions/{submission}/pdf', [BoilerChiefLayoutApplicationController::class, 'pdf'])->name('pdf');
+    Route::delete('/submissions/{submission}', [BoilerChiefLayoutApplicationController::class, 'destroy'])->name('destroy');
+});
+
+Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/document-header-layouts')->name('boiler-chief.document-header-layouts.')->group(function () {
+    Route::get('/', [BoilerChiefDocumentHeaderLayoutController::class, 'index'])->name('index');
+    Route::get('/create', [BoilerChiefDocumentHeaderLayoutController::class, 'create'])->name('create');
+    Route::post('/', [BoilerChiefDocumentHeaderLayoutController::class, 'store'])->name('store');
+    Route::get('/{documentHeaderLayout}/edit', [BoilerChiefDocumentHeaderLayoutController::class, 'edit'])->name('edit');
+    Route::put('/{documentHeaderLayout}', [BoilerChiefDocumentHeaderLayoutController::class, 'update'])->name('update');
+    Route::delete('/{documentHeaderLayout}', [BoilerChiefDocumentHeaderLayoutController::class, 'destroy'])->name('destroy');
+});
+
+Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/request-layouts')->name('boiler-chief.request-layouts.')->group(function () {
+    Route::get('/', [BoilerChiefRequestLayoutController::class, 'index'])->name('index');
+    Route::get('/create', [BoilerChiefRequestLayoutController::class, 'create'])->name('create');
+    Route::get('/{requestLayout}/schema-json', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJson'])->name('schema-json');
+    Route::post('/', [BoilerChiefRequestLayoutController::class, 'store'])->name('store');
+    Route::post('/{requestLayout}/filled-pdf', [BoilerChiefRequestLayoutController::class, 'downloadFilledPdf'])->name('filled-pdf');
+    Route::get('/{requestLayout}/edit', [BoilerChiefRequestLayoutController::class, 'edit'])->name('edit');
+    Route::get('/{requestLayout}/fill', [BoilerChiefRequestLayoutController::class, 'fill'])->name('fill');
+    Route::put('/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'update'])->name('update');
+    Route::delete('/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'destroy'])->name('destroy');
+});
+
 Route::middleware(['auth', 'supply_head'])->prefix('materials')->name('materials.')->group(function () {
     Route::get('/', [MaterialAccountingController::class, 'index'])->name('index');
     Route::post('/catalog', [MaterialAccountingController::class, 'storeMaterial'])->name('store-material');
     Route::post('/movements', [MaterialAccountingController::class, 'storeMovement'])->name('store-movement');
+});
+
+Route::middleware(['auth', 'applications'])->prefix('materials')->name('materials.')->group(function () {
+    Route::get('/overview', [MaterialAccountingController::class, 'overview'])->name('overview');
 });
 
 require __DIR__.'/auth.php';

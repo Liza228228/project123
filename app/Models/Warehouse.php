@@ -11,6 +11,15 @@ class Warehouse extends Model
         'is_primary',
         'name',
         'code',
+        'address',
+        'address_postal_code',
+        'address_region',
+        'address_city',
+        'address_street',
+        'address_house',
+        'address_block',
+        'address_flat',
+        'address_fias_id',
         'subdivision_id',
         'warehouse_type_id',
         'comment',
@@ -18,7 +27,9 @@ class Warehouse extends Model
 
     protected function casts(): array
     {
-        return ['is_primary' => 'boolean'];
+        return [
+            'is_primary' => 'boolean',
+        ];
     }
 
     public function subdivision(): BelongsTo

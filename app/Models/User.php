@@ -14,6 +14,15 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    /** Директор, технический директор, начальник снабжения — согласование заявок, списания, материалы и т.д. */
+    public const MANAGEMENT_EDITOR_ROLE_IDS = [1, 6, 2];
+
+    /** Директор и начальник снабжения — заказ нестандартного («своего») оборудования и приход на основной склад по нему. */
+    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = [1, 2];
+
+    /** Списание со склада «Администрация» по согласованным позициям из справочника. */
+    public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = [1, 2, 6];
+
     /**
      * The attributes that are mass assignable.
      *
@@ -56,6 +65,21 @@ class User extends Authenticatable
         return $this->hasMany(Application::class);
     }
 
+    public function requestLayouts(): HasMany
+    {
+        return $this->hasMany(RequestLayout::class, 'user_assigner_id');
+    }
+
+    public function documentHeaderLayouts(): HasMany
+    {
+        return $this->hasMany(DocumentHeaderLayout::class, 'user_assigner_id');
+    }
+
+    public function layoutApplications(): HasMany
+    {
+        return $this->hasMany(RequestSubmission::class, 'created_by');
+    }
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
@@ -64,6 +88,14 @@ class User extends Authenticatable
     public function assignedSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'foreman_subdivision_user', 'foreman_user_id', 'subdivision_id')
+            ->withPivot('assigned_by_user_id')
+            ->withTimestamps();
+    }
+
+    /** Подразделения, за которые отвечает начальник котельной (согласование заявок). */
+    public function boilerChiefSubdivisions(): BelongsToMany
+    {
+        return $this->belongsToMany(Subdivision::class, 'boiler_chief_subdivision_user', 'boiler_chief_user_id', 'subdivision_id')
             ->withPivot('assigned_by_user_id')
             ->withTimestamps();
     }
@@ -79,5 +111,17 @@ class User extends Authenticatable
     public function hasAnyRoleId(array $roleIds): bool
     {
         return in_array((int) $this->role_id, $roleIds, true);
+    }
+
+    /** Фамилия Имя Отчество одной строкой (без лишних пробелов). */
+    public function fullName(): string
+    {
+        $parts = array_filter([
+            trim((string) $this->surname),
+            trim((string) $this->name),
+            trim((string) ($this->patronymic ?? '')),
+        ], static fn (string $p): bool => $p !== '');
+
+        return implode(' ', $parts);
     }
 }

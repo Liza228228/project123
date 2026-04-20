@@ -5,9 +5,6 @@
                 Управление пользователями
             </h2>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <a href="{{ route('admin.database.restore.index') }}" class="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap">
-                    Восстановление БД
-                </a>
                 <a href="{{ route('users.create') }}" class="ui-btn ui-btn--primary gap-2 shrink-0 whitespace-nowrap w-full sm:w-auto [touch-action:manipulation]">
                     Добавить пользователя
                 </a>
@@ -27,17 +24,23 @@
             <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('users.index') }}" class="flex flex-col gap-4">
+                        <div class="app-filter-panel">
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-end">
-                            <div class="min-w-0">
-                                <label for="users-q" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Поиск</label>
-                                <input type="search" name="q" id="users-q" value="{{ $search }}"
-                                    placeholder="ФИО или e-mail..."
-                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                            <div class="min-w-0 lg:col-span-2">
+                                <label for="users-q" class="app-form-label">Поиск</label>
+                                <div class="relative">
+                                    <span class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-stone-400 dark:text-stone-500" aria-hidden="true">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                    </span>
+                                    <input type="search" name="q" id="users-q" value="{{ $search }}"
+                                        placeholder="ФИО или e-mail…"
+                                        class="app-input app-input--with-icon">
+                                </div>
                             </div>
                             <div class="min-w-0">
-                                <label for="users-role-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Роль</label>
+                                <label for="users-role-filter" class="app-form-label">Роль</label>
                                 <select name="role_id" id="users-role-filter"
-                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                    class="app-select">
                                     <option value="">Все роли</option>
                                     @foreach($roles as $role)
                                         <option value="{{ $role->id }}" @selected($selectedRoleId === (int) $role->id)>
@@ -47,29 +50,29 @@
                                 </select>
                             </div>
                             <div class="min-w-0">
-                                <label for="users-status-filter" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Статус</label>
+                                <label for="users-status-filter" class="app-form-label">Статус</label>
                                 <select name="status" id="users-status-filter"
-                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                    class="app-select">
                                     <option value="all" @selected($statusFilter === 'all')>Все</option>
                                     <option value="active" @selected($statusFilter === 'active')>Активен</option>
                                     <option value="blocked" @selected($statusFilter === 'blocked')>Заблокирован</option>
                                 </select>
                             </div>
                             <div class="min-w-0">
-                                <label for="users-per-page" class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">На странице</label>
+                                <label for="users-per-page" class="app-form-label">На странице</label>
                                 <select name="per_page" id="users-per-page"
-                                    class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                    class="app-select">
                                     @foreach([10, 25, 50] as $size)
                                         <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="min-w-0 lg:col-span-3">
-                                <p class="block text-xs font-semibold uppercase tracking-wide text-black/70 dark:text-white/60 mb-1.5">Сортировка</p>
+                                <p class="app-form-label">Сортировка</p>
                                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     <div class="grid grid-cols-2 gap-2">
                                         <select name="sort_primary_field"
-                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            class="app-select">
                                             <option value="surname" @selected(($sortState['primary_field'] ?? '') === 'surname')>Фамилия</option>
                                             <option value="name" @selected(($sortState['primary_field'] ?? '') === 'name')>Имя</option>
                                             <option value="patronymic" @selected(($sortState['primary_field'] ?? '') === 'patronymic')>Отчество</option>
@@ -79,14 +82,14 @@
                                             <option value="created_at" @selected(($sortState['primary_field'] ?? '') === 'created_at')>Дата создания</option>
                                         </select>
                                         <select name="sort_primary_direction"
-                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            class="app-select">
                                             <option value="asc" @selected(($sortState['primary_direction'] ?? '') === 'asc')>По возрастанию</option>
                                             <option value="desc" @selected(($sortState['primary_direction'] ?? '') === 'desc')>По убыванию</option>
                                         </select>
                                     </div>
                                     <div class="grid grid-cols-2 gap-2">
                                         <select name="sort_secondary_field"
-                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            class="app-select">
                                             <option value="" @selected(empty($sortState['secondary_field']))>Без второго поля</option>
                                             <option value="surname" @selected(($sortState['secondary_field'] ?? '') === 'surname')>Фамилия</option>
                                             <option value="name" @selected(($sortState['secondary_field'] ?? '') === 'name')>Имя</option>
@@ -97,13 +100,14 @@
                                             <option value="created_at" @selected(($sortState['secondary_field'] ?? '') === 'created_at')>Дата создания</option>
                                         </select>
                                         <select name="sort_secondary_direction"
-                                            class="w-full rounded-lg border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900/40 text-black dark:text-white text-sm shadow-sm focus:border-stone-500 focus:ring-stone-500">
+                                            class="app-select">
                                             <option value="asc" @selected(($sortState['secondary_direction'] ?? '') === 'asc')>По возрастанию</option>
                                             <option value="desc" @selected(($sortState['secondary_direction'] ?? '') === 'desc')>По убыванию</option>
                                         </select>
                                     </div>
                                 </div>
                             </div>
+                        </div>
                         </div>
                         <div class="flex flex-col sm:flex-row flex-wrap gap-2 pt-1 sm:justify-end">
                             <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[44px] py-3 sm:min-h-0 sm:w-auto sm:py-2 whitespace-nowrap shrink-0 [touch-action:manipulation]">
@@ -118,7 +122,7 @@
                                 || !empty($sortState['secondary_field'])
                                 || (($sortState['secondary_direction'] ?? 'asc') !== 'asc')
                             )
-                                <a href="{{ route('users.index') }}" class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-3 sm:py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap shrink-0 [touch-action:manipulation]">
+                                <a href="{{ route('users.index') }}" class="ui-btn ui-btn--secondary w-full shrink-0 whitespace-nowrap sm:w-auto [touch-action:manipulation]">
                                     Сбросить
                                 </a>
                             @endif
@@ -166,7 +170,7 @@
                                             @if($user->is_blocked)
                                                 <form action="{{ route('users.unblock', $user) }}" method="POST">
                                                     @csrf
-                                                    <button type="submit" class="inline-flex w-full items-center justify-center px-4 py-3 text-sm font-medium text-black rounded-lg bg-stone-100 border border-stone-300 transition hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:bg-stone-900/40 dark:text-white dark:border-stone-700 dark:hover:bg-stone-800/50 dark:focus:ring-offset-stone-950 [touch-action:manipulation]">
+                                                    <button type="submit" class="ui-btn ui-btn--secondary w-full [touch-action:manipulation]">
                                                         Разблокировать
                                                     </button>
                                                 </form>
@@ -179,7 +183,7 @@
                                                             blockUserName = '{{ trim($user->surname.' '.$user->name.' '.$user->patronymic) }}';
                                                             $dispatch('open-modal', 'confirm-user-block');
                                                         "
-                                                        class="inline-flex w-full items-center justify-center px-4 py-3 text-sm font-medium text-red-700 rounded-lg bg-red-50 border border-red-200 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-900/20 dark:text-red-200 dark:border-red-800 dark:hover:bg-red-900/40 dark:focus:ring-offset-stone-950 [touch-action:manipulation]">
+                                                        class="ui-btn ui-btn--danger w-full [touch-action:manipulation]">
                                                         Заблокировать
                                                     </button>
                                                 </form>
@@ -230,7 +234,7 @@
                                                     @if($user->is_blocked)
                                                         <form action="{{ route('users.unblock', $user) }}" method="POST" class="inline">
                                                             @csrf
-                                                            <button type="submit" class="inline-flex w-full sm:w-auto items-center justify-center px-3 py-2 text-sm font-medium text-black rounded-lg bg-stone-100 border border-stone-300 transition hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:bg-stone-900/40 dark:text-white dark:border-stone-700 dark:hover:bg-stone-800/50 dark:focus:ring-offset-stone-950 [touch-action:manipulation]">
+                                                            <button type="submit" class="ui-btn ui-btn--secondary w-full sm:w-auto [touch-action:manipulation]">
                                                                 Разблокировать
                                                             </button>
                                                         </form>
@@ -243,7 +247,7 @@
                                                                     blockUserName = '{{ trim($user->surname.' '.$user->name.' '.$user->patronymic) }}';
                                                                     $dispatch('open-modal', 'confirm-user-block');
                                                                 "
-                                                                class="inline-flex w-full sm:w-auto items-center justify-center px-3 py-2 text-sm font-medium text-red-700 rounded-lg bg-red-50 border border-red-200 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-900/20 dark:text-red-200 dark:border-red-800 dark:hover:bg-red-900/40 dark:focus:ring-offset-stone-950 [touch-action:manipulation]">
+                                                                class="ui-btn ui-btn--danger w-full sm:w-auto [touch-action:manipulation]">
                                                                 Заблокировать
                                                             </button>
                                                         </form>
@@ -288,7 +292,7 @@
                 <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
                     <button type="button"
                         x-on:click="$dispatch('close-modal', 'confirm-user-block')"
-                        class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2.5 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50">
+                        class="ui-btn ui-btn--secondary w-full sm:w-auto">
                         Отмена
                     </button>
                     <button type="button"
@@ -297,7 +301,7 @@
                                 document.getElementById(blockFormId)?.submit();
                             }
                         "
-                        class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2.5 text-sm font-medium text-red-700 rounded-lg bg-red-50 border border-red-200 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-900/20 dark:text-red-200 dark:border-red-800 dark:hover:bg-red-900/40 dark:focus:ring-offset-stone-950">
+                        class="ui-btn ui-btn--danger w-full sm:w-auto">
                         Да, заблокировать
                     </button>
                 </div>

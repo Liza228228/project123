@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'dadata' => [
+        'api_key' => env('DADATA_API_KEY'),
+        'secret_key' => env('DADATA_SECRET_KEY'),
+        'suggestions_url' => env('DADATA_SUGGESTIONS_URL', 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'),
+        'cleaner_url' => env('DADATA_CLEANER_URL', 'https://cleaner.dadata.ru/api/v1/clean/address'),
+        'cleaner_name_url' => env('DADATA_CLEANER_NAME_URL', 'https://cleaner.dadata.ru/api/v1/clean/name'),
+        'timeout' => (float) env('DADATA_TIMEOUT', 7),
+        'verify_ssl' => filter_var(env('DADATA_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+    ],
+
 ];

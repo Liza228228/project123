@@ -1,8 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
-            Профиль
-        </h2>
+        <div class="flex flex-col gap-4 w-full min-w-0">
+            <x-page-header-nav :href="route('dashboard')">Главная</x-page-header-nav>
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
+                Профиль
+            </h2>
+        </div>
     </x-slot>
 
     <div class="py-2 sm:py-8 md:py-12">

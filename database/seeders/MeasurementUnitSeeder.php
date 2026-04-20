@@ -27,15 +27,15 @@ class MeasurementUnitSeeder extends Seeder
         }
 
         $units = [
-            ['type_code' => 'piece', 'code' => 'шт', 'name' => 'Штука', 'is_base' => true, 'multiplier_to_base' => 1],
-            ['type_code' => 'mass', 'code' => 'г', 'name' => 'Грамм', 'is_base' => false, 'multiplier_to_base' => 0.001],
-            ['type_code' => 'mass', 'code' => 'кг', 'name' => 'Килограмм', 'is_base' => true, 'multiplier_to_base' => 1],
-            ['type_code' => 'mass', 'code' => 'т', 'name' => 'Тонна', 'is_base' => false, 'multiplier_to_base' => 1000],
-            ['type_code' => 'length', 'code' => 'мм', 'name' => 'Миллиметр', 'is_base' => true, 'multiplier_to_base' => 1],
-            ['type_code' => 'length', 'code' => 'см', 'name' => 'Сантиметр', 'is_base' => false, 'multiplier_to_base' => 10],
-            ['type_code' => 'length', 'code' => 'м', 'name' => 'Метр', 'is_base' => false, 'multiplier_to_base' => 1000],
-            ['type_code' => 'length', 'code' => 'км', 'name' => 'Километр', 'is_base' => false, 'multiplier_to_base' => 1000000],
-            ['type_code' => 'clothing_size', 'code' => 'разм', 'name' => 'Размер', 'is_base' => true, 'multiplier_to_base' => 1],
+            ['type_code' => 'piece', 'code' => 'шт', 'name' => 'Штука'],
+            ['type_code' => 'mass', 'code' => 'г', 'name' => 'Грамм'],
+            ['type_code' => 'mass', 'code' => 'кг', 'name' => 'Килограмм'],
+            ['type_code' => 'mass', 'code' => 'т', 'name' => 'Тонна'],
+            ['type_code' => 'length', 'code' => 'мм', 'name' => 'Миллиметр'],
+            ['type_code' => 'length', 'code' => 'см', 'name' => 'Сантиметр'],
+            ['type_code' => 'length', 'code' => 'м', 'name' => 'Метр'],
+            ['type_code' => 'length', 'code' => 'км', 'name' => 'Километр'],
+            ['type_code' => 'clothing_size', 'code' => 'разм', 'name' => 'Размер'],
         ];
 
         foreach ($units as $unit) {
@@ -51,8 +51,6 @@ class MeasurementUnitSeeder extends Seeder
                 ],
                 [
                     'name' => $unit['name'],
-                    'is_base' => (bool) $unit['is_base'],
-                    'multiplier_to_base' => (float) $unit['multiplier_to_base'],
                 ]
             );
         }

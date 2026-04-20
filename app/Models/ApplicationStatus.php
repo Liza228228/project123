@@ -15,6 +15,9 @@ class ApplicationStatus extends Model
 
     public const CODE_PARTIAL = 'partial';
 
+    /** Заявка закрыта: акт, фото, списания — перенос в архив выполненных. */
+    public const CODE_COMPLETED = 'completed';
+
     protected $fillable = [
         'code',
         'name',

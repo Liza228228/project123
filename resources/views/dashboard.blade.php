@@ -1,10 +1,4 @@
 <x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
-            Панель управления
-        </h2>
-    </x-slot>
-
     <div class="py-2 sm:py-8 md:py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-4 sm:space-y-6">
             <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
@@ -16,53 +10,6 @@
                         КТ-Ресурс помогает подразделениям создавать и согласовывать заявки, контролировать статус позиций
                         и вести прозрачный процесс закупки оборудования в едином интерфейсе.
                     </p>
-                </div>
-            </div>
-
-            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
-                <div class="p-4 sm:p-6">
-                    <p class="text-black dark:text-white mb-4 sm:mb-6 text-base">Выберите раздел для работы:</p>
-
-                    <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-                        @if ((int) Auth::user()->role_id === 5)
-                            <a href="{{ route('users.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                                Управление пользователями
-                            </a>
-                            <a href="{{ route('admin.database.restore.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                                Backup / Восстановление БД
-                            </a>
-                        @endif
-
-                        @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3]))
-                            <a href="{{ route('applications.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                                Заявки
-                            </a>
-                        @endif
-
-                        @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
-                            <a href="{{ route('applications.report.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                                Отчёт по заявкам
-                            </a>
-                        @endif
-
-                        @if (Auth::user()->hasAnyRoleId([1, 2]))
-                            <a href="{{ route('materials.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                                Учёт оборудования
-                            </a>
-                        @endif
-
-                        @if (Auth::user()->hasAnyRoleId([1, 6, 2, 3]))
-                            <a href="{{ route('foreman-subdivisions.index') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                               Подразделения
-                            </a>
-                        @endif
-
-                        @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
-                            <a href="{{ route('foreman-subdivisions.assignments') }}" class="ui-btn ui-btn--primary ui-btn--lg w-full sm:w-auto [touch-action:manipulation]">
-                               Назначения мастерам
-                            </a>
-                        @endif
-                    </div>
                 </div>
             </div>
 

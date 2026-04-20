@@ -20,8 +20,6 @@ return new class extends Migration
             $table->foreignId('unit_type_id')->constrained('unit_types')->cascadeOnDelete();
             $table->string('code', 20);
             $table->string('name', 50);
-            $table->boolean('is_base')->default(false);
-            $table->decimal('multiplier_to_base', 12, 4)->default(1);
             $table->timestamps();
 
             $table->unique(['unit_type_id', 'code'], 'mu_type_code_unique');

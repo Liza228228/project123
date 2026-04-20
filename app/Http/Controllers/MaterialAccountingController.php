@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MaterialStockMovement;
 use App\Models\Equipment;
+use App\Models\MaterialStockMovement;
 use App\Models\MeasurementUnit;
-use App\Models\Warehouse;
+use App\Models\Subdivision;
 use App\Models\UnitType;
+use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,86 @@ class MaterialAccountingController extends Controller
 {
     public function index(Request $request): View
     {
+        return $this->renderIndex($request, true);
+    }
+
+    public function overview(Request $request): View
+    {
+        $user = $request->user();
+        $selectedSubdivisionId = $request->integer('subdivision_id');
+        $selectedWarehouseId = $request->integer('warehouse_id');
+        $mainWarehouse = $this->resolveMainWarehouse();
+        $hasExplicitFilters = $request->filled('subdivision_id') || $request->filled('warehouse_id');
+        $usingDefaultMainWarehouse = false;
+
+        if (! $hasExplicitFilters && $mainWarehouse) {
+            $selectedSubdivisionId = (int) $mainWarehouse->subdivision_id;
+            $selectedWarehouseId = (int) $mainWarehouse->id;
+            $usingDefaultMainWarehouse = true;
+        }
+
+        $subdivisionsQuery = Subdivision::query()->orderBy('name');
+        if ($user->hasRoleId(4)) {
+            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
+            $subdivisionsQuery->whereIn('id', $subdivisionIds);
+        } elseif ($user->hasRoleId(7)) {
+            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
+            $subdivisionsQuery->whereIn('id', $subdivisionIds);
+        }
+
+        $subdivisions = $subdivisionsQuery
+            ->withCount('warehouses')
+            ->get(['id', 'name']);
+
+        $selectedSubdivision = $subdivisions->firstWhere('id', $selectedSubdivisionId);
+        if (! $selectedSubdivision) {
+            $selectedSubdivisionId = 0;
+            $selectedWarehouseId = 0;
+        }
+
+        $warehouses = collect();
+        if ($selectedSubdivisionId > 0) {
+            $warehouses = Warehouse::query()
+                ->where('subdivision_id', $selectedSubdivisionId)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'subdivision_id']);
+        }
+
+        $selectedWarehouse = $warehouses->firstWhere('id', $selectedWarehouseId);
+        if (! $selectedWarehouse) {
+            $selectedWarehouseId = 0;
+            $usingDefaultMainWarehouse = false;
+        }
+
+        $equipmentBalances = collect();
+        if ($selectedWarehouseId > 0) {
+            $equipmentBalances = MaterialStockMovement::query()
+                ->join('equipment', 'equipment.id', '=', 'material_stock_movements.equipment_id')
+                ->leftJoin('measurement_units', 'measurement_units.id', '=', 'equipment.measurement_unit_id')
+                ->where('material_stock_movements.warehouse_id', $selectedWarehouseId)
+                ->groupBy('equipment.id', 'equipment.name', 'measurement_units.code')
+                ->selectRaw('equipment.id as equipment_id')
+                ->selectRaw('equipment.name as equipment_name')
+                ->selectRaw("COALESCE(measurement_units.code, 'шт') as unit_code")
+                ->selectRaw("SUM(CASE WHEN material_stock_movements.type = 'receipt' THEN material_stock_movements.quantity WHEN material_stock_movements.type = 'adjustment' AND material_stock_movements.quantity > 0 THEN material_stock_movements.quantity ELSE 0 END) as qty_in")
+                ->selectRaw("SUM(CASE WHEN material_stock_movements.type = 'issue' THEN material_stock_movements.quantity WHEN material_stock_movements.type = 'adjustment' AND material_stock_movements.quantity < 0 THEN -material_stock_movements.quantity ELSE 0 END) as qty_out")
+                ->selectRaw("SUM(CASE WHEN material_stock_movements.type = 'issue' THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) as balance")
+                ->orderBy('equipment.name')
+                ->get();
+        }
+
+        return view('materials.overview', [
+            'subdivisions' => $subdivisions,
+            'selectedSubdivision' => $selectedSubdivision,
+            'warehouses' => $warehouses,
+            'selectedWarehouse' => $selectedWarehouse,
+            'equipmentBalances' => $equipmentBalances,
+            'usingDefaultMainWarehouse' => $usingDefaultMainWarehouse,
+        ]);
+    }
+
+    private function renderIndex(Request $request, bool $canManage): View
+    {
         $warehouseFilter = $request->integer('warehouse_id');
         $selectedWarehouseId = $warehouseFilter > 0 ? $warehouseFilter : null;
         $mainWarehouse = $this->resolveMainWarehouse();
@@ -28,6 +109,7 @@ class MaterialAccountingController extends Controller
             ->get(['id', 'name', 'subdivision_id']);
 
         $materials = Equipment::query()
+            ->where('is_catalog', true)
             ->with('measurementUnit:id,code')
             ->orderBy('name')
             ->get();
@@ -64,6 +146,7 @@ class MaterialAccountingController extends Controller
         $movements = $movementsQuery->paginate(30)->withQueryString();
 
         return view('materials.index', compact(
+            'canManage',
             'warehouses',
             'materials',
             'balances',
@@ -107,6 +190,7 @@ class MaterialAccountingController extends Controller
             'base_name' => $baseName,
             'size_value' => $sizeValue !== '' ? $sizeValue : null,
             'measurement_unit_id' => (int) $validated['measurement_unit_id'],
+            'is_catalog' => true,
         ]);
 
         return redirect()

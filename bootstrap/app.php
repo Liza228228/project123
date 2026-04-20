@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'site_foreman' => \App\Http\Middleware\EnsureUserIsSiteForeman::class,
             'applications' => \App\Http\Middleware\EnsureUserCanAccessApplications::class,
             'supply_head' => \App\Http\Middleware\EnsureUserIsSupplyHead::class,
+            'boiler_chief' => \App\Http\Middleware\EnsureUserIsBoilerChief::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

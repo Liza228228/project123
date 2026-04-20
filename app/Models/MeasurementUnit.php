@@ -12,17 +12,7 @@ class MeasurementUnit extends Model
         'unit_type_id',
         'code',
         'name',
-        'is_base',
-        'multiplier_to_base',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'is_base' => 'boolean',
-            'multiplier_to_base' => 'decimal:4',
-        ];
-    }
 
     public function unitType(): BelongsTo
     {

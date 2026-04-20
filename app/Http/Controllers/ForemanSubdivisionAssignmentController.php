@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Subdivision;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\DadataAddressService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use RuntimeException;
 
 class ForemanSubdivisionAssignmentController extends Controller
 {
@@ -20,9 +22,16 @@ class ForemanSubdivisionAssignmentController extends Controller
             $perPage = 10;
         }
 
-        $subdivisions = Subdivision::query()
+        $subdivisionsQuery = Subdivision::query()
             ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
-            ->orderBy('name')
+            ->orderBy('name');
+
+        if ($request->user()?->hasRoleId(7)) {
+            $ids = $request->user()->boilerChiefSubdivisions()->pluck('subdivisions.id');
+            $subdivisionsQuery->whereIn('id', $ids);
+        }
+
+        $subdivisions = $subdivisionsQuery
             ->paginate($perPage)
             ->withQueryString();
         $subdivisionOptions = Subdivision::query()
@@ -38,14 +47,29 @@ class ForemanSubdivisionAssignmentController extends Controller
     {
         $this->authorizeForManage($request);
 
-        $foremen = User::query()
+        $search = trim((string) $request->input('q', ''));
+
+        $foremenQuery = User::query()
             ->where('role_id', 4)
-            ->with(['assignedSubdivisions' => fn ($q) => $q->orderBy('name')])
+            ->with(['assignedSubdivisions' => fn ($q) => $q->orderBy('name')]);
+
+        if ($search !== '') {
+            $foremenQuery->where(function ($query) use ($search) {
+                $like = '%'.$search.'%';
+                $query
+                    ->where('surname', 'like', $like)
+                    ->orWhere('name', 'like', $like)
+                    ->orWhere('patronymic', 'like', $like)
+                    ->orWhere('email', 'like', $like);
+            });
+        }
+
+        $foremen = $foremenQuery
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
 
-        return view('foreman-subdivisions.index', compact('foremen'));
+        return view('foreman-subdivisions.index', compact('foremen', 'search'));
     }
 
     public function storeSubdivision(Request $request): RedirectResponse
@@ -78,6 +102,7 @@ class ForemanSubdivisionAssignmentController extends Controller
             'subdivision_id' => ['required', 'integer', 'exists:subdivisions,id'],
             'warehouse_name' => ['required', 'string', 'max:255'],
             'code' => ['required', 'string', 'max:255', 'unique:warehouses,code'],
+            'address' => ['required', 'string', 'max:255'],
             'is_primary' => ['nullable', 'boolean'],
             'comment' => ['nullable', 'string'],
         ], [
@@ -90,12 +115,52 @@ class ForemanSubdivisionAssignmentController extends Controller
             'code.string' => 'Код склада должен быть текстом.',
             'code.max' => 'Код склада не может быть длиннее :max символов.',
             'code.unique' => 'Склад с таким кодом уже существует.',
+            'address.required' => 'Укажите адрес склада.',
+            'address.string' => 'Адрес склада должен быть текстом.',
+            'address.max' => 'Адрес склада не может быть длиннее :max символов.',
         ]);
+
+        $normalizedAddress = trim((string) $validated['address']);
+        $addressParts = [
+            'address_postal_code' => null,
+            'address_region' => null,
+            'address_city' => null,
+            'address_street' => null,
+            'address_house' => null,
+            'address_block' => null,
+            'address_flat' => null,
+            'address_fias_id' => null,
+        ];
+
+        try {
+            /** @var DadataAddressService $dadata */
+            $dadata = app(DadataAddressService::class);
+            $cleaned = $dadata->clean($normalizedAddress);
+            if (isset($cleaned['result']) && is_string($cleaned['result']) && trim($cleaned['result']) !== '') {
+                $normalizedAddress = trim($cleaned['result']);
+            }
+            if ($cleaned !== []) {
+                $addressParts = [
+                    'address_postal_code' => $this->toNullableString($cleaned['postal_code'] ?? null, 20),
+                    'address_region' => $this->toNullableString($cleaned['region_with_type'] ?? null, 150),
+                    'address_city' => $this->toNullableString(($cleaned['city_with_type'] ?? null) ?: ($cleaned['settlement_with_type'] ?? null), 150),
+                    'address_street' => $this->toNullableString($cleaned['street_with_type'] ?? null, 150),
+                    'address_house' => $this->toNullableString($cleaned['house'] ?? null, 50),
+                    'address_block' => $this->toNullableString($cleaned['block'] ?? null, 50),
+                    'address_flat' => $this->toNullableString($cleaned['flat'] ?? null, 50),
+                    'address_fias_id' => $this->toNullableString($cleaned['fias_id'] ?? null, 50),
+                ];
+            }
+        } catch (RuntimeException) {
+            // If DaData is unavailable, we still save raw address.
+        }
 
         Warehouse::query()->create([
             'subdivision_id' => (int) $validated['subdivision_id'],
             'name' => trim($validated['warehouse_name']),
             'code' => trim($validated['code']),
+            'address' => $normalizedAddress,
+            ...$addressParts,
             'is_primary' => (bool) ($validated['is_primary'] ?? false),
             'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
             'warehouse_type_id' => null,
@@ -153,10 +218,10 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     private function authorizeForView(Request $request): void
     {
-        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3]) ?? false;
+        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3, 7]) ?? false;
 
         if (! $allowed) {
-            abort(403, 'Доступ разрешён только директору, техническому директору, начальнику отдела снабжения и бухгалтеру.');
+            abort(403, 'Доступ разрешён только директору, техническому директору, начальнику отдела снабжения, начальнику котельной и бухгалтеру.');
         }
     }
 
@@ -170,5 +235,15 @@ class ForemanSubdivisionAssignmentController extends Controller
     private function canManageSubdivisionsAndWarehouses(Request $request): bool
     {
         return $request->user()?->hasAnyRoleId([1, 6, 2]) ?? false;
+    }
+
+    private function toNullableString(mixed $value, int $maxLength): ?string
+    {
+        $text = trim((string) ($value ?? ''));
+        if ($text === '') {
+            return null;
+        }
+
+        return mb_substr($text, 0, $maxLength);
     }
 }

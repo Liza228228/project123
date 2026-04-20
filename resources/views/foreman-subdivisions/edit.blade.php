@@ -1,85 +1,95 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-2 w-full min-w-0">
-            <a href="{{ route('foreman-subdivisions.assignments') }}" class="shrink-0 text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors whitespace-nowrap">
-                ← Назад к мастерам
-            </a>
-            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
+        <div class="flex flex-col gap-4 w-full min-w-0">
+            <x-page-header-nav :href="route('foreman-subdivisions.assignments')">Назад к мастерам</x-page-header-nav>
+            <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
                 Назначить подразделения
             </h2>
         </div>
     </x-slot>
 
-    <div class="py-2 sm:py-8 md:py-10">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
-                <div class="p-4 sm:p-6">
-                    <div class="mb-4">
-                        <p class="text-sm text-black dark:text-white opacity-80">Мастер участка</p>
-                        <p class="text-base font-semibold text-black dark:text-white">
-                            {{ $foreman->surname }} {{ $foreman->name }} {{ $foreman->patronymic }}
+    <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
+        <div class="app-form-card">
+            <div class="px-4 py-5 sm:p-8">
+                <div class="mb-6 rounded-xl border border-stone-200/90 bg-stone-50/80 px-4 py-4 dark:border-stone-600 dark:bg-stone-800/35 sm:px-5">
+                    <p class="text-xs font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400">Мастер участка</p>
+                    <p class="mt-1 text-base font-semibold text-stone-900 dark:text-stone-100">
+                        {{ $foreman->surname }} {{ $foreman->name }} {{ $foreman->patronymic }}
+                    </p>
+                    <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">{{ $foreman->email }}</p>
+                </div>
+
+                <form method="POST" action="{{ route('foreman-subdivisions.update', $foreman) }}" class="space-y-8 sm:space-y-10">
+                    @csrf
+                    @method('PUT')
+
+                    <section class="space-y-4" aria-labelledby="foreman-subdivisions-section">
+                        <h3 id="foreman-subdivisions-section" class="app-section-title">Подразделения</h3>
+                        <p class="text-xs text-stone-500 dark:text-stone-400 -mt-1 max-w-2xl">
+                            Отметьте подразделения, за которые отвечает мастер, и сохраните назначение.
                         </p>
-                        <p class="text-sm text-black dark:text-white opacity-80">{{ $foreman->email }}</p>
-                    </div>
 
-                    <form method="POST" action="{{ route('foreman-subdivisions.update', $foreman) }}" class="space-y-4">
-                        @csrf
-                        @method('PUT')
-
-                        <div>
-                            <div class="mb-3">
-                                <p class="text-xs text-black dark:text-white opacity-80 mb-1">Сейчас назначено</p>
-                                @if($foreman->assignedSubdivisions->isEmpty())
-                                    <p class="text-sm text-black dark:text-white opacity-70">Подразделения пока не назначены.</p>
-                                @else
-                                    <div class="flex flex-wrap gap-1.5">
-                                        @foreach($foreman->assignedSubdivisions as $assigned)
-                                            <span class="inline-flex items-center rounded-full bg-stone-100 dark:bg-stone-900/40 px-2.5 py-0.5 text-xs text-black dark:text-white">
-                                                {{ $assigned->name }}
-                                            </span>
-                                        @endforeach
-                                    </div>
-                                @endif
-                            </div>
-
-                            <x-input-label value="Список подразделений" />
-                            <p class="text-xs text-black dark:text-white opacity-80 mt-1 mb-3">Отметьте подразделения и нажмите «Назначить».</p>
-                            <div class="mb-3">
-                                <input
-                                    id="subdivision-search"
-                                    type="text"
-                                    placeholder="Поиск по подразделениям..."
-                                    class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
-                                />
-                            </div>
-                            <div class="max-h-80 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-800 p-3">
-                                <div id="subdivision-list" class="grid gap-2 sm:grid-cols-2">
-                                    @foreach($subdivisions as $subdivision)
-                                        <label class="subdivision-option inline-flex items-center gap-2 text-sm text-black dark:text-white" data-name="{{ mb_strtolower($subdivision->name) }}">
-                                            <input
-                                                type="checkbox"
-                                                name="subdivision_ids[]"
-                                                value="{{ $subdivision->id }}"
-                                                @checked($foreman->assignedSubdivisions->contains('id', $subdivision->id))
-                                                class="rounded border-stone-300 text-stone-600 shadow-sm focus:ring-stone-500"
-                                            >
-                                            <span>{{ $subdivision->name }}</span>
-                                        </label>
+                        <div class="rounded-xl border border-stone-200/80 bg-white px-4 py-3 dark:border-stone-600/80 dark:bg-stone-900/30 sm:px-5 sm:py-4">
+                            <p class="text-xs font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400 mb-2">Сейчас назначено</p>
+                            @if($foreman->assignedSubdivisions->isEmpty())
+                                <p class="text-sm text-stone-500 dark:text-stone-400">Подразделения пока не назначены.</p>
+                            @else
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach($foreman->assignedSubdivisions as $assigned)
+                                        <span class="inline-flex items-center rounded-full border border-orange-200/80 bg-orange-50/90 px-3 py-1 text-xs font-medium text-stone-800 dark:border-orange-900/50 dark:bg-orange-950/40 dark:text-stone-100">
+                                            {{ $assigned->name }}
+                                        </span>
                                     @endforeach
                                 </div>
-                                <p id="subdivision-empty" class="hidden text-sm text-black dark:text-white opacity-70 mt-1">Ничего не найдено.</p>
-                            </div>
-                            <x-input-error :messages="$errors->get('subdivision_ids')" class="mt-2" />
-                            <x-input-error :messages="$errors->get('subdivision_ids.*')" class="mt-2" />
+                            @endif
                         </div>
 
-                        <div class="pt-2 border-t border-stone-200 dark:border-stone-800">
-                            <button type="submit" class="ui-btn ui-btn--primary">
-                                Назначить
-                            </button>
+                        <div>
+                            <label for="subdivision-search" class="app-form-label">Поиск по списку</label>
+                            <div class="relative">
+                                <span class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-stone-400 dark:text-stone-500" aria-hidden="true">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                </span>
+                                <input
+                                    id="subdivision-search"
+                                    type="search"
+                                    autocomplete="off"
+                                    placeholder="Начните вводить название…"
+                                    class="app-input app-input--with-icon"
+                                />
+                            </div>
                         </div>
-                    </form>
-                </div>
+
+                        <div class="max-h-80 overflow-y-auto rounded-xl border border-dashed border-orange-300/80 bg-orange-50/40 p-4 dark:border-orange-800/50 dark:bg-orange-950/20 sm:p-5">
+                            <div id="subdivision-list" class="grid gap-3 sm:grid-cols-2">
+                                @foreach($subdivisions as $subdivision)
+                                    <label class="subdivision-option flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200/90 bg-white px-3 py-3 text-sm text-stone-800 shadow-sm transition hover:border-orange-200/90 hover:bg-orange-50/30 dark:border-stone-600 dark:bg-stone-900/50 dark:text-stone-100 dark:hover:border-orange-900/40 dark:hover:bg-orange-950/25" data-name="{{ mb_strtolower($subdivision->name) }}">
+                                        <input
+                                            type="checkbox"
+                                            name="subdivision_ids[]"
+                                            value="{{ $subdivision->id }}"
+                                            @checked($foreman->assignedSubdivisions->contains('id', $subdivision->id))
+                                            class="mt-0.5 shrink-0 rounded-md border-stone-300 text-orange-600 shadow-sm focus:ring-2 focus:ring-orange-400/30 dark:border-stone-500 dark:bg-stone-900 dark:text-orange-500 dark:focus:ring-orange-500/30"
+                                        >
+                                        <span class="min-w-0 leading-snug">{{ $subdivision->name }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p id="subdivision-empty" class="hidden text-sm text-stone-500 dark:text-stone-400 mt-2">Ничего не найдено.</p>
+                        </div>
+                        <x-input-error :messages="$errors->get('subdivision_ids')" class="mt-1.5" />
+                        <x-input-error :messages="$errors->get('subdivision_ids.*')" class="mt-1.5" />
+                    </section>
+
+                    <div class="app-form-actions-mobile">
+                        <a href="{{ route('foreman-subdivisions.assignments') }}" class="min-h-11 content-center text-center text-sm font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200 sm:text-left">
+                            Отмена и к списку мастеров
+                        </a>
+                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
+                            Назначить
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

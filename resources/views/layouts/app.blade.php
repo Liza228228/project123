@@ -21,17 +21,16 @@
             <!-- Page Heading -->
             @isset($header)
                 <header class="border-b border-orange-400/70 dark:border-orange-800/60 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100">
-                    <div class="max-w-7xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
+                    <div class="max-w-7xl mx-auto py-3 sm:py-6 px-4 sm:px-6 lg:px-8">
                         <div class="w-full min-w-0">
                             {{ $header }}
                         </div>
-                        <div class="mt-4 h-px w-full max-w-lg bg-gradient-to-r from-orange-600/35 via-orange-500/25 to-transparent dark:from-orange-500/30 dark:via-orange-600/20 rounded-full" aria-hidden="true"></div>
                     </div>
                 </header>
             @endisset
 
             <!-- Page Content -->
-            <main class="flex-1 bg-orange-50 dark:bg-orange-950/80 py-6 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <main class="flex-1 overflow-x-hidden bg-orange-50 dark:bg-orange-950/80 py-4 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 {{ $slot }}
             </main>
 

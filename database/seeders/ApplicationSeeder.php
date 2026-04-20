@@ -59,13 +59,13 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app1->id,
             'equipment_id' => $types[0]->id,
             'equipment_name' => null,
-            'quantity' => 4,
+            'quantity' => 12,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app1->id,
             'equipment_id' => $types[1]->id,
             'equipment_name' => null,
-            'quantity' => 2,
+            'quantity' => 8,
         ]);
 
         $app2 = Application::query()->create($base + [
@@ -85,7 +85,8 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app2->id,
             'equipment_id' => null,
             'equipment_name' => 'Нестандартный узел учёта (по согласованию)',
-            'quantity' => 1,
+            'quantity' => 3,
+            'custom_equipment_supply_status' => ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL,
         ]);
 
         $app3 = Application::query()->create($base + [
@@ -99,7 +100,7 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app3->id,
             'equipment_id' => $types[2]->id,
             'equipment_name' => null,
-            'quantity' => 6,
+            'quantity' => 15,
             'is_checked' => true,
             'reason_not_selected' => null,
         ]);
@@ -107,7 +108,7 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app3->id,
             'equipment_id' => $types[3]->id,
             'equipment_name' => null,
-            'quantity' => 1,
+            'quantity' => 5,
             'is_checked' => false,
             'reason_not_selected' => 'Нет в наличии на складе поставщика.',
         ]);
@@ -123,7 +124,7 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app4->id,
             'equipment_id' => $types[4]->id,
             'equipment_name' => null,
-            'quantity' => 3,
+            'quantity' => 10,
             'is_checked' => true,
             'reason_not_selected' => null,
         ]);
@@ -131,7 +132,7 @@ class ApplicationSeeder extends Seeder
             'application_id' => $app4->id,
             'equipment_id' => $types[5]->id,
             'equipment_name' => null,
-            'quantity' => 2,
+            'quantity' => 7,
             'is_checked' => true,
             'reason_not_selected' => null,
         ]);

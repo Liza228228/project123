@@ -1,11 +1,20 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
-            Учёт оборудования
+            {{ ($canManage ?? false) ? 'Учёт оборудования' : 'Остатки оборудования по складам' }}
         </h2>
     </x-slot>
 
     <div class="py-2 sm:py-8 md:py-10 max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-4">
+        @if(!($canManage ?? false))
+            <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+                <p class="text-sm text-black dark:text-white opacity-90">
+                    Доступен просмотр остатков и журнала по складам. Добавление оборудования и операции прихода/расхода доступны только директору, техническому директору и начальнику отдела снабжения.
+                </p>
+            </div>
+        @endif
+
+        @if($canManage ?? false)
         <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white">1) Добавить оборудование в справочник</h3>
             <form method="POST" action="{{ route('materials.store-material') }}" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3" id="equipment-catalog-form">
@@ -22,7 +31,7 @@
                 </div>
                 <div>
                     <x-input-label for="measurement_type" value="Тип измерения" />
-                    <select id="measurement_type" name="measurement_type" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required>
+                    <select id="measurement_type" name="measurement_type" class="app-select mt-1" required>
                         @foreach(($measurementTypeOptions ?? []) as $typeCode => $typeName)
                             <option value="{{ $typeCode }}">{{ $typeName }}</option>
                         @endforeach
@@ -31,7 +40,7 @@
                 </div>
                 <div class="md:col-span-2">
                     <x-input-label for="measurement_unit_id" value="Единица измерения" />
-                    <select id="measurement_unit_id" name="measurement_unit_id" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required></select>
+                    <select id="measurement_unit_id" name="measurement_unit_id" class="app-select mt-1" required></select>
                     <x-input-error :messages="$errors->get('measurement_unit_id')" class="mt-1" />
                 </div>
                 <div class="md:col-span-4">
@@ -39,7 +48,9 @@
                 </div>
             </form>
         </div>
+        @endif
 
+        @if($canManage ?? false)
         <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white">2) Поступление оборудования на основной склад</h3>
             @if(!$mainWarehouse)
@@ -55,7 +66,7 @@
                 @endif
                 <div>
                     <x-input-label for="equipment_id" value="Оборудование" />
-                    <select id="equipment_id" name="equipment_id" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required>
+                    <select id="equipment_id" name="equipment_id" class="app-select mt-1" required>
                         <option value="">Выберите оборудование</option>
                         @foreach($materials as $material)
                             <option value="{{ $material->id }}">{{ $material->name }} ({{ $material->measurementUnit?->code ?? 'шт' }})</option>
@@ -66,7 +77,7 @@
 
                 <div>
                     <x-input-label value="Склад поступления" />
-                    <div class="mt-1 h-10 px-3 rounded-lg border border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm flex items-center">
+                    <div class="mt-1 flex min-h-[2.75rem] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3.5 text-sm text-stone-700 dark:border-stone-600 dark:bg-stone-800/50 dark:text-stone-200">
                         {{ $mainWarehouse?->name ?? 'Не определён' }}
                     </div>
                     <x-input-error :messages="$errors->get('warehouse_id')" class="mt-1" />
@@ -74,7 +85,7 @@
 
                 <div>
                     <x-input-label value="Тип операции" />
-                    <div class="mt-1 h-10 px-3 rounded-lg border border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm flex items-center">
+                    <div class="mt-1 flex min-h-[2.75rem] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3.5 text-sm text-stone-700 dark:border-stone-600 dark:bg-stone-800/50 dark:text-stone-200">
                         Поступление (приход)
                     </div>
                 </div>
@@ -111,7 +122,7 @@
 
                 <div class="md:col-span-3">
                     <x-input-label for="comment" value="Комментарий (опц.)" />
-                    <textarea id="comment" name="comment" rows="2" class="mt-1 block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"></textarea>
+                    <textarea id="comment" name="comment" rows="2" class="app-input mt-1 min-h-[5rem] py-2.5"></textarea>
                     <x-input-error :messages="$errors->get('comment')" class="mt-1" />
                 </div>
 
@@ -120,24 +131,28 @@
                 </div>
             </form>
         </div>
+        @endif
 
         <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
             <div class="flex flex-wrap items-end gap-3 justify-between">
-                <h3 class="text-lg font-semibold text-black dark:text-white">3) Остатки оборудования</h3>
-                <form method="GET" action="{{ route('materials.index') }}" class="flex items-end gap-2">
-                    <div>
-                        <x-input-label for="warehouse_filter" value="Склад" />
-                        <select id="warehouse_filter" name="warehouse_id" class="mt-1 block w-72 rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
+                <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? '3) Остатки оборудования' : '1) Остатки оборудования' }}</h3>
+                <form method="GET" action="{{ ($canManage ?? false) ? route('materials.index') : route('materials.overview') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div class="min-w-0 sm:w-80">
+                        <label for="warehouse_filter" class="app-form-label">Склад</label>
+                        <select id="warehouse_filter" name="warehouse_id" class="app-select w-full min-w-0 sm:max-w-xs">
                             <option value="">Все склады</option>
                             @foreach($warehouses as $warehouse)
                                 <option value="{{ $warehouse->id }}" @selected($selectedWarehouseId === $warehouse->id)>{{ $warehouse->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <x-primary-button type="submit">Показать</x-primary-button>
+                    <button type="submit" class="ui-btn ui-btn--primary shrink-0">Показать</button>
                 </form>
             </div>
 
+            <p class="mt-2 text-xs text-black/70 dark:text-white/70">
+                Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход» и в журнале операций ниже.
+            </p>
             <div class="mt-4 overflow-x-auto">
                 <table class="min-w-full text-sm text-black dark:text-white">
                     <thead>
@@ -170,7 +185,7 @@
         </div>
 
         <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
-            <h3 class="text-lg font-semibold text-black dark:text-white">4) Журнал операций по оборудованию</h3>
+            <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? '4) Журнал операций по оборудованию' : '2) Журнал операций по оборудованию' }}</h3>
             <div class="mt-4 overflow-x-auto">
                 <table class="min-w-full text-sm text-black dark:text-white">
                     <thead>
@@ -181,6 +196,7 @@
                             <th class="text-left py-2 pr-3">Тип</th>
                             <th class="text-right py-2 pr-3">Количество</th>
                             <th class="text-left py-2 pr-3">Документ</th>
+                            <th class="text-left py-2 pr-3 max-w-[14rem]">Комментарий</th>
                             <th class="text-left py-2">Исполнитель</th>
                         </tr>
                     </thead>
@@ -195,20 +211,21 @@
                                 <td class="py-2 pr-3">{{ $movement->warehouse?->name }}</td>
                                 <td class="py-2 pr-3">
                                     @if($movement->type === 'receipt') Приход
-                                    @elseif($movement->type === 'issue') Расход
+                                    @elseif($movement->type === 'issue') Списание
                                     @else Корректировка @endif
                                 </td>
                                 <td class="py-2 pr-3 text-right {{ $signed < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400' }}">
                                     {{ number_format($signed, 3, '.', ' ') }}
                                 </td>
-                                <td class="py-2 pr-3">{{ $movement->document_ref ?: '—' }}</td>
+                                <td class="py-2 pr-3 font-mono text-xs">{{ $movement->document_ref ?: '—' }}</td>
+                                <td class="py-2 pr-3 max-w-[14rem] text-xs text-black/80 dark:text-white/80 break-words">{{ $movement->comment ? \Illuminate\Support\Str::limit($movement->comment, 120) : '—' }}</td>
                                 <td class="py-2">
                                     {{ trim(($movement->createdBy?->surname ?? '').' '.($movement->createdBy?->name ?? '')) ?: '—' }}
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
+                                <td colspan="8" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -222,6 +239,7 @@
     </div>
 </x-app-layout>
 
+@if($canManage ?? false)
 <script>
     (function () {
         var unitsByType = @json($measurementUnitsByType);
@@ -242,3 +260,4 @@
         fillUnits();
     })();
 </script>
+@endif

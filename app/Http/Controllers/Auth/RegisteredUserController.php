@@ -17,7 +17,10 @@ class RegisteredUserController extends Controller
 {
     public function create(): View
     {
-        $roles = Role::orderBy('name')->get();
+        $roles = Role::query()
+            ->whereNotIn('id', [5, 7])
+            ->orderBy('name')
+            ->get();
 
         return view('auth.register', compact('roles'));
     }
@@ -29,7 +32,7 @@ class RegisteredUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'patronymic' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'role_id' => ['required', 'exists:roles,id'],
+            'role_id' => ['required', 'integer', 'exists:roles,id', 'not_in:5,7'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ], [
             'surname.required' => 'Укажите фамилию.',

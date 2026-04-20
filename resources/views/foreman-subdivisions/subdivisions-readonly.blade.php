@@ -1,14 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-2 w-full min-w-0">
+        <div class="flex flex-col gap-4 w-full min-w-0">
+            @if($canManage ?? false)
+                <x-page-header-nav :href="route('foreman-subdivisions.assignments')">Назначения мастерам</x-page-header-nav>
+            @endif
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Подразделения и склады
             </h2>
-            @if($canManage ?? false)
-                <a href="{{ route('foreman-subdivisions.assignments') }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto">
-                    Назначения мастерам
-                </a>
-            @endif
         </div>
     </x-slot>
 
@@ -39,7 +37,12 @@
                                 </button>
                             </form>
 
-                            <form method="POST" action="{{ route('foreman-subdivisions.warehouses.store') }}" class="rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/20 p-3 space-y-2">
+                            <form method="POST"
+                                  action="{{ route('foreman-subdivisions.warehouses.store') }}"
+                                  class="rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/20 p-3 space-y-2"
+                                  id="warehouse-create-form"
+                                  data-dadata-suggest-url="{{ route('api.dadata.address.suggest', [], false) }}"
+                                  data-dadata-clean-url="{{ route('api.dadata.address.clean', [], false) }}">
                                 @csrf
                                 <h3 class="text-sm font-semibold text-black dark:text-white">Добавить склад</h3>
                                 <div class="grid gap-2 sm:grid-cols-2">
@@ -73,6 +76,19 @@
                                         Основной склад
                                     </label>
                                 </div>
+                                <div class="relative" data-dadata-address-field>
+                                    <input
+                                        type="text"
+                                        name="address"
+                                        value="{{ old('address') }}"
+                                        placeholder="Адрес склада"
+                                        autocomplete="off"
+                                        class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
+                                        data-dadata-address-input
+                                    />
+                                    <div class="absolute z-30 mt-1 hidden max-h-56 w-full overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg dark:border-stone-700 dark:bg-stone-900"
+                                         data-dadata-suggestions></div>
+                                </div>
                                 <textarea
                                     name="comment"
                                     rows="2"
@@ -82,6 +98,7 @@
                                 <x-input-error :messages="$errors->get('subdivision_id')" />
                                 <x-input-error :messages="$errors->get('warehouse_name')" />
                                 <x-input-error :messages="$errors->get('code')" />
+                                <x-input-error :messages="$errors->get('address')" />
                                 <x-input-error :messages="$errors->get('comment')" />
                                 <button type="submit" class="ui-btn ui-btn--primary">
                                     Добавить склад
@@ -130,7 +147,7 @@
                                     @if(($perPage ?? 10) !== 10)
                                         <a
                                             href="{{ route('foreman-subdivisions.index') }}"
-                                            class="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-black dark:text-white rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/30 hover:bg-stone-100 dark:hover:bg-stone-900/50 whitespace-nowrap"
+                                            class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap"
                                         >
                                             Сбросить
                                         </a>
@@ -157,7 +174,7 @@
                                 @forelse($subdivisions as $subdivision)
                                     @php
                                         $warehouseSearchBlob = $subdivision->warehouses
-                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name)))
+                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name.' '.($warehouse->address ?? ''))))
                                             ->implode(' ');
                                     @endphp
                                     <tr
@@ -181,6 +198,9 @@
                                                             <span class="font-mono text-xs opacity-80">{{ $warehouse->code }}</span>
                                                             <span class="opacity-70">—</span>
                                                             {{ $warehouse->name }}
+                                                            @if(!empty($warehouse->address))
+                                                                <div class="mt-1 text-xs opacity-75">{{ $warehouse->address }}</div>
+                                                            @endif
                                                         </li>
                                                     @endforeach
                                                 </ul>
@@ -208,6 +228,137 @@
 
     <script>
         (function () {
+            var warehouseForm = document.getElementById('warehouse-create-form');
+            if (warehouseForm) {
+                var suggestUrl = warehouseForm.getAttribute('data-dadata-suggest-url') || '';
+                var cleanUrl = warehouseForm.getAttribute('data-dadata-clean-url') || '';
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                var csrfToken = csrfMeta ? (csrfMeta.getAttribute('content') || '') : '';
+                var field = warehouseForm.querySelector('[data-dadata-address-field]');
+                var input = field ? field.querySelector('[data-dadata-address-input]') : null;
+                var suggestionsBox = field ? field.querySelector('[data-dadata-suggestions]') : null;
+                var timerId = null;
+
+                function closeSuggestions() {
+                    if (!suggestionsBox) return;
+                    suggestionsBox.innerHTML = '';
+                    suggestionsBox.classList.add('hidden');
+                }
+
+                function selectSuggestion(item) {
+                    if (!input) return;
+                    input.value = item && item.value ? item.value : input.value;
+                    closeSuggestions();
+                }
+
+                function renderSuggestions(items) {
+                    if (!suggestionsBox) return;
+                    suggestionsBox.innerHTML = '';
+                    if (!Array.isArray(items) || items.length === 0) {
+                        closeSuggestions();
+                        return;
+                    }
+                    items.forEach(function (item) {
+                        var button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'block w-full px-3 py-2 text-left text-sm text-stone-800 hover:bg-orange-50 dark:text-stone-100 dark:hover:bg-stone-800';
+                        button.textContent = item && item.value ? item.value : '';
+                        button.addEventListener('click', function () {
+                            selectSuggestion(item || {});
+                        });
+                        suggestionsBox.appendChild(button);
+                    });
+                    suggestionsBox.classList.remove('hidden');
+                }
+
+                async function fetchSuggestions(query) {
+                    if (!query || query.length < 3 || !suggestUrl) {
+                        closeSuggestions();
+                        return;
+                    }
+                    try {
+                        var url = new URL(suggestUrl, window.location.origin);
+                        url.searchParams.set('query', query);
+                        url.searchParams.set('count', '7');
+                        var res = await fetch(url.toString(), {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            credentials: 'same-origin'
+                        });
+                        if (!res.ok) {
+                            closeSuggestions();
+                            return;
+                        }
+                        var data = await res.json();
+                        renderSuggestions(data && data.suggestions ? data.suggestions : []);
+                    } catch (_) {
+                        closeSuggestions();
+                    }
+                }
+
+                async function cleanAddress() {
+                    if (!input || !cleanUrl) return;
+                    var value = (input.value || '').toString().trim();
+                    if (value.length < 3) return;
+                    try {
+                        var res = await fetch(cleanUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify({ address: value }),
+                            credentials: 'same-origin'
+                        });
+                        if (!res.ok) return;
+                        var data = await res.json();
+                        var result = data && data.result ? data.result : null;
+                        if (result && typeof result === 'object') {
+                            if (typeof result.result === 'string' && result.result.trim() !== '') {
+                                input.value = result.result;
+                            }
+                        }
+                    } catch (_) {
+                        // ignore network issues and keep manual input
+                    }
+                }
+
+                if (input && suggestionsBox) {
+                    input.addEventListener('input', function () {
+                        if (timerId) {
+                            clearTimeout(timerId);
+                        }
+                        timerId = setTimeout(function () {
+                            fetchSuggestions((input.value || '').toString().trim());
+                        }, 260);
+                    });
+
+                    input.addEventListener('blur', function () {
+                        setTimeout(function () {
+                            if (!suggestionsBox.matches(':hover')) {
+                                closeSuggestions();
+                            }
+                        }, 120);
+                        cleanAddress();
+                    });
+
+                    document.addEventListener('click', function (event) {
+                        if (!event.target.closest('[data-dadata-address-field]')) {
+                            closeSuggestions();
+                        }
+                    });
+                }
+
+                warehouseForm.addEventListener('submit', async function () {
+                    await cleanAddress();
+                });
+            }
+
             var searchInput = document.getElementById('subdivision-search');
             var filterSelect = document.getElementById('warehouse-filter');
             var rows = Array.prototype.slice.call(document.querySelectorAll('.subdivision-row'));

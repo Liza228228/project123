@@ -12,13 +12,15 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             SubdivisionSeeder::class,
+            DepartmentSeeder::class,
             ForemanSubdivisionSeeder::class,
             WarehouseDataFrom1CsvSeeder::class,
+            SubdivisionWarehouseSeeder::class,
             MeasurementUnitSeeder::class,
             EquipmentSeeder::class,
+            MainWarehouseStockSeeder::class,
             TransportOptionSeeder::class,
             ApplicationSeeder::class,
-            ApplicationReportLayoutSeeder::class,
         ]);
     }
 }

@@ -1,10 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-3 gap-y-2 min-w-0 w-full">
-            <a href="{{ route('users.index') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-black dark:text-white hover:text-stone-700 dark:hover:text-stone-300 transition shrink-0 whitespace-nowrap">
-                <span aria-hidden="true">←</span> Управление пользователями
-            </a>
-            <span class="hidden sm:inline text-stone-300 dark:text-stone-700" aria-hidden="true">|</span>
+        <div class="flex flex-col gap-4 min-w-0 w-full">
+            <x-page-header-nav :href="route('users.index')">Управление пользователями</x-page-header-nav>
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight min-w-0 break-words">
                 Новый пользователь
             </h2>
@@ -104,7 +101,7 @@
                     <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-stone-200 dark:border-stone-800">
                         <a
                             href="{{ route('users.index') }}"
-                            class="inline-flex justify-center items-center px-4 py-2.5 text-sm font-medium rounded-lg border border-stone-300 dark:border-stone-600 text-black dark:text-white bg-white dark:bg-stone-900/30 hover:bg-stone-50 dark:hover:bg-stone-900/50 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 dark:focus:ring-offset-stone-950 transition"
+                            class="ui-btn ui-btn--secondary w-full justify-center sm:w-auto"
                         >
                             Отмена
                         </a>

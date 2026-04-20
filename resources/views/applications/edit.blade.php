@@ -1,9 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-2 w-full min-w-0">
-            <a href="{{ route('applications.index') }}" class="shrink-0 text-sm text-black dark:text-white hover:text-black dark:hover:text-white transition-colors whitespace-nowrap">
-                ← Заявки
-            </a>
+        <div class="flex flex-col gap-4 w-full min-w-0">
+            <x-page-header-nav :href="route('applications.index')">Заявки</x-page-header-nav>
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
                 Изменить заявку
             </h2>
@@ -47,79 +45,81 @@
             ->all();
     @endphp
 
-    <div class="py-2 sm:py-8 md:py-10 max-w-2xl mx-auto sm:px-6 lg:px-8">
-        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm overflow-hidden">
-            <div class="p-4 sm:p-8">
-                <p class="text-sm text-black dark:text-white border-l-2 border-stone-300 dark:border-stone-600 pl-4 py-0.5 mb-6">
+    <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
+        <div class="app-form-card">
+            <div class="px-4 py-5 sm:p-8">
+                <div class="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
                     Позиции с отметкой «согласовано» только для просмотра. Остальные можно менять, удалять или дополнять. После сохранения заявки отметки согласования по позициям сбрасываются.
-                </p>
+                </div>
 
-                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" class="space-y-6">
+                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" class="max-sm:pb-40 space-y-8 sm:space-y-10">
                     @csrf
                     @method('PUT')
 
-                    <div class="space-y-1.5">
-                        <x-input-label for="subdivision_id" value="Подразделение" />
-                        <select id="subdivision_id" name="subdivision_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required>
-                            <option value="">Выберите подразделение</option>
-                            @foreach($subdivisions as $sub)
-                                <option value="{{ $sub->id }}" @selected(old('subdivision_id', $application->subdivision_id) == $sub->id)>{{ $sub->name }}</option>
-                            @endforeach
-                        </select>
-                        <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1" />
-                    </div>
+                    <section class="space-y-4" aria-labelledby="edit-section-main">
+                        <h3 id="edit-section-main" class="app-section-title">Основное</h3>
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div class="sm:col-span-2">
+                                <label for="subdivision_id" class="app-form-label">Подразделение</label>
+                                <select id="subdivision_id" name="subdivision_id" class="app-select" required>
+                                    <option value="">Выберите подразделение</option>
+                                    @foreach($subdivisions as $sub)
+                                        <option value="{{ $sub->id }}" @selected(old('subdivision_id', $application->subdivision_id) == $sub->id)>{{ $sub->name }}</option>
+                                    @endforeach
+                                </select>
+                                <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1.5" />
+                            </div>
 
-                    @include('applications.partials.subdivision-warehouses-hint')
+                            @include('applications.partials.subdivision-warehouses-hint')
 
-                    @if (! Auth::user()->hasRoleId(4))
-                        <div class="space-y-1.5">
-                            <x-input-label for="responsible_user_id" value="Ответственный" />
-                            <select id="responsible_user_id" name="responsible_user_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
-                                <option value="">Не назначен / выбрать автоматически</option>
-                                @foreach($users as $u)
-                                    <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
-                                @endforeach
-                            </select>
-                            <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1" />
+                            @if (! Auth::user()->hasRoleId(4))
+                                <div class="sm:col-span-2">
+                                    <label for="responsible_user_id" class="app-form-label">Ответственный</label>
+                                    <select id="responsible_user_id" name="responsible_user_id" class="app-select">
+                                        <option value="">Не назначен / выбрать автоматически</option>
+                                        @foreach($users as $u)
+                                            <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
+                                        @endforeach
+                                    </select>
+                                    <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1.5" />
+                                </div>
+                            @else
+                                <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
+                            @endif
+
+                            @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
+                                <div id="management-change-reason-block" class="sm:col-span-2 space-y-2 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
+                                    <label for="management_change_reason" class="app-form-label">Причина изменения</label>
+                                    <textarea
+                                        id="management_change_reason"
+                                        name="management_change_reason"
+                                        rows="3"
+                                        maxlength="500"
+                                        class="app-input min-h-[6rem] text-sm"
+                                    >{{ old('management_change_reason') }}</textarea>
+                                    <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1.5" />
+                                </div>
+                            @endif
+
+                            <div class="sm:col-span-2 rounded-xl border border-stone-200/80 bg-stone-50/70 px-4 py-3 text-sm text-stone-700 dark:border-stone-700/70 dark:bg-stone-900/40 dark:text-stone-200">
+                                <p class="font-medium">Способ доставки</p>
+                                <p class="mt-1">
+                                    {{ $application->transportOption?->name ? 'Текущий способ: '.$application->transportOption->name : 'Указывается на этапе «Отметить всё как В пути».' }}
+                                </p>
+                            </div>
                         </div>
-                    @else
-                        <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
-                    @endif
+                    </section>
 
-                    @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
-                        <div id="management-change-reason-block" class="space-y-1.5 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
-                            <x-input-label for="management_change_reason" value="Причина изменения " />
-                            <textarea
-                                id="management_change_reason"
-                                name="management_change_reason"
-                                rows="3"
-                                maxlength="500"
-                                class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
-                            >{{ old('management_change_reason') }}</textarea>
-
-                            <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1" />
+                    <section class="space-y-4" aria-labelledby="edit-section-equipment">
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <h3 id="edit-section-equipment" class="app-section-title">Оборудование</h3>
+                                <p class="mt-1 max-w-2xl text-xs text-stone-500 dark:text-stone-400">
+                                    Позиции из справочника или своё название. Своё: после согласования — «Заказано» → «На складе», приход в «Материалах».
+                                </p>
+                            </div>
                         </div>
-                    @endif
-
-                    <div class="space-y-1.5">
-                        <x-input-label for="transport_option_id" value="Способ доставки" />
-                        <select id="transport_option_id" name="transport_option_id" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
-                            <option value="">Не указан</option>
-                            @foreach($transportOptions as $t)
-                                <option value="{{ $t->id }}" @selected(old('transport_option_id', $application->transport_option_id) == $t->id)>
-                                    {{ $t->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                        <x-input-error :messages="$errors->get('transport_option_id')" class="mt-1" />
-                    </div>
-
-                    <div class="space-y-3">
-                        <div>
-                            <x-input-label value="Оборудование" />
-                            <p class="text-xs text-black dark:text-white mt-0.5">Добавляйте позиции из списка или нажмите «Написать своё оборудование», чтобы ввести название вручную.</p>
-                        </div>
-                        <div id="equipment-items" class="space-y-3">
+                        <div id="equipment-items" class="space-y-4">
                             @foreach($items as $idx => $item)
                                 @php
                                     $itemId = $item['item_id'] ?? null;
@@ -131,18 +131,23 @@
                                 @endphp
 
                                 @if($locked)
-                                    <div class="equipment-row equipment-row--locked flex flex-col gap-2 p-3 rounded-lg border border-stone-300 dark:border-stone-500 bg-stone-100/70 dark:bg-stone-900/50">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <span class="text-xs font-semibold uppercase tracking-wide text-black dark:text-white">Согласовано </span>
+                                    <div class="equipment-row equipment-row--locked app-equipment-card border-emerald-200/70 dark:border-emerald-800/45">
+                                        <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
+                                            <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">Согласовано</span>
                                         </div>
-                                        <p class="text-sm font-medium text-black dark:text-white">
-                                            @if($typeId !== '' && $typeId !== null)
-                                                {{ $equipment->firstWhere('id', (int) $typeId)?->name ?? '—' }}
-                                            @else
-                                                {{ $eqName !== '' ? $eqName : '—' }}
+                                        <div class="space-y-2">
+                                            <p class="text-sm font-medium text-stone-900 dark:text-stone-100">
+                                                @if($typeId !== '' && $typeId !== null)
+                                                    {{ $equipment->firstWhere('id', (int) $typeId)?->name ?? '—' }}
+                                                @else
+                                                    {{ $eqName !== '' ? $eqName : '—' }}
+                                                @endif
+                                                <span class="font-normal text-stone-600 dark:text-stone-400">× {{ (int) ($item['quantity'] ?? 1) }}</span>
+                                            </p>
+                                            @if($dbItem && $dbItem->usesFreeTextEquipment())
+                                                @include('applications.partials.custom-equipment-supply-badge', ['item' => $dbItem])
                                             @endif
-                                            <span class="text-black dark:text-white font-normal">× {{ (int) ($item['quantity'] ?? 1) }}</span>
-                                        </p>
+                                        </div>
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" />
@@ -152,94 +157,116 @@
                                         <input type="hidden" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" />
                                     </div>
                                 @elseif($isCustomRow)
-                                    <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
+                                    <div class="equipment-row equipment-row--custom equipment-row--editable app-equipment-card">
+                                        <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
+                                            <span class="text-xs font-semibold uppercase tracking-wide text-orange-800/90 dark:text-orange-200/90">Своё название</span>
+                                            <button type="button" class="remove-item inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-stone-200/80 text-stone-500 transition active:scale-95 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-stone-600 dark:text-stone-400 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-300" title="Удалить позицию" aria-label="Удалить позицию">
+                                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                            </button>
+                                        </div>
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="" />
-                                        <div class="flex-1 min-w-[200px]">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                                            <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
-                                            <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
+                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12 md:items-end">
+                                            <div class="sm:col-span-2 md:col-span-6">
+                                                <label class="app-form-label !normal-case">Наименование</label>
+                                                <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Как в заявке у поставщика" class="custom-equipment-input app-input" />
+                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Цепочка: согласование → «Заказано» → «На складе».</p>
+                                            </div>
+                                            <div class="quantity-wrap sm:col-span-1 md:col-span-2">
+                                                <label class="app-form-label !normal-case">Количество</label>
+                                                <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="app-input" required />
+                                            </div>
+                                            <div class="sm:col-span-1 md:col-span-2">
+                                                <label class="app-form-label !normal-case">Тип</label>
+                                                <select name="items[{{ $idx }}][measurement_type]" class="measurement-type app-select">
+                                                    @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
+                                                        <option value="{{ $typeCode }}" @selected(($item['measurement_type'] ?? 'piece') === $typeCode)>{{ $typeName }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="sm:col-span-1 md:col-span-2">
+                                                <label class="app-form-label !normal-case">Ед.</label>
+                                                <select name="items[{{ $idx }}][quantity_unit]" class="measurement-unit app-select" data-current="{{ $item['quantity_unit'] ?? 'шт' }}"></select>
+                                            </div>
+                                            <div class="size-value-wrap sm:col-span-2 md:col-span-4">
+                                                <label class="app-form-label !normal-case">Размер одежды</label>
+                                                <input type="text" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" placeholder="M, 48…" class="app-input" />
+                                            </div>
                                         </div>
-                                        <div class="w-20 quantity-wrap">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
-                                        </div>
-                                        <div class="w-24">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Тип</label>
-                                            <select name="items[{{ $idx }}][measurement_type]" class="measurement-type block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
-                                                @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
-                                                    <option value="{{ $typeCode }}" @selected(($item['measurement_type'] ?? 'piece') === $typeCode)>{{ $typeName }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                        <div class="w-24">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Ед.</label>
-                                            <select name="items[{{ $idx }}][quantity_unit]" class="measurement-unit block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" data-current="{{ $item['quantity_unit'] ?? 'шт' }}"></select>
-                                        </div>
-                                        <div class="w-32 size-value-wrap">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Размер одежды</label>
-                                            <input type="text" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" placeholder="M, ПТ ХП..." class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
-                                        </div>
-                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
                                 @else
-                                    <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
+                                    <div class="equipment-row equipment-row--list equipment-row--editable app-equipment-card">
+                                        <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
+                                            <span class="text-xs font-semibold uppercase tracking-wide text-orange-800/90 dark:text-orange-200/90">Из справочника</span>
+                                            <button type="button" class="remove-item inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-stone-200/80 text-stone-500 transition active:scale-95 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-stone-600 dark:text-stone-400 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-300" title="Удалить позицию" aria-label="Удалить позицию">
+                                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                            </button>
+                                        </div>
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
                                         <input type="hidden" name="items[{{ $idx }}][equipment_name]" value="" />
                                         <input type="hidden" name="items[{{ $idx }}][measurement_type]" value="{{ $item['measurement_type'] ?? 'piece' }}" />
                                         <input type="hidden" name="items[{{ $idx }}][quantity_unit]" value="{{ $item['quantity_unit'] ?? 'шт' }}" />
                                         <input type="hidden" name="items[{{ $idx }}][size_value]" value="{{ $item['size_value'] ?? '' }}" />
-                                        <div class="flex-1 min-w-[200px]">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                                            @php
-                                                $selectedType = ($typeId ?? '') !== '' ? $equipment->firstWhere('id', (int) $typeId) : null;
-                                            @endphp
-                                            <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
-                                            <input
-                                                type="text"
-                                                value="{{ $selectedType?->name ?? '' }}"
-                                                placeholder="Начните вводить оборудование"
-                                                autocomplete="off"
-                                                autocorrect="off"
-                                                autocapitalize="off"
-                                                spellcheck="false"
-                                                class="equipment-search block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
-                                            />
-                                            <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 shadow-sm"></div>
+                                        @php
+                                            $selectedType = ($typeId ?? '') !== '' ? $equipment->firstWhere('id', (int) $typeId) : null;
+                                        @endphp
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
+                                            <div class="md:col-span-9 min-w-0">
+                                                <label class="app-form-label !normal-case">Поиск в справочнике</label>
+                                                <div class="relative">
+                                                    <span class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-stone-400 dark:text-stone-500" aria-hidden="true">
+                                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                                    </span>
+                                                    <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
+                                                    <input
+                                                        type="text"
+                                                        value="{{ $selectedType?->name ?? '' }}"
+                                                        placeholder="От 2 букв названия…"
+                                                        autocomplete="off"
+                                                        autocorrect="off"
+                                                        autocapitalize="off"
+                                                        spellcheck="false"
+                                                        class="equipment-search app-input app-input--with-icon"
+                                                    />
+                                                    <div class="equipment-suggestions app-suggestions hidden"></div>
+                                                </div>
+                                            </div>
+                                            <div class="quantity-wrap md:col-span-3">
+                                                <label class="app-form-label !normal-case">Количество</label>
+                                                <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="app-input" required />
+                                            </div>
                                         </div>
-                                        <div class="w-20">
-                                            <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                                            <input type="number" name="items[{{ $idx }}][quantity]" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
-                                        </div>
-                                        <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
                                     </div>
                                 @endif
                             @endforeach
                         </div>
-                        <div class="flex flex-wrap items-center gap-4 pt-1">
-                            <button type="button" id="add-equipment-from-list" class="text-sm font-medium text-black dark:text-white hover:opacity-80 dark:hover:text-white">
-                                + Добавить из списка
+                        <div class="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+                            <button type="button" id="add-equipment-from-list" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
+                                + Из справочника
                             </button>
-                            <button type="button" id="add-equipment-custom" class="text-sm font-medium text-black dark:text-white hover:opacity-80 dark:hover:text-white">
-                                Написать своё оборудование
+                            <button type="button" id="add-equipment-custom" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
+                                + Своё оборудование
                             </button>
                         </div>
-                        <x-input-error :messages="$errors->get('equipment')" class="mt-1" />
-                    </div>
+                        <x-input-error :messages="$errors->get('equipment')" class="mt-1.5" />
+                    </section>
 
-                    <div class="space-y-1.5">
-                        <x-input-label for="desired_delivery_date" value="Желаемая дата поставки" />
-                        <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
-                        <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1" />
-                    </div>
+                    <section class="space-y-4 border-t border-stone-100 pt-8 dark:border-stone-800" aria-labelledby="edit-section-date">
+                        <h3 id="edit-section-date" class="app-section-title">Срок</h3>
+                        <div class="w-full max-w-full sm:max-w-xs">
+                            <label for="desired_delivery_date" class="app-form-label">Желаемая дата поставки</label>
+                            <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="app-input min-h-[3.25rem] sm:min-h-[2.75rem]" />
+                            <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1.5" />
+                        </div>
+                    </section>
 
-                    <div class="flex flex-wrap items-center gap-4 pt-2 border-t border-stone-200 dark:border-stone-700">
-                        <button type="submit" class="ui-btn ui-btn--primary">
+                    <div class="app-form-actions-mobile">
+                        <a href="{{ route('applications.index') }}" class="min-h-11 content-center text-center text-sm font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200 sm:text-left">
+                            Отмена и к списку заявок
+                        </a>
+                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
                             Сохранить изменения
                         </button>
-                        <a href="{{ route('applications.index') }}" class="text-sm text-black dark:text-white hover:text-black dark:hover:text-white">
-                            Отмена
-                        </a>
                     </div>
                 </form>
             </div>
@@ -247,63 +274,74 @@
     </div>
 
     <script type="text/template" id="equipment-row-from-list-tpl">
-        <div class="equipment-row equipment-row--list equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
+        <div class="equipment-row equipment-row--list equipment-row--editable app-equipment-card">
+            <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
+                <span class="text-xs font-semibold uppercase tracking-wide text-orange-800/90 dark:text-orange-200/90">Из справочника</span>
+                <button type="button" class="remove-item inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-stone-200/80 text-stone-500 transition active:scale-95 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-stone-600 dark:text-stone-400 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-300" title="Удалить позицию" aria-label="Удалить позицию">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
             <input type="hidden" name="items[__INDEX__][item_id]" value="" />
             <input type="hidden" name="items[__INDEX__][equipment_name]" value="" />
             <input type="hidden" name="items[__INDEX__][measurement_type]" value="piece" />
             <input type="hidden" name="items[__INDEX__][quantity_unit]" value="шт" />
             <input type="hidden" name="items[__INDEX__][size_value]" value="" />
-            <div class="flex-1 min-w-[200px]">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Из списка</label>
-                <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
-                <input
-                    type="text"
-                    placeholder="Начните вводить оборудование"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="off"
-                    spellcheck="false"
-                    class="equipment-search block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
-                />
-                <div class="equipment-suggestions hidden mt-1 max-h-44 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 shadow-sm"></div>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
+                <div class="md:col-span-9 min-w-0">
+                    <label class="app-form-label !normal-case">Поиск в справочнике</label>
+                    <div class="relative">
+                        <span class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-stone-400 dark:text-stone-500" aria-hidden="true">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </span>
+                        <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
+                        <input type="text" placeholder="От 2 букв названия…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
+                        <div class="equipment-suggestions app-suggestions hidden"></div>
+                    </div>
+                </div>
+                <div class="quantity-wrap md:col-span-3">
+                    <label class="app-form-label !normal-case">Количество</label>
+                    <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="app-input" required />
+                </div>
             </div>
-            <div class="w-20 quantity-wrap">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
-            </div>
-            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
     <script type="text/template" id="equipment-row-custom-tpl">
-        <div class="equipment-row equipment-row--custom equipment-row--editable flex flex-wrap items-end gap-3 p-3 rounded-lg border border-stone-200 dark:border-stone-600 bg-stone-50/80 dark:bg-stone-900/40">
+        <div class="equipment-row equipment-row--custom equipment-row--editable app-equipment-card">
+            <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
+                <span class="text-xs font-semibold uppercase tracking-wide text-orange-800/90 dark:text-orange-200/90">Своё название</span>
+                <button type="button" class="remove-item inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-stone-200/80 text-stone-500 transition active:scale-95 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-stone-600 dark:text-stone-400 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-300" title="Удалить позицию" aria-label="Удалить позицию">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
             <input type="hidden" name="items[__INDEX__][item_id]" value="" />
             <input type="hidden" name="items[__INDEX__][equipment_id]" value="" />
-            <div class="flex-1 min-w-[200px]">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Своё оборудование</label>
-                <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Название оборудования" class="custom-equipment-input block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
-                <p class="custom-equipment-error hidden mt-1 text-xs text-red-600 dark:text-red-400">Такое оборудование уже есть в списке.</p>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12 md:items-end">
+                <div class="sm:col-span-2 md:col-span-6">
+                    <label class="app-form-label !normal-case">Наименование</label>
+                    <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Как в заявке у поставщика" class="custom-equipment-input app-input" />
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Цепочка: согласование → «Заказано» → «На складе».</p>
+                </div>
+                <div class="quantity-wrap sm:col-span-1 md:col-span-2">
+                    <label class="app-form-label !normal-case">Количество</label>
+                    <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="app-input" required />
+                </div>
+                <div class="sm:col-span-1 md:col-span-2">
+                    <label class="app-form-label !normal-case">Тип</label>
+                    <select name="items[__INDEX__][measurement_type]" class="measurement-type app-select">
+                        @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
+                            <option value="{{ $typeCode }}" @selected($typeCode === 'piece')>{{ $typeName }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="sm:col-span-1 md:col-span-2">
+                    <label class="app-form-label !normal-case">Ед.</label>
+                    <select name="items[__INDEX__][quantity_unit]" class="measurement-unit app-select" data-current="шт"></select>
+                </div>
+                <div class="size-value-wrap sm:col-span-2 md:col-span-4">
+                    <label class="app-form-label !normal-case">Размер одежды</label>
+                    <input type="text" name="items[__INDEX__][size_value]" value="" placeholder="M, 48…" class="app-input" />
+                </div>
             </div>
-            <div class="w-20">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Кол-во</label>
-                <input type="number" name="items[__INDEX__][quantity]" value="1" min="1" class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" required />
-            </div>
-            <div class="w-24">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Тип</label>
-                <select name="items[__INDEX__][measurement_type]" class="measurement-type block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500">
-                    @foreach(($measurementMeta['typeOptions'] ?? []) as $typeCode => $typeName)
-                        <option value="{{ $typeCode }}" @selected($typeCode === 'piece')>{{ $typeName }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="w-24">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Ед.</label>
-                <select name="items[__INDEX__][quantity_unit]" class="measurement-unit block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" data-current="шт"></select>
-            </div>
-            <div class="w-32 size-value-wrap">
-                <label class="block text-xs text-black dark:text-white mb-0.5">Размер одежды</label>
-                <input type="text" name="items[__INDEX__][size_value]" value="" placeholder="M, ПТ ХП..." class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500" />
-            </div>
-            <button type="button" class="remove-item px-3 py-2 text-sm text-black dark:text-white hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors" title="Удалить позицию">✕</button>
         </div>
     </script>
     <script>
@@ -438,10 +476,6 @@
             equipmentMap[@json(mb_strtolower($eq->name))] = @json((string) $eq->id);
             equipmentList.push({ id: @json((string) $eq->id), name: @json($eq->name), key: @json(mb_strtolower($eq->name)) });
             @endforeach
-            var equipmentNameSet = {};
-            equipmentList.forEach(function(item) {
-                equipmentNameSet[item.key] = true;
-            });
             var measurementUnits = @json($measurementMeta['unitsByType'] ?? ['piece' => ['шт']]);
 
             function bindSearchInputs() {
@@ -488,7 +522,7 @@
                         }
 
                         box.innerHTML = matches.map(function(item) {
-                            return '<button type="button" class="equipment-suggestion-item block w-full px-3 py-2 text-left text-sm text-black dark:text-white hover:bg-stone-100 dark:hover:bg-stone-900/40" data-id="' + item.id + '" data-name="' + item.name.replace(/"/g, '&quot;') + '">' + item.name + '</button>';
+                            return '<button type="button" class="equipment-suggestion-item app-suggestion-btn" data-id="' + item.id + '" data-name="' + item.name.replace(/"/g, '&quot;') + '">' + item.name + '</button>';
                         }).join('');
                         box.classList.remove('hidden');
 
@@ -527,45 +561,6 @@
                 return container.querySelectorAll('.equipment-row--locked').length;
             }
 
-            function validateCustomInput(input) {
-                var row = input.closest('.equipment-row');
-                if (!row) {
-                    return true;
-                }
-                var error = row.querySelector('.custom-equipment-error');
-                var value = (input.value || '').trim().toLowerCase();
-                var isDuplicate = value !== '' && !!equipmentNameSet[value];
-
-                if (isDuplicate) {
-                    input.setCustomValidity('Такое оборудование уже есть в списке.');
-                    input.classList.add('border-red-500');
-                    if (error) {
-                        error.classList.remove('hidden');
-                    }
-                    return false;
-                }
-
-                input.setCustomValidity('');
-                input.classList.remove('border-red-500');
-                if (error) {
-                    error.classList.add('hidden');
-                }
-                return true;
-            }
-
-            function bindCustomInputs() {
-                container.querySelectorAll('.custom-equipment-input').forEach(function(input) {
-                    if (input.dataset.bound === '1') {
-                        return;
-                    }
-                    var run = function() { validateCustomInput(input); };
-                    input.addEventListener('input', run);
-                    input.addEventListener('change', run);
-                    input.dataset.bound = '1';
-                    run();
-                });
-            }
-
             function syncMeasurementRow(row) {
                 var typeSelect = row.querySelector('.measurement-type');
                 var unitSelect = row.querySelector('.measurement-unit');
@@ -587,7 +582,7 @@
                 unitSelect.dataset.current = unitSelect.value;
 
                 if (qtyLabel) {
-                    qtyLabel.textContent = selectedType === 'length' ? 'Сколько нужно' : 'Кол-во';
+                    qtyLabel.textContent = selectedType === 'length' ? 'Сколько нужно' : 'Количество';
                 }
                 if (sizeWrap) {
                     sizeWrap.classList.toggle('hidden', selectedType !== 'clothing_size');
@@ -627,7 +622,6 @@
                 container.insertAdjacentHTML('beforeend', html);
                 bindRemoveButtons();
                 bindSearchInputs();
-                bindCustomInputs();
                 bindMeasurementInputs();
             }
 
@@ -654,23 +648,7 @@
 
             bindRemoveButtons();
             bindSearchInputs();
-            bindCustomInputs();
             bindMeasurementInputs();
-
-            var form = container.closest('form');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    var ok = true;
-                    container.querySelectorAll('.custom-equipment-input').forEach(function(input) {
-                        if (!validateCustomInput(input)) {
-                            ok = false;
-                        }
-                    });
-                    if (!ok) {
-                        e.preventDefault();
-                    }
-                });
-            }
         })();
     </script>
 </x-app-layout>

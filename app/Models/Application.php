@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class Application extends Model
 {
@@ -16,6 +18,7 @@ class Application extends Model
         'subdivision_id',
         'responsible_user_id',
         'commercial_offer_path',
+        'installation_act_path',
         'desired_delivery_date',
         'approved_by_user_id',
         'user_id',
@@ -23,12 +26,16 @@ class Application extends Model
         'transport_option_id',
         'application_status_id',
         'approval_rejection_reason',
+        'boiler_chief_stage_completed_at',
+        'archived_at',
     ];
 
     protected function casts(): array
     {
         return [
             'desired_delivery_date' => 'date',
+            'boiler_chief_stage_completed_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 
@@ -72,6 +79,25 @@ class Application extends Model
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
     }
 
+    public function installationActPhotos(): HasMany
+    {
+        return $this->hasMany(ApplicationInstallationActPhoto::class)->orderBy('id');
+    }
+
+    /** Есть сохранённый файл акта и/или фото к акту. */
+    public function hasInstallationActEvidence(): bool
+    {
+        if (filled(trim((string) ($this->installation_act_path ?? '')))) {
+            return true;
+        }
+
+        if ($this->relationLoaded('installationActPhotos')) {
+            return $this->installationActPhotos->isNotEmpty();
+        }
+
+        return $this->installationActPhotos()->exists();
+    }
+
     public function sourceApplication(): BelongsTo
     {
         return $this->belongsTo(self::class, 'source_application_id');
@@ -84,11 +110,19 @@ class Application extends Model
 
     public function isStatusApproved(): bool
     {
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+
         return $this->resolvedStatusCode() === ApplicationStatus::CODE_APPROVED;
     }
 
     public function isStatusRejected(): bool
     {
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+
         return $this->resolvedStatusCode() === ApplicationStatus::CODE_REJECTED;
     }
 
@@ -110,18 +144,87 @@ class Application extends Model
             return ApplicationStatus::CODE_PENDING;
         }
 
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return ApplicationStatus::CODE_PENDING;
+        }
+
         $checkedCount = $this->items->where('is_checked', true)->count();
         $totalCount = $this->items->count();
+        $rejectedWithReasonCount = $this->items->filter(
+            fn (ApplicationItem $i) => ! (bool) $i->is_checked && trim((string) ($i->reason_not_selected ?? '')) !== ''
+        )->count();
+        $resolvedCount = $checkedCount + $rejectedWithReasonCount;
 
-        if ($checkedCount === $totalCount) {
+        if ($resolvedCount === $totalCount) {
             return ApplicationStatus::CODE_APPROVED;
         }
 
         if ($checkedCount === 0) {
+            if (
+                Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
+                && $this->boiler_chief_stage_completed_at !== null
+            ) {
+                $hasMgmtReason = $this->items->contains(
+                    fn (ApplicationItem $i) => trim((string) ($i->reason_not_selected ?? '')) !== ''
+                );
+                if (! $hasMgmtReason) {
+                    return ApplicationStatus::CODE_PENDING;
+                }
+            }
+
             return ApplicationStatus::CODE_REJECTED;
         }
 
         return ApplicationStatus::CODE_PARTIAL;
+    }
+
+    /**
+     * По подразделению назначен начальник котельной, но этап его согласования ещё не завершён.
+     */
+    public function needsBoilerChiefReviewBeforeManagement(): bool
+    {
+        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
+            return false;
+        }
+
+        if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
+            return false;
+        }
+
+        return $this->boiler_chief_stage_completed_at === null;
+    }
+
+    /**
+     * Этап котельной пройден, ожидается согласование позиций директором / ТД / снабжением (ещё ни одной позиции не отмечено).
+     */
+    public function awaitsManagementEquipmentApproval(): bool
+    {
+        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
+            return false;
+        }
+
+        if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
+            return false;
+        }
+
+        if ($this->boiler_chief_stage_completed_at === null) {
+            return false;
+        }
+
+        $this->loadMissing('items');
+        if ($this->items->isEmpty()) {
+            return false;
+        }
+
+        if ($this->items->where('is_checked', true)->count() > 0) {
+            return false;
+        }
+
+        $hasMgmtReason = $this->items->contains(
+            fn (ApplicationItem $i) => trim((string) ($i->reason_not_selected ?? '')) !== ''
+        );
+
+        return ! $hasMgmtReason;
     }
 
     public function itemLineIsApproved(int $itemId): bool
@@ -136,6 +239,15 @@ class Application extends Model
         $this->loadMissing('items');
         $r = $this->items->firstWhere('id', $itemId)?->reason_not_selected;
 
+        $r = $r !== null ? trim((string) $r) : '';
+
+        return $r !== '' ? $r : null;
+    }
+
+    public function itemLineBoilerChiefRejectionReason(int $itemId): ?string
+    {
+        $this->loadMissing('items');
+        $r = $this->items->firstWhere('id', $itemId)?->reason_boiler_chief_not_selected;
         $r = $r !== null ? trim((string) $r) : '';
 
         return $r !== '' ? $r : null;
@@ -158,15 +270,26 @@ class Application extends Model
 
         $checked = $items->where('is_checked', true)->count();
         $total = $items->count();
+        $rejectedWithReasonCount = $items->filter(
+            fn (ApplicationItem $i) => ! (bool) $i->is_checked && trim((string) ($i->reason_not_selected ?? '')) !== ''
+        )->count();
+        $resolvedCount = $checked + $rejectedWithReasonCount;
         $approvedId = ApplicationStatus::idFor(ApplicationStatus::CODE_APPROVED);
         $rejectedId = ApplicationStatus::idFor(ApplicationStatus::CODE_REJECTED);
         $partialId = ApplicationStatus::query()->where('code', ApplicationStatus::CODE_PARTIAL)->value('id');
         $partialId = $partialId !== null ? (int) $partialId : $rejectedId;
 
-        if ($checked === $total) {
+        if ($resolvedCount === $total) {
+            $lines = $items
+                ->filter(fn (ApplicationItem $i) => ! (bool) $i->is_checked)
+                ->map(fn (ApplicationItem $i) => trim((string) ($i->reason_not_selected ?? '')))
+                ->filter()
+                ->unique()
+                ->values();
+
             return [
                 'application_status_id' => $approvedId,
-                'approval_rejection_reason' => null,
+                'approval_rejection_reason' => $lines->take(5)->implode('; ') ?: null,
             ];
         }
 
@@ -199,12 +322,14 @@ class Application extends Model
     {
         $search = trim((string) $request->input('q', ''));
         $equipmentFilter = (string) $request->input('equipment_filter', 'all');
-        $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval'];
+        $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval', 'needs_custom_equipment_order'];
         if (! in_array($equipmentFilter, $allowedFilters, true)) {
             $equipmentFilter = 'all';
         }
 
         $applications = static::query();
+
+        static::applyArchiveFilterToListingQuery($applications, static::archiveFilterFromRequest($request));
 
         if ($search !== '') {
             $like = '%'.addcslashes($search, '%_\\').'%';
@@ -247,6 +372,15 @@ class Application extends Model
                 ->whereHas('items')
                 ->whereDoesntHave('items', fn ($q) => $q->where('is_checked', false)),
             'on_approval' => $applications->where('application_status_id', $pendingId),
+            'needs_custom_equipment_order' => $applications->whereHas('items', function ($q) {
+                $q->whereNull('equipment_id')
+                    ->where('is_checked', true)
+                    ->where(function ($w) {
+                        $w->where('custom_equipment_supply_status', ApplicationItem::CUSTOM_SUPPLY_ACCEPTED)
+                            ->orWhere('custom_equipment_supply_status', 'awaiting_arrival')
+                            ->orWhereNull('custom_equipment_supply_status');
+                    });
+            }),
             default => null,
         };
 
@@ -292,5 +426,219 @@ class Application extends Model
         }
 
         return $this->items->every(fn (ApplicationItem $i) => $i->is_checked);
+    }
+
+    /**
+     * Согласованные позиции со своим названием, по которым ещё не отмечен заказ у поставщика («Принято по заявке»).
+     */
+    public function needsCustomEquipmentOrder(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(
+            fn (ApplicationItem $item) => $item->canMarkCustomSupplyOrdered()
+        );
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    /**
+     * Списание с основного склада по заявке (как в {@see \App\Http\Controllers\ApplicationController::issueDocumentRef}).
+     */
+    public function stockIssueDocumentRefForItem(int $itemId): string
+    {
+        return 'APP:'.$this->id.':ITEM:'.$itemId;
+    }
+
+    /**
+     * Списание со склада получателя по акту установки.
+     */
+    public function installationStockIssueDocumentRefForItem(int $itemId): string
+    {
+        return 'APP:'.$this->id.':ITEM:'.$itemId.':INSTALL';
+    }
+
+    /**
+     * Сумма списаний по каталожной позиции: все расходы с привязкой к строке заявки
+     * (основной склад, склад получателя по акту, любые суффиксы вроде :INSTALL — как в учёте).
+     */
+    public function totalIssuedQuantityForCatalogItem(ApplicationItem $item): float
+    {
+        if (! $item->equipment_id) {
+            return 0.0;
+        }
+
+        $base = 'APP:'.$this->id.':ITEM:'.(int) $item->id;
+
+        return (float) MaterialStockMovement::query()
+            ->where('type', 'issue')
+            ->where('equipment_id', (int) $item->equipment_id)
+            ->where(function ($q) use ($base) {
+                $q->where('document_ref', $base)
+                    ->orWhere('document_ref', 'like', $base.':%');
+            })
+            ->sum('quantity');
+    }
+
+    /**
+     * Все согласованные позиции из справочника полностью списаны со складов (по движениям учёта).
+     */
+    public function catalogApprovedItemsFullyIssued(): bool
+    {
+        $this->loadMissing('items');
+
+        foreach ($this->items as $item) {
+            if (! $item->is_checked || $item->equipment_id === null) {
+                continue;
+            }
+
+            $qty = (float) $item->quantity;
+            $issued = $this->totalIssuedQuantityForCatalogItem($item);
+            if ($issued < $qty - 0.0005) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Можно прикрепить или заменить акт установки и фото: заявка полностью согласована и по каждой согласованной позиции
+     * оборудование из справочника уже доставлено на склад подразделения-получателя (отметка «Доставлено»).
+     */
+    public function canUploadInstallationActAndPhotos(): bool
+    {
+        if (! $this->isStatusApproved()) {
+            return false;
+        }
+
+        $this->loadMissing('items');
+
+        foreach ($this->items as $item) {
+            if (! $item->is_checked) {
+                continue;
+            }
+
+            if ($item->equipment_id === null) {
+                return false;
+            }
+
+            if ($item->resolvedDeliveryStatus() !== ApplicationItem::DELIVERY_DELIVERED) {
+                return false;
+            }
+
+            if ((int) ($item->delivery_warehouse_id ?? 0) <= 0) {
+                return false;
+            }
+
+            $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
+            if ($targetSubdivisionId !== null
+                && (int) ($item->delivery_subdivision_id ?? 0) !== $targetSubdivisionId) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Условия для архива: акт и фото есть, списания оборудования завершены.
+     */
+    public function qualifiesForCompletionArchive(): bool
+    {
+        if (! Schema::hasColumn('applications', 'archived_at')) {
+            return false;
+        }
+
+        if ($this->archived_at !== null) {
+            return false;
+        }
+
+        $this->loadMissing('items');
+
+        if (! filled(trim((string) ($this->installation_act_path ?? '')))) {
+            return false;
+        }
+
+        if ($this->relationLoaded('installationActPhotos')) {
+            if ($this->installationActPhotos->isEmpty()) {
+                return false;
+            }
+        } elseif (! $this->installationActPhotos()->exists()) {
+            return false;
+        }
+
+        return $this->catalogApprovedItemsFullyIssued();
+    }
+
+    /**
+     * Перенос в архив выполненных заявок (идемпотентно).
+     */
+    public function archiveIfEligible(): bool
+    {
+        if (! Schema::hasColumn('applications', 'archived_at')) {
+            return false;
+        }
+
+        if ($this->archived_at !== null) {
+            return false;
+        }
+
+        if (! $this->qualifiesForCompletionArchive()) {
+            return false;
+        }
+
+        $completedId = ApplicationStatus::query()
+            ->where('code', ApplicationStatus::CODE_COMPLETED)
+            ->value('id');
+
+        $payload = ['archived_at' => Carbon::now()];
+        if ($completedId !== null) {
+            $payload['application_status_id'] = (int) $completedId;
+        }
+
+        $this->forceFill($payload)->save();
+
+        return true;
+    }
+
+    /**
+     * Заявка закрыта и перенесена в архив выполненных (или помечена статусом «Выполнена»).
+     */
+    public function isLifecycleCompleted(): bool
+    {
+        if ($this->archived_at !== null) {
+            return true;
+        }
+
+        $this->loadMissing('applicationStatus');
+
+        return $this->applicationStatus?->code === ApplicationStatus::CODE_COMPLETED;
+    }
+
+    public static function archiveFilterFromRequest(Request $request): string
+    {
+        $value = trim((string) $request->input('archive', 'active'));
+
+        return in_array($value, ['active', 'archived', 'all'], true) ? $value : 'active';
+    }
+
+    /**
+     * @param  Builder<Application>  $applications
+     */
+    public static function applyArchiveFilterToListingQuery(Builder $applications, string $archiveFilter): void
+    {
+        if (! Schema::hasColumn('applications', 'archived_at')) {
+            return;
+        }
+
+        match ($archiveFilter) {
+            'active' => $applications->whereNull('archived_at'),
+            'archived' => $applications->whereNotNull('archived_at'),
+            default => null,
+        };
     }
 }
