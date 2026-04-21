@@ -108,18 +108,6 @@
                     <x-input-error :messages="$errors->get('happened_at')" class="mt-1" />
                 </div>
 
-                <div>
-                    <x-input-label for="document_ref" value="Документ (опц.)" />
-                    <x-text-input id="document_ref" name="document_ref" type="text" class="mt-1 block w-full" />
-                    <x-input-error :messages="$errors->get('document_ref')" class="mt-1" />
-                </div>
-
-                <div class="md:col-span-2">
-                    <x-input-label for="counterparty" value="Контрагент / получатель (опц.)" />
-                    <x-text-input id="counterparty" name="counterparty" type="text" class="mt-1 block w-full" />
-                    <x-input-error :messages="$errors->get('counterparty')" class="mt-1" />
-                </div>
-
                 <div class="md:col-span-3">
                     <x-input-label for="comment" value="Комментарий (опц.)" />
                     <textarea id="comment" name="comment" rows="2" class="app-input mt-1 min-h-[5rem] py-2.5"></textarea>

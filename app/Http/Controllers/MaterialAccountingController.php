@@ -207,8 +207,6 @@ class MaterialAccountingController extends Controller
             'quantity' => ['required', 'numeric'],
             'unit_price' => ['nullable', 'numeric', 'min:0'],
             'happened_at' => ['required', 'date'],
-            'document_ref' => ['nullable', 'string', 'max:100'],
-            'counterparty' => ['nullable', 'string', 'max:255'],
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -254,8 +252,8 @@ class MaterialAccountingController extends Controller
                 'quantity' => $quantity,
                 'unit_price' => $validated['unit_price'] ?? null,
                 'happened_at' => $validated['happened_at'],
-                'document_ref' => isset($validated['document_ref']) ? trim((string) $validated['document_ref']) : null,
-                'counterparty' => isset($validated['counterparty']) ? trim((string) $validated['counterparty']) : null,
+                'document_ref' => null,
+                'counterparty' => null,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
                 'created_by_user_id' => $request->user()->id,
             ]);
