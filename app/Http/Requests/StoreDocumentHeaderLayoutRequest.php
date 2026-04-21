@@ -36,9 +36,6 @@ class StoreDocumentHeaderLayoutRequest extends FormRequest
             'blocks.*.font_size_pt' => ['required', 'integer', 'min:8', 'max:24'],
             'blocks.*.lines' => ['required', 'array', 'min:1'],
             'blocks.*.lines.*.text' => ['nullable', 'string', 'max:5000'],
-            'blocks.*.lines.*.from_application' => ['sometimes', 'boolean'],
-            'blocks.*.lines.*.source_key' => ['nullable', 'string', 'in:coordinator_name,representative_name,signatory_print_name,recipient_name,signer_1_name,signer_2_name,signer_3_name,signer_1_fio,signer_2_fio,signer_3_fio'],
-            'blocks.*.lines.*.fio_case' => ['nullable', 'string', 'in:nominative,genitive,dative,ablative'],
         ];
     }
 
@@ -62,9 +59,9 @@ class StoreDocumentHeaderLayoutRequest extends FormRequest
             foreach ($block['lines'] as $line) {
                 $lines[] = [
                     'text' => (string) ($line['text'] ?? ''),
-                    'from_application' => ! empty($line['from_application']),
-                    'source_key' => (string) ($line['source_key'] ?? ''),
-                    'fio_case' => (string) ($line['fio_case'] ?? 'nominative'),
+                    'from_application' => false,
+                    'source_key' => '',
+                    'fio_case' => 'nominative',
                 ];
             }
             $blocks[] = [

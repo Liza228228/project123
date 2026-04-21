@@ -6,12 +6,7 @@
         'bold' => true,
         'font_family' => 'times_new_roman',
         'font_size_pt' => 11,
-        'lines' => [[
-            'text' => '',
-            'from_application' => false,
-            'source_key' => 'coordinator_name',
-            'fio_case' => 'nominative',
-        ]],
+        'lines' => [['text' => '']],
     ];
     if (old('blocks_json')) {
         $decoded = json_decode((string) old('blocks_json'), true);
@@ -36,12 +31,7 @@
                 bold: true,
                 font_family: 'times_new_roman',
                 font_size_pt: 11,
-                lines: [{
-                    text: '',
-                    from_application: false,
-                    source_key: 'coordinator_name',
-                    fio_case: 'nominative'
-                }]
+                lines: [{ text: '' }]
             });
         },
         removeBlock(i) {
@@ -49,12 +39,7 @@
             this.blocks.splice(i, 1);
         },
         addLine(bi) {
-            this.blocks[bi].lines.push({
-                text: '',
-                from_application: false,
-                source_key: 'coordinator_name',
-                fio_case: 'nominative'
-            });
+            this.blocks[bi].lines.push({ text: '' });
         },
         removeLine(bi, li) {
             if (this.blocks[bi].lines.length <= 1) return;
@@ -139,27 +124,6 @@
                             <input type="text" placeholder="Текст строки"
                                    class="app-input flex-1 min-w-[200px] min-h-0 sm:min-h-0 py-2 text-sm"
                                    x-model="line.text"/>
-                            <label class="inline-flex items-center gap-2 text-xs text-stone-600 dark:text-stone-300 whitespace-nowrap pt-2">
-                                <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40" x-model="line.from_application"/>
-                                <span>В заявке (ФИО и т.п.)</span>
-                            </label>
-                            <div x-show="line.from_application" x-cloak class="flex flex-wrap items-center gap-2 w-full">
-                                <select class="app-select min-h-0 py-2 text-xs sm:text-sm flex-1 min-w-[200px]" x-model="line.source_key">
-                                    <option value="coordinator_name">ФИО согласующего</option>
-                                    <option value="representative_name">ФИО исполнителя</option>
-                                    <option value="signatory_print_name">ФИО в подписи</option>
-                                    <option value="recipient_name">ФИО получателя</option>
-                                    <option value="signer_1_name">Подписант 1</option>
-                                    <option value="signer_2_name">Подписант 2</option>
-                                    <option value="signer_3_name">Подписант 3</option>
-                                </select>
-                                <select class="app-select min-h-0 py-2 text-xs sm:text-sm w-full sm:w-auto" x-model="line.fio_case">
-                                    <option value="nominative">Именительный</option>
-                                    <option value="genitive">Родительный</option>
-                                    <option value="dative">Дательный</option>
-                                    <option value="ablative">Творительный</option>
-                                </select>
-                            </div>
                             <button type="button" class="p-2 text-stone-400 hover:text-rose-600 shrink-0" title="Удалить строку"
                                     @click="removeLine(bi, li)" x-show="block.lines.length > 1">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
