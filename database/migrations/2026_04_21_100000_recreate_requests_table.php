@@ -8,6 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('requests')) {
+            Schema::table('requests', function (Blueprint $table) {
+                if (! Schema::hasColumn('requests', 'recipient_user_id')) {
+                    $table->foreignId('recipient_user_id')
+                        ->nullable()
+                        ->after('request_layout_id')
+                        ->constrained('users')
+                        ->nullOnDelete();
+                }
+            });
+
+            return;
+        }
+
         Schema::create('requests', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('registry_number')->nullable()->unique();

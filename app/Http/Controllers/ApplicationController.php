@@ -132,11 +132,11 @@ class ApplicationController extends Controller
                 $q->whereNull('equipment_id')
                     ->where('is_checked', true)
                     ->where(function ($w): void {
-                        $w->whereNull('custom_equipment_supply_status')
-                            ->orWhereIn('custom_equipment_supply_status', [
-                                ApplicationItem::CUSTOM_SUPPLY_ACCEPTED,
-                                ApplicationItem::CUSTOM_SUPPLY_ORDERED,
-                                ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT,
+                        $w->whereNull('custom_equipment_supply_status_id')
+                            ->orWhereIn('custom_equipment_supply_status_id', [
+                                ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID,
+                                ApplicationItem::CUSTOM_SUPPLY_ORDERED_ID,
+                                ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT_ID,
                             ]);
                     });
             })
@@ -207,7 +207,7 @@ class ApplicationController extends Controller
             if (! $item || ! $item->canMarkCustomSupplyOrdered()) {
                 continue;
             }
-            $item->update(['custom_equipment_supply_status' => ApplicationItem::CUSTOM_SUPPLY_ORDERED]);
+            $item->update(['custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ORDERED_ID]);
             $updated++;
         }
 
@@ -317,10 +317,10 @@ class ApplicationController extends Controller
         $item->update([
             'equipment_id' => $equipment->id,
             'equipment_name' => null,
-            'custom_equipment_supply_status' => null,
+            'custom_equipment_supply_status_id' => null,
             'base_name' => $equipment->base_name,
             'size_value' => $equipment->size_value,
-            'delivery_status' => null,
+            'delivery_status_id' => null,
             'delivery_subdivision_id' => null,
             'delivery_warehouse_id' => null,
             'delivery_marked_by_user_id' => null,
@@ -732,8 +732,8 @@ class ApplicationController extends Controller
                 'raw_input' => $normalized['raw_input'],
                 'is_checked' => false,
                 'reason_not_selected' => null,
-                'custom_equipment_supply_status' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL,
-                'delivery_status' => null,
+                'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
+                'delivery_status_id' => null,
                 'delivery_subdivision_id' => null,
                 'delivery_warehouse_id' => null,
                 'delivery_marked_by_user_id' => null,
@@ -1306,10 +1306,10 @@ class ApplicationController extends Controller
                     'measurement_type' => $normalized['measurement_type'],
                     'quantity_unit' => $normalized['quantity_unit'],
                     'raw_input' => $normalized['raw_input'],
-                    'custom_equipment_supply_status' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL,
+                    'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
                     'boiler_chief_checked' => false,
                     'reason_boiler_chief_not_selected' => null,
-                    'delivery_status' => null,
+                    'delivery_status_id' => null,
                     'delivery_subdivision_id' => null,
                     'delivery_warehouse_id' => null,
                     'delivery_marked_by_user_id' => null,
@@ -1330,10 +1330,10 @@ class ApplicationController extends Controller
                     'raw_input' => $normalized['raw_input'],
                     'is_checked' => false,
                     'reason_not_selected' => null,
-                    'custom_equipment_supply_status' => $payload['equipment_id'] ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL,
+                    'custom_equipment_supply_status_id' => $payload['equipment_id'] ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
                     'boiler_chief_checked' => false,
                     'reason_boiler_chief_not_selected' => null,
-                    'delivery_status' => null,
+                    'delivery_status_id' => null,
                     'delivery_subdivision_id' => null,
                     'delivery_warehouse_id' => null,
                     'delivery_marked_by_user_id' => null,
@@ -1444,19 +1444,19 @@ class ApplicationController extends Controller
                     'reason_not_selected' => $isChecked ? null : trim((string) ($row['reason_not_selected'] ?? '')),
                 ];
                 if (! $isChecked) {
-                    $payload['delivery_status'] = null;
+                    $payload['delivery_status_id'] = null;
                     $payload['delivery_subdivision_id'] = null;
                     $payload['delivery_warehouse_id'] = null;
                     $payload['delivery_marked_by_user_id'] = null;
                     $payload['delivery_marked_at'] = null;
                 }
                 if ($item->equipment_id === null) {
-                    $payload['custom_equipment_supply_status'] = $this->customSupplyStatusAfterApprovalToggle(
+                    $payload['custom_equipment_supply_status_id'] = $this->customSupplyStatusAfterApprovalToggle(
                         $isChecked,
                         $item
                     );
                 } else {
-                    $payload['custom_equipment_supply_status'] = null;
+                    $payload['custom_equipment_supply_status_id'] = null;
                 }
                 $item->update($payload);
             }
@@ -1598,7 +1598,7 @@ class ApplicationController extends Controller
         ApplicationItem::query()
             ->whereIn('id', $eligibleItems->pluck('id'))
             ->update([
-                'delivery_status' => ApplicationItem::DELIVERY_IN_TRANSIT,
+                'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
                 'delivery_subdivision_id' => null,
                 'delivery_warehouse_id' => null,
                 'delivery_marked_by_user_id' => null,
@@ -1711,7 +1711,7 @@ class ApplicationController extends Controller
             }
 
             $item->update([
-                'delivery_status' => ApplicationItem::DELIVERY_DELIVERED,
+                'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
                 'delivery_subdivision_id' => $deliverySubdivisionId,
                 'delivery_warehouse_id' => $deliveryWarehouseId,
                 'delivery_marked_by_user_id' => $request->user()->id,
@@ -1721,21 +1721,9 @@ class ApplicationController extends Controller
 
         $application->refresh();
         $application->load(['subdivision', 'items', 'installationActPhotos']);
-        $issueSummary = $this->writeOffDeliveredItemsOnRecipientWarehouses(
-            $application,
-            $request->user(),
-            'Автосписание при отметке «Доставлено».',
-            collect([(int) $item->id])
-        );
         $archiveHint = $this->archiveCompletedApplicationIfReady($application);
 
-        $status = 'Позиция отмечена как доставленная и оприходована на склад получателя.';
-        if (($issueSummary['issued_lines'] ?? 0) > 0) {
-            $status .= ' Позиция списана со склада получателя.';
-        }
-        if (! empty($issueSummary['warnings'])) {
-            $status .= ' '.implode(' ', (array) $issueSummary['warnings']);
-        }
+        $status = 'Позиция отмечена как доставленная и оприходована на склад получателя. Остаток на этом складе сохраняется до отдельного списания (по акту установки или иной операции списания со склада поступления).';
         if ($archiveHint !== null) {
             $status .= ' '.$archiveHint;
         }
@@ -1767,7 +1755,7 @@ class ApplicationController extends Controller
         }
 
         $item->update([
-            'custom_equipment_supply_status' => ApplicationItem::CUSTOM_SUPPLY_ORDERED,
+            'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ORDERED_ID,
         ]);
 
         return redirect()->route('applications.show', $application)
@@ -1797,7 +1785,7 @@ class ApplicationController extends Controller
         }
 
         $item->update([
-            'custom_equipment_supply_status' => ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT,
+            'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT_ID,
         ]);
 
         return redirect()->route('applications.show', $application)
@@ -2375,24 +2363,24 @@ class ApplicationController extends Controller
         });
     }
 
-    private function customSupplyStatusAfterApprovalToggle(bool $isChecked, ApplicationItem $item): string
+    private function customSupplyStatusAfterApprovalToggle(bool $isChecked, ApplicationItem $item): int
     {
         if (! $isChecked) {
-            return ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL;
+            return ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID;
         }
 
         $normalized = $item->normalizedCustomSupplyStatus();
         if ($normalized === ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE) {
-            return ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE;
+            return ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE_ID;
         }
         if ($normalized === ApplicationItem::CUSTOM_SUPPLY_ORDERED) {
-            return ApplicationItem::CUSTOM_SUPPLY_ORDERED;
+            return ApplicationItem::CUSTOM_SUPPLY_ORDERED_ID;
         }
         if ($normalized === ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT) {
-            return ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT;
+            return ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT_ID;
         }
 
-        return ApplicationItem::CUSTOM_SUPPLY_ACCEPTED;
+        return ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID;
     }
 
     /**

@@ -86,7 +86,7 @@ class ApplicationSeeder extends Seeder
             'equipment_id' => null,
             'equipment_name' => 'Нестандартный узел учёта (по согласованию)',
             'quantity' => 3,
-            'custom_equipment_supply_status' => ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL,
+            'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
         ]);
 
         $app3 = Application::query()->create($base + [

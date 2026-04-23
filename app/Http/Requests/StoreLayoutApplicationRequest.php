@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\RequestLayout;
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -44,6 +45,37 @@ class StoreLayoutApplicationRequest extends FormRequest
             }
             if ((int) $layout->user_assigner_id !== (int) $this->user()?->id) {
                 $validator->errors()->add('request_layout_id', 'Нет доступа к выбранному макету.');
+                return;
+            }
+
+            $schema = is_array($layout->schema) ? $layout->schema : [];
+            $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
+            if ($signatureSlotsCount <= 0) {
+                $preset = trim((string) ($schema['pdf_footer_preset'] ?? ''));
+                $signatureSlotsCount = match ($preset) {
+                    'three_signers' => 3,
+                    'two_signers' => 2,
+                    default => 1,
+                };
+            }
+            $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
+            $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
+
+            for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {
+                $expectedRoleId = (int) ($signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? 0);
+                $selectedUserId = (int) $this->input('signer_'.$slot.'_user_id', 0);
+
+                if ($selectedUserId <= 0) {
+                    $validator->errors()->add('signer_'.$slot.'_user_id', 'Выберите подписанта №'.$slot.'.');
+                    continue;
+                }
+                if ($expectedRoleId <= 0) {
+                    continue;
+                }
+                $selectedUser = User::query()->find($selectedUserId);
+                if (! $selectedUser || (int) $selectedUser->role_id !== $expectedRoleId) {
+                    $validator->errors()->add('signer_'.$slot.'_user_id', 'Подписант №'.$slot.' должен соответствовать выбранной роли.');
+                }
             }
         });
     }

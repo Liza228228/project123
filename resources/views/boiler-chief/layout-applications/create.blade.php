@@ -3,7 +3,21 @@
     $userOptions = $users->map(fn ($u) => [
         'id' => $u->id,
         'label' => $u->fullName().' (id '.$u->id.')',
+        'role_id' => (int) ($u->role_id ?? 0),
+        'role_name' => (string) ($u->role?->name ?? ''),
     ])->values();
+    $applicationOptions = ($applications ?? collect())->map(function ($a) {
+        $approvedItems = $a->items->where('is_checked', true)->values();
+        $lineItems = ($approvedItems->isNotEmpty() ? $approvedItems : $a->items)
+            ->map(fn ($item) => trim($item->equipment_display_name.' x '.$item->quantity_with_unit))
+            ->filter()
+            ->values();
+        return [
+            'id' => $a->id,
+            'label' => '#'.$a->id.' - '.($a->subdivision?->name ?? 'Без подразделения'),
+            'equipment' => $lineItems,
+        ];
+    })->values();
 @endphp
 
 <x-app-layout>
@@ -18,6 +32,7 @@
          x-data="layoutApplicationCreate({
             layouts: {{ \Illuminate\Support\Js::from($layoutOptions) }},
             users: {{ \Illuminate\Support\Js::from($userOptions) }},
+            applications: {{ \Illuminate\Support\Js::from($applicationOptions) }},
             schemaBase: @js(url('/boiler-chief/request-layouts')),
             storeUrl: @js(route('boiler-chief.layout-applications.store')),
             token: @js(csrf_token()),
@@ -54,6 +69,32 @@
                                 </template>
                             </select>
                         </div>
+                        <div class="space-y-2 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
+                            <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
+                            <div>
+                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Выберите заявку</label>
+                                <select class="app-select" x-model.number="selectedApplicationId">
+                                    <option value="">— Выберите заявку —</option>
+                                    <template x-for="app in applications" :key="'app_' + app.id">
+                                        <option :value="app.id" x-text="app.label"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Оборудование из выбранной заявки</label>
+                                <select class="app-select" x-model="selectedApplicationEquipment">
+                                    <option value="">— Выберите оборудование —</option>
+                                    <template x-for="eq in selectedApplicationEquipmentOptions()" :key="'eq_' + eq">
+                                        <option :value="eq" x-text="eq"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="flex justify-end">
+                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" @click="insertSelectedEquipmentIntoActiveField()">
+                                    Вставить в активное поле текста
+                                </button>
+                            </div>
+                        </div>
 
                         <template x-if="signerSlotCount > 0">
                             <div class="space-y-3 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
@@ -61,10 +102,10 @@
                                 <p class="text-xs text-stone-600 dark:text-stone-400">Это подписи. В документ подставляются их ФИО в формате подписи (линия + ФИО) в плейсхолдеры <code class="text-[11px]">signer_1_fio</code>, <code class="text-[11px]">signer_2_fio</code>, <code class="text-[11px]">signer_3_fio</code>.</p>
                                 <template x-for="n in signerIndices()" :key="n">
                                     <div>
-                                        <label class="block text-sm font-medium text-stone-800 dark:text-stone-200 mb-1" x-text="'Подпись ' + n"></label>
+                                        <label class="block text-sm font-medium text-stone-800 dark:text-stone-200 mb-1" x-text="signerRoleLabel(n)"></label>
                                         <select class="app-select" :name="'signer_' + n + '_user_id'">
-                                            <option value="">— Выберите пользователя —</option>
-                                            <template x-for="u in users" :key="u.id">
+                                            <option value="">— Выберите ФИО —</option>
+                                            <template x-for="u in usersForSignerSlot(n)" :key="u.id">
                                                 <option :value="u.id" x-text="u.label"></option>
                                             </template>
                                         </select>
@@ -143,6 +184,7 @@
                                             <div contenteditable="true" spellcheck="false"
                                                  class="layout-field-editor min-h-[6rem] w-full bg-white px-3 py-2.5 text-sm text-stone-900 outline-none focus:ring-2 focus:ring-orange-400/30 focus:ring-inset dark:bg-stone-950 dark:text-stone-100"
                                                  :id="'editor-' + field.slug"
+                                                 @focus="setActiveEditorField(field.key)"
                                                  @input="syncRich(field.key, $event.target)"></div>
                                             <input type="hidden" :name="'values[' + field.key + ']'" :id="'hidden-' + field.slug"/>
                                         </div>

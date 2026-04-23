@@ -33,6 +33,25 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         if (! $this->filled('pdf_footer_preset')) {
             $merge['pdf_footer_preset'] = 'one_signer_author';
         }
+        if (! $this->filled('signature_slots_count')) {
+            $merge['signature_slots_count'] = $this->defaultSignatureSlotsCount(
+                (string) $this->input('pdf_footer_preset', 'one_signer_author')
+            );
+        }
+        $signatureRoles = $this->input('signature_roles', []);
+        if (! is_array($signatureRoles)) {
+            $signatureRoles = [];
+        }
+        $normalizedSignatureRoles = [];
+        foreach ([1, 2, 3] as $slot) {
+            $rawRoleId = $signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? null;
+            if ($rawRoleId === '' || $rawRoleId === null) {
+                $normalizedSignatureRoles[$slot] = null;
+                continue;
+            }
+            $normalizedSignatureRoles[$slot] = (int) $rawRoleId;
+        }
+        $merge['signature_roles'] = $normalizedSignatureRoles;
         if ((string) $this->input('executor_mode') === 'user') {
             $merge['division_assigner_id'] = null;
         }
@@ -114,6 +133,9 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'presentation_heading_size_pt' => ['nullable', 'integer', 'min:8', 'max:36'],
             'presentation_subtitle_size_pt' => ['nullable', 'integer', 'min:8', 'max:28'],
             'pdf_footer_preset' => ['nullable', 'string', 'in:one_signer_author,two_signers,three_signers,classic_split'],
+            'signature_slots_count' => ['nullable', 'integer', 'min:1', 'max:3'],
+            'signature_roles' => ['nullable', 'array'],
+            'signature_roles.*' => ['nullable', 'integer', 'exists:roles,id'],
             'footer_stamp' => ['sometimes', 'boolean'],
             'needs_coordinator' => ['sometimes', 'boolean'],
             'requires_print' => ['sometimes', 'boolean'],
@@ -186,6 +208,9 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'layout_version' => 'версия макета',
             'approver_id' => 'утверждающий',
             'document_header_layout_id' => 'макет шапки документа',
+            'signature_slots_count' => 'количество подписей',
+            'signature_roles' => 'роли подписей',
+            'signature_roles.*' => 'роль подписи',
         ];
     }
 
@@ -211,6 +236,18 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                     return;
                 }
                 $keys[$k] = true;
+            }
+            $slotCount = (int) ($this->input('signature_slots_count') ?? 0);
+            $slotCount = max(1, min(3, $slotCount));
+            $signatureRoles = $this->input('signature_roles', []);
+            if (! is_array($signatureRoles)) {
+                $signatureRoles = [];
+            }
+            for ($slot = 1; $slot <= $slotCount; $slot++) {
+                $roleId = (int) ($signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? 0);
+                if ($roleId <= 0) {
+                    $validator->errors()->add('signature_roles.'.$slot, 'Выберите роль для подписи №'.$slot.'.');
+                }
             }
         });
     }
@@ -263,6 +300,17 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
 
         $preset = isset($validated['pdf_footer_preset']) ? trim((string) $validated['pdf_footer_preset']) : '';
         $footerStamp = $this->boolean('footer_stamp');
+        $signatureSlotsCount = max(1, min(3, (int) ($validated['signature_slots_count'] ?? $this->defaultSignatureSlotsCount($preset))));
+        $signatureRoles = [];
+        $rolesInput = $validated['signature_roles'] ?? [];
+        if (is_array($rolesInput)) {
+            for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {
+                $roleId = (int) ($rolesInput[$slot] ?? $rolesInput[(string) $slot] ?? 0);
+                if ($roleId > 0) {
+                    $signatureRoles[$slot] = $roleId;
+                }
+            }
+        }
         if ($preset !== '') {
             [$footerLeft, $signature] = $this->footerTemplatesFromPreset($preset, $footerStamp);
         } else {
@@ -302,6 +350,8 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                 'presentation_heading_size_pt' => $presentationHeadingPt,
                 'presentation_subtitle_size_pt' => $presentationSubtitlePt,
                 'pdf_footer_preset' => $preset !== '' ? $preset : null,
+                'signature_slots_count' => $signatureSlotsCount,
+                'signature_roles' => $signatureRoles,
                 'footer_stamp' => $footerStamp,
                 'needs_statement_header' => $needsStatementHeader,
                 'pdf_header_align' => $this->normalizedPdfAlign(
@@ -380,5 +430,14 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         $v = strtolower(trim((string) ($value ?? '')));
 
         return in_array($v, $allowed, true) ? $v : $default;
+    }
+
+    private function defaultSignatureSlotsCount(string $preset): int
+    {
+        return match (trim($preset)) {
+            'three_signers' => 3,
+            'two_signers' => 2,
+            default => 1,
+        };
     }
 }

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBoilerChiefRequestLayoutRequest;
 use App\Http\Requests\StoreReportSubmissionRequest;
 use App\Http\Requests\UpdateBoilerChiefRequestLayoutRequest;
+use App\Models\Application;
 use App\Models\Department;
 use App\Models\DocumentHeaderLayout;
 use App\Models\RequestLayout;
+use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
 use App\Support\RequestLayoutDocumentBuilder;
@@ -103,6 +105,8 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return view('boiler-chief.request-layouts.fill', [
             'layout' => $requestLayout,
+            'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
+            'applications' => $this->reportEquipmentApplications($request->user()),
             'allowEditLayout' => true,
             'backRoute' => route('boiler-chief.request-layouts.index'),
             'backLabel' => 'К списку макетов заявок',
@@ -126,6 +130,12 @@ class BoilerChiefRequestLayoutController extends Controller
             $values['_document_date'] = now()->format('d.m.Y');
         } elseif ($request->filled('form_document_date')) {
             $values['_document_date'] = $request->date('form_document_date')->format('d.m.Y');
+        }
+        foreach ([1, 2, 3] as $slot) {
+            $key = 'signer_'.$slot.'_user_id';
+            if ($request->filled($key)) {
+                $values[$key] = (int) $request->input($key);
+            }
         }
         $values['_document_number'] = trim((string) $request->input('form_document_number', ''));
 
@@ -184,12 +194,43 @@ class BoilerChiefRequestLayoutController extends Controller
         }
 
         $preset = isset($schema['pdf_footer_preset']) ? trim((string) $schema['pdf_footer_preset']) : '';
+        $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
+        if ($signatureSlotsCount <= 0) {
+            $signatureSlotsCount = match ($preset) {
+                'three_signers' => 3,
+                'two_signers' => 2,
+                default => 1,
+            };
+        }
+        $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
+        $signatureRoles = [];
+        $rawSignatureRoles = $schema['signature_roles'] ?? [];
+        if (is_array($rawSignatureRoles)) {
+            for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {
+                $roleId = (int) ($rawSignatureRoles[$slot] ?? $rawSignatureRoles[(string) $slot] ?? 0);
+                if ($roleId > 0) {
+                    $signatureRoles[$slot] = $roleId;
+                }
+            }
+        }
+        $signatureRoleNames = [];
+        if ($signatureRoles !== []) {
+            $roles = Role::query()
+                ->whereIn('id', array_values($signatureRoles))
+                ->pluck('name', 'id');
+            foreach ($signatureRoles as $slot => $roleId) {
+                $signatureRoleNames[$slot] = (string) ($roles[$roleId] ?? '');
+            }
+        }
 
         return response()->json([
             'id' => $requestLayout->id,
             'title' => $requestLayout->title,
             'fields' => $fields,
             'pdf_footer_preset' => $preset !== '' ? $preset : 'one_signer_author',
+            'signature_slots_count' => $signatureSlotsCount,
+            'signature_roles' => $signatureRoles,
+            'signature_role_names' => $signatureRoleNames,
         ]);
     }
 
@@ -211,6 +252,8 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return view('boiler-chief.request-layouts.fill', [
             'layout' => $requestLayout,
+            'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
+            'applications' => $this->reportEquipmentApplications($request->user()),
             'allowEditLayout' => false,
             'backRoute' => route('applications.installation-act.layout-fill.index'),
             'backLabel' => 'К списку макетов заявок',
@@ -231,7 +274,7 @@ class BoilerChiefRequestLayoutController extends Controller
     }
 
     /**
-     * @return array{users: \Illuminate\Database\Eloquent\Collection<int, User>, departments: \Illuminate\Database\Eloquent\Collection<int, Department>}
+     * @return array{users: \Illuminate\Database\Eloquent\Collection<int, User>, departments: \Illuminate\Database\Eloquent\Collection<int, Department>, roles: \Illuminate\Database\Eloquent\Collection<int, Role>}
      */
     private function layoutFormContext(Request $request): array
     {
@@ -240,6 +283,7 @@ class BoilerChiefRequestLayoutController extends Controller
         return [
             'users' => User::query()->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'departments' => Department::query()->orderBy('name')->get(),
+            'roles' => Role::query()->orderBy('name')->get(),
             'documentHeaderLayouts' => DocumentHeaderLayout::query()
                 ->where('user_assigner_id', $request->user()->id)
                 ->orderBy('title')
@@ -278,6 +322,32 @@ class BoilerChiefRequestLayoutController extends Controller
         if (! $user || ! $user->hasRoleId(4)) {
             abort(403, 'Доступ разрешён только мастеру участка.');
         }
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Application>
+     */
+    private function reportEquipmentApplications(?User $user)
+    {
+        if (! $user) {
+            return collect();
+        }
+        $query = Application::query()
+            ->with(['subdivision:id,name', 'items'])
+            ->orderByDesc('id')
+            ->limit(300);
+
+        if ($user->hasRoleId(4)) {
+            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
+            $query->whereIn('subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(7)) {
+            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
+            $query->whereIn('subdivision_id', $subdivisionIds);
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query->get();
     }
 
     /**

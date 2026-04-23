@@ -1,4 +1,29 @@
 <x-app-layout>
+    @php
+        $schema = is_array($layout->schema ?? null) ? $layout->schema : [];
+        $applicationOptions = ($applications ?? collect())->map(function ($a) {
+            $approvedItems = $a->items->where('is_checked', true)->values();
+            $lineItems = ($approvedItems->isNotEmpty() ? $approvedItems : $a->items)
+                ->map(fn ($item) => trim($item->equipment_display_name.' x '.$item->quantity_with_unit))
+                ->filter()
+                ->values();
+            return [
+                'id' => $a->id,
+                'label' => '#'.$a->id.' - '.($a->subdivision?->name ?? 'Без подразделения'),
+                'equipment' => $lineItems->all(),
+            ];
+        })->values()->all();
+        $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
+        if ($signatureSlotsCount <= 0) {
+            $signatureSlotsCount = match ((string) ($schema['pdf_footer_preset'] ?? '')) {
+                'three_signers' => 3,
+                'two_signers' => 2,
+                default => 1,
+            };
+        }
+        $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
+        $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
+    @endphp
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
             <x-page-header-nav :href="$backRoute ?? route('boiler-chief.request-layouts.index')">{{ $backLabel ?? 'К списку макетов заявок' }}</x-page-header-nav>
@@ -80,6 +105,59 @@
                 @endforeach
 
                 <div class="space-y-2 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
+                    <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
+                    <div>
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите заявку</label>
+                        <select id="report-source-application" class="app-select min-h-0">
+                            <option value="">— Выберите заявку —</option>
+                            @foreach($applicationOptions as $app)
+                                <option value="{{ $app['id'] }}">{{ $app['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите оборудование из заявки</label>
+                        <select id="report-source-equipment" class="app-select min-h-0">
+                            <option value="">— Выберите оборудование —</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="button" id="insert-equipment-to-focused-field" class="ui-btn ui-btn--secondary ui-btn--sm">
+                            Вставить в активное поле
+                        </button>
+                    </div>
+                </div>
+
+                @if(!empty($users ?? null) && $signatureSlotsCount > 0)
+                    <div class="space-y-3 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
+                        <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Подписи в отчете</p>
+                        @for($slot = 1; $slot <= $signatureSlotsCount; $slot++)
+                            @php
+                                $roleId = (int) ($signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? 0);
+                                $slotUsers = collect($users ?? [])->filter(fn ($u) => $roleId <= 0 || (int) ($u->role_id ?? 0) === $roleId)->values();
+                                $roleName = $roleId > 0 ? (string) ($slotUsers->first()?->role?->name ?? '') : '';
+                            @endphp
+                            <div>
+                                <label class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1" for="signer_{{ $slot }}_user_id">
+                                    Подпись {{ $slot }}@if($roleName !== '') ({{ $roleName }}) @endif
+                                </label>
+                                <select id="signer_{{ $slot }}_user_id" name="signer_{{ $slot }}_user_id" class="app-select min-h-0">
+                                    <option value="">— Выберите ФИО —</option>
+                                    @foreach($slotUsers as $u)
+                                        <option value="{{ $u->id }}" @selected((string) old('signer_'.$slot.'_user_id') === (string) $u->id)>
+                                            {{ $u->fullName() }} (id {{ $u->id }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('signer_'.$slot.'_user_id')
+                                    <p class="mt-1 text-sm text-rose-600 dark:text-rose-400">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        @endfor
+                    </div>
+                @endif
+
+                <div class="space-y-2 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
                     <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Дата формирования</p>
                     <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
                         <input type="hidden" name="use_current_date" value="0"/>
@@ -116,6 +194,53 @@
         (function () {
             const form = document.getElementById('fill-report-form');
             if (!form) return;
+            const applications = @json($applicationOptions);
+            let activeTextField = null;
+            const appSelect = document.getElementById('report-source-application');
+            const equipmentSelect = document.getElementById('report-source-equipment');
+            const insertButton = document.getElementById('insert-equipment-to-focused-field');
+            const textFields = Array.from(form.querySelectorAll('input[type="text"][name^="values["], textarea[name^="values["]'));
+            textFields.forEach((el) => {
+                el.addEventListener('focus', () => {
+                    activeTextField = el;
+                });
+            });
+            const renderEquipmentOptions = () => {
+                if (!equipmentSelect || !appSelect) return;
+                const appId = Number(appSelect.value || 0);
+                const app = applications.find((x) => Number(x.id || 0) === appId);
+                equipmentSelect.innerHTML = '<option value="">— Выберите оборудование —</option>';
+                if (!app || !Array.isArray(app.equipment)) {
+                    return;
+                }
+                app.equipment.forEach((line) => {
+                    const option = document.createElement('option');
+                    option.value = String(line || '');
+                    option.textContent = String(line || '');
+                    equipmentSelect.appendChild(option);
+                });
+            };
+            if (appSelect) {
+                appSelect.addEventListener('change', renderEquipmentOptions);
+            }
+            if (insertButton) {
+                insertButton.addEventListener('click', () => {
+                    if (!activeTextField) {
+                        window.alert('Сначала кликните в поле текста, куда нужно вставить оборудование.');
+                        return;
+                    }
+                    const line = String(equipmentSelect?.value || '').trim();
+                    if (!line) {
+                        window.alert('Сначала выберите оборудование.');
+                        return;
+                    }
+                    const current = String(activeTextField.value || '');
+                    const suffix = current.trim() === '' ? line : '\n' + line;
+                    activeTextField.value = current + suffix;
+                    activeTextField.dispatchEvent(new Event('input', { bubbles: true }));
+                    activeTextField.focus();
+                });
+            }
             const suggestUrl = form.dataset.dadataSuggestUrl || '';
             const cleanUrl = form.dataset.dadataCleanUrl || '';
             const csrfMeta = document.querySelector('meta[name="csrf-token"]');

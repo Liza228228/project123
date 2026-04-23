@@ -376,9 +376,8 @@ class Application extends Model
                 $q->whereNull('equipment_id')
                     ->where('is_checked', true)
                     ->where(function ($w) {
-                        $w->where('custom_equipment_supply_status', ApplicationItem::CUSTOM_SUPPLY_ACCEPTED)
-                            ->orWhere('custom_equipment_supply_status', 'awaiting_arrival')
-                            ->orWhereNull('custom_equipment_supply_status');
+                        $w->where('custom_equipment_supply_status_id', ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID)
+                            ->orWhereNull('custom_equipment_supply_status_id');
                     });
             }),
             default => null,

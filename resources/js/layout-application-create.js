@@ -5,11 +5,18 @@ export function registerLayoutApplicationCreate(Alpine) {
     Alpine.data('layoutApplicationCreate', (cfg) => ({
         layouts: cfg.layouts || [],
         users: cfg.users || [],
+        applications: cfg.applications || [],
         schemaBase: cfg.schemaBase,
         storeUrl: cfg.storeUrl,
         token: cfg.token,
         layoutId: null,
         footerPreset: 'one_signer_author',
+        signatureSlotsCount: 1,
+        signatureRoles: {},
+        signatureRoleNames: {},
+        selectedApplicationId: '',
+        selectedApplicationEquipment: '',
+        activeEditorFieldKey: '',
         fields: [],
         loading: false,
         fontFamily: 'Times New Roman',
@@ -32,11 +39,17 @@ export function registerLayoutApplicationCreate(Alpine) {
             if (!this.layoutId) {
                 this.fields = [];
                 this.footerPreset = 'one_signer_author';
+                this.signatureSlotsCount = 1;
+                this.signatureRoles = {};
+                this.signatureRoleNames = {};
                 return;
             }
             this.loading = true;
             this.fields = [];
             this.footerPreset = 'one_signer_author';
+            this.signatureSlotsCount = 1;
+            this.signatureRoles = {};
+            this.signatureRoleNames = {};
             try {
                 const r = await fetch(`${this.schemaBase}/${this.layoutId}/schema-json`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -44,6 +57,9 @@ export function registerLayoutApplicationCreate(Alpine) {
                 });
                 const d = await r.json();
                 this.footerPreset = d.pdf_footer_preset || 'one_signer_author';
+                this.signatureSlotsCount = Number(d.signature_slots_count || 1);
+                this.signatureRoles = d.signature_roles && typeof d.signature_roles === 'object' ? d.signature_roles : {};
+                this.signatureRoleNames = d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
                 const raw = Array.isArray(d.fields) ? d.fields : [];
                 this.fields = raw.map((f, idx) => ({
                     key: f.key,
@@ -64,22 +80,89 @@ export function registerLayoutApplicationCreate(Alpine) {
             } catch (e) {
                 this.fields = [];
                 this.footerPreset = 'one_signer_author';
+                this.signatureSlotsCount = 1;
+                this.signatureRoles = {};
+                this.signatureRoleNames = {};
             }
             this.loading = false;
         },
         get signerSlotCount() {
+            const configured = Number(this.signatureSlotsCount || 0);
+            if (configured >= 1) {
+                return Math.max(1, Math.min(3, configured));
+            }
             const p = this.footerPreset;
-            if (p === 'two_signers') {
-                return 2;
-            }
-            if (p === 'three_signers') {
-                return 3;
-            }
-            return 0;
+            return p === 'three_signers' ? 3 : p === 'two_signers' ? 2 : 1;
         },
         signerIndices() {
             const n = this.signerSlotCount;
             return Array.from({ length: n }, (_, i) => i + 1);
+        },
+        selectedApplicationEquipmentOptions() {
+            const appId = Number(this.selectedApplicationId || 0);
+            if (!appId) {
+                return [];
+            }
+            const app = this.applications.find((a) => Number(a.id || 0) === appId);
+            if (!app || !Array.isArray(app.equipment)) {
+                return [];
+            }
+            return app.equipment;
+        },
+        setActiveEditorField(fieldKey) {
+            this.activeEditorFieldKey = String(fieldKey || '');
+        },
+        insertSelectedEquipmentIntoActiveField() {
+            const equipmentLine = String(this.selectedApplicationEquipment || '').trim();
+            if (!equipmentLine) {
+                window.alert('Сначала выберите оборудование из заявки.');
+                return;
+            }
+            const key = String(this.activeEditorFieldKey || '').trim();
+            if (!key) {
+                window.alert('Сначала кликните в текстовое поле, куда вставить оборудование.');
+                return;
+            }
+            const f = this.fields.find((x) => x.key === key);
+            if (!f || f.type === 'number') {
+                window.alert('Выберите текстовое поле для вставки.');
+                return;
+            }
+            const el = document.getElementById(`editor-${f.slug}`);
+            const h = document.getElementById(`hidden-${f.slug}`);
+            if (!el || !h) {
+                return;
+            }
+            const escaped = equipmentLine
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;');
+            el.focus();
+            try {
+                document.execCommand('insertHTML', false, `${escaped}<br>`);
+            } catch (e) {
+                el.innerHTML = `${el.innerHTML}${escaped}<br>`;
+            }
+            h.value = el.innerHTML;
+        },
+        signerRoleId(slot) {
+            const raw = this.signatureRoles?.[slot] ?? this.signatureRoles?.[String(slot)] ?? 0;
+            return Number(raw || 0);
+        },
+        signerRoleLabel(slot) {
+            const roleId = this.signerRoleId(slot);
+            if (!roleId) {
+                return `Подпись ${slot}`;
+            }
+            const roleName = this.signatureRoleNames?.[slot] || this.signatureRoleNames?.[String(slot)] || '';
+            return roleName ? `Подпись ${slot} (роль: ${roleName})` : `Подпись ${slot}`;
+        },
+        usersForSignerSlot(slot) {
+            const roleId = this.signerRoleId(slot);
+            if (!roleId) {
+                return this.users;
+            }
+            return this.users.filter((u) => Number(u.role_id || 0) === roleId);
         },
         syncRich(key, el) {
             const f = this.fields.find((x) => x.key === key);

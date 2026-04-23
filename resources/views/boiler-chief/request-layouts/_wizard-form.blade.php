@@ -44,6 +44,20 @@
     $initialPresSubtitlePt = (int) old('presentation_subtitle_size_pt', $schema['presentation_subtitle_size_pt'] ?? 12);
     $needsStatementHeader = old('needs_statement_header', ($schema['needs_statement_header'] ?? false) || ($layout?->document_header_layout_id ? true : false));
     $needsStatementHeader = filter_var($needsStatementHeader, FILTER_VALIDATE_BOOLEAN);
+    $signatureSlotsCount = (int) old('signature_slots_count', $schema['signature_slots_count'] ?? 0);
+    if ($signatureSlotsCount <= 0) {
+        $signatureSlotsCount = match ((string) ($schema['pdf_footer_preset'] ?? $initialPreset)) {
+            'three_signers' => 3,
+            'two_signers' => 2,
+            default => 1,
+        };
+    }
+    $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
+    $rawSignatureRoles = old('signature_roles', $schema['signature_roles'] ?? []);
+    $initialSignatureRoles = [];
+    foreach ([1, 2, 3] as $slot) {
+        $initialSignatureRoles[$slot] = (string) ($rawSignatureRoles[$slot] ?? $rawSignatureRoles[(string) $slot] ?? '');
+    }
 @endphp
 
 <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35"
@@ -63,8 +77,14 @@
         presentationHeadingSizePt: {{ $initialPresHeadingPt }},
         presentationSubtitleSizePt: {{ $initialPresSubtitlePt }},
         pdfFooterPreset: @js($initialPreset),
+        signatureSlotsCount: {{ $signatureSlotsCount }},
+        signatureRoles: {{ Js::from($initialSignatureRoles) }},
         footerStamp: @js($initialFooterStampBool),
         pdfBodyAlign: @js($pdfBodyAlign),
+        signatureSlotIndices() {
+            const n = Number(this.signatureSlotsCount || 1);
+            return Array.from({ length: Math.max(1, Math.min(3, n)) }, (_, i) => i + 1);
+        },
         ensureSelectedTokenField() {
             if (this.fields.length === 0) { this.selectedTokenField = ''; return; }
             const ok = this.fields.some(f => f.key === this.selectedTokenField);
@@ -178,6 +198,34 @@
                         <option value="three_signers">Три подписанта (строки слева)</option>
                         <option value="classic_split">Классика: ФИО и текст слева, подпись справа</option>
                     </select>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="signature_slots_count" class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Сколько подписей в отчете</label>
+                        <select id="signature_slots_count" name="signature_slots_count" x-model.number="signatureSlotsCount"
+                                class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm">
+                            <option value="1">1 подпись</option>
+                            <option value="2">2 подписи</option>
+                            <option value="3">3 подписи</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-1">
+                        <p class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Роли подписантов</p>
+                        <div class="space-y-2 rounded-lg border border-stone-200 dark:border-stone-700 p-2.5">
+                            <template x-for="slot in signatureSlotIndices()" :key="'slot_role_' + slot">
+                                <div>
+                                    <label class="block text-[11px] text-stone-600 dark:text-stone-300 mb-1" x-text="'Подпись ' + slot + ' — роль'"></label>
+                                    <select class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
+                                            :name="'signature_roles[' + slot + ']'" x-model="signatureRoles[slot]">
+                                        <option value="">— выберите роль —</option>
+                                        @foreach(($roles ?? collect()) as $role)
+                                            <option value="{{ $role->id }}">{{ $role->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                 </div>
                 <label class="inline-flex items-center gap-2 text-sm text-stone-700 dark:text-stone-200 cursor-pointer">
                     <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40" x-model="footerStamp"/>

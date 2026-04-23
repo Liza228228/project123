@@ -691,7 +691,7 @@
                             @if($chiefCanMarkDelivered && $chiefDeliveryCandidates->isNotEmpty())
                                 <div class="mt-4 space-y-3 rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-emerald-800/50 dark:bg-emerald-950/25">
                                     <p class="text-xs text-black dark:text-white">
-                                        Для позиций <span class="font-medium">«В пути»</span> подразделение получения уже задано заявкой и мастером участка — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование.
+                                        Для позиций <span class="font-medium">«В пути»</span> подразделение получения уже задано заявкой и мастером участка — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование. После «Доставлено» количество отображается на остатках склада; списание выполняется отдельно (при сохранении акта установки или через операцию списания со склада поступления).
                                     </p>
                                     <ul class="space-y-2">
                                         @foreach($chiefDeliveryCandidates->sortBy('id') as $deliveryItem)

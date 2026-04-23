@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreLayoutApplicationRequest;
+use App\Models\Application;
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
 use App\Models\User;
@@ -37,14 +38,21 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->get();
 
         $users = User::query()
+            ->with('role')
             ->orderBy('surname')
             ->orderBy('name')
             ->limit(500)
+            ->get();
+        $applications = Application::query()
+            ->with(['subdivision:id,name', 'items'])
+            ->orderByDesc('id')
+            ->limit(300)
             ->get();
 
         return view('boiler-chief.layout-applications.create', [
             'layouts' => $layouts,
             'users' => $users,
+            'applications' => $applications,
         ]);
     }
 

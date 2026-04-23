@@ -8,6 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ApplicationItem extends Model
 {
+    public const CUSTOM_SUPPLY_PENDING_APPROVAL_ID = 1;
+    public const CUSTOM_SUPPLY_ACCEPTED_ID = 2;
+    public const CUSTOM_SUPPLY_ORDERED_ID = 3;
+    public const CUSTOM_SUPPLY_IN_TRANSIT_ID = 4;
+    public const CUSTOM_SUPPLY_ON_WAREHOUSE_ID = 5;
+
     public const CUSTOM_SUPPLY_PENDING_APPROVAL = 'pending_approval';
 
     /** Согласовано по заявке; заказ у поставщика ещё не отмечен. */
@@ -31,6 +37,8 @@ class ApplicationItem extends Model
     public const DELIVERY_IN_TRANSIT = 'in_transit';
 
     public const DELIVERY_DELIVERED = 'delivered';
+    public const DELIVERY_IN_TRANSIT_ID = 1;
+    public const DELIVERY_DELIVERED_ID = 2;
 
     /**
      * @var array<string, mixed>
@@ -51,10 +59,10 @@ class ApplicationItem extends Model
         'raw_input',
         'is_checked',
         'reason_not_selected',
-        'custom_equipment_supply_status',
+        'custom_equipment_supply_status_id',
         'boiler_chief_checked',
         'reason_boiler_chief_not_selected',
-        'delivery_status',
+        'delivery_status_id',
         'delivery_subdivision_id',
         'delivery_warehouse_id',
         'delivery_marked_by_user_id',
@@ -72,6 +80,8 @@ class ApplicationItem extends Model
             'boiler_chief_checked' => 'boolean',
             'delivery_marked_at' => 'datetime',
             'custom_foreman_in_transit' => 'boolean',
+            'custom_equipment_supply_status_id' => 'integer',
+            'delivery_status_id' => 'integer',
         ];
     }
 
@@ -145,18 +155,11 @@ class ApplicationItem extends Model
      */
     public function normalizedCustomSupplyStatus(): ?string
     {
-        $stored = $this->custom_equipment_supply_status;
-        if ($stored === null || $stored === '') {
+        if ($this->custom_equipment_supply_status_id === null) {
             return null;
         }
-        if ($stored === self::LEGACY_ON_MAIN_WAREHOUSE) {
-            return self::CUSTOM_SUPPLY_ON_WAREHOUSE;
-        }
-        if ($stored === self::LEGACY_AWAITING_ARRIVAL) {
-            return self::CUSTOM_SUPPLY_ACCEPTED;
-        }
 
-        return $stored;
+        return self::customSupplyCodeFromId((int) $this->custom_equipment_supply_status_id);
     }
 
     public function resolvedCustomSupplyStatus(): string
@@ -211,8 +214,8 @@ class ApplicationItem extends Model
             ->whereNull('equipment_id')
             ->where('is_checked', true)
             ->where(function ($w) {
-                $w->where('custom_equipment_supply_status', self::CUSTOM_SUPPLY_ACCEPTED)
-                    ->orWhereNull('custom_equipment_supply_status');
+                $w->where('custom_equipment_supply_status_id', self::CUSTOM_SUPPLY_ACCEPTED_ID)
+                    ->orWhereNull('custom_equipment_supply_status_id');
             });
     }
 
@@ -296,12 +299,11 @@ class ApplicationItem extends Model
 
     public function resolvedDeliveryStatus(): ?string
     {
-        $status = trim((string) ($this->delivery_status ?? ''));
-        if ($status === self::DELIVERY_IN_TRANSIT || $status === self::DELIVERY_DELIVERED) {
-            return $status;
+        if ($this->delivery_status_id === null) {
+            return null;
         }
 
-        return null;
+        return self::deliveryCodeFromId((int) $this->delivery_status_id);
     }
 
     public function deliveryStatusLabel(): ?string
@@ -325,5 +327,47 @@ class ApplicationItem extends Model
         return $this->is_checked
             && $this->equipment_id !== null
             && $this->resolvedDeliveryStatus() === self::DELIVERY_IN_TRANSIT;
+    }
+
+    private static function customSupplyCodeFromId(int $id): ?string
+    {
+        return match ($id) {
+            self::CUSTOM_SUPPLY_PENDING_APPROVAL_ID => self::CUSTOM_SUPPLY_PENDING_APPROVAL,
+            self::CUSTOM_SUPPLY_ACCEPTED_ID => self::CUSTOM_SUPPLY_ACCEPTED,
+            self::CUSTOM_SUPPLY_ORDERED_ID => self::CUSTOM_SUPPLY_ORDERED,
+            self::CUSTOM_SUPPLY_IN_TRANSIT_ID => self::CUSTOM_SUPPLY_IN_TRANSIT,
+            self::CUSTOM_SUPPLY_ON_WAREHOUSE_ID => self::CUSTOM_SUPPLY_ON_WAREHOUSE,
+            default => null,
+        };
+    }
+
+    public static function customSupplyIdFromCode(string $code): ?int
+    {
+        return match ($code) {
+            self::CUSTOM_SUPPLY_PENDING_APPROVAL => self::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
+            self::CUSTOM_SUPPLY_ACCEPTED, self::LEGACY_AWAITING_ARRIVAL => self::CUSTOM_SUPPLY_ACCEPTED_ID,
+            self::CUSTOM_SUPPLY_ORDERED => self::CUSTOM_SUPPLY_ORDERED_ID,
+            self::CUSTOM_SUPPLY_IN_TRANSIT => self::CUSTOM_SUPPLY_IN_TRANSIT_ID,
+            self::CUSTOM_SUPPLY_ON_WAREHOUSE, self::LEGACY_ON_MAIN_WAREHOUSE => self::CUSTOM_SUPPLY_ON_WAREHOUSE_ID,
+            default => null,
+        };
+    }
+
+    private static function deliveryCodeFromId(int $id): ?string
+    {
+        return match ($id) {
+            self::DELIVERY_IN_TRANSIT_ID => self::DELIVERY_IN_TRANSIT,
+            self::DELIVERY_DELIVERED_ID => self::DELIVERY_DELIVERED,
+            default => null,
+        };
+    }
+
+    public static function deliveryIdFromCode(string $code): ?int
+    {
+        return match ($code) {
+            self::DELIVERY_IN_TRANSIT => self::DELIVERY_IN_TRANSIT_ID,
+            self::DELIVERY_DELIVERED => self::DELIVERY_DELIVERED_ID,
+            default => null,
+        };
     }
 }
