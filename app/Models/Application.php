@@ -23,6 +23,7 @@ class Application extends Model
         'user_id',
         'source_application_id',
         'transport_option_id',
+        'delivery_vehicle_plate',
         'application_status_id',
         'approval_rejection_reason',
         'boiler_chief_stage_completed_at',

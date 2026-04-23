@@ -17,7 +17,11 @@ class TransportOptionSeeder extends Seeder
         }
 
         if (Schema::hasTable('applications') && Schema::hasColumn('applications', 'transport_option_id')) {
-            Application::query()->update(['transport_option_id' => null]);
+            $payload = ['transport_option_id' => null];
+            if (Schema::hasColumn('applications', 'delivery_vehicle_plate')) {
+                $payload['delivery_vehicle_plate'] = null;
+            }
+            Application::query()->update($payload);
         }
         TransportOption::query()->delete();
 

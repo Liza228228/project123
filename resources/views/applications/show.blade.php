@@ -94,6 +94,11 @@
                     {{ $message }}
                 </div>
             @enderror
+            @error('delivery_vehicle_plate')
+                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                    {{ $message }}
+                </div>
+            @enderror
             @error('delivered_stock')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
@@ -157,6 +162,9 @@
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
                                     @if($application->transportOption)
                                         {{ $application->transportOption->name }}
+                                        @if(filled($application->delivery_vehicle_plate))
+                                            <span class="block text-xs font-normal opacity-80 mt-0.5">Автомобиль: {{ $application->delivery_vehicle_plate }}</span>
+                                        @endif
                                     @else
                                         —
                                     @endif
@@ -573,7 +581,7 @@
                                     <p class="text-xs text-black dark:text-white">
                                         После подготовки отгрузки отметьте <span class="font-medium">«В пути»</span> — статус сразу проставится для всех подходящих позиций этой заявки. После фактической доставки начальник котельной отметит подразделение и склад поступления.
                                     </p>
-                                    <form method="POST" action="{{ route('applications.delivery-in-transit', $application) }}" class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-end">
+                                    <form method="POST" action="{{ route('applications.delivery-in-transit', $application) }}" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end">
                                         @csrf
                                         <div class="w-full sm:w-auto sm:min-w-[17rem]">
                                             <label for="delivery-transport-option-id" class="app-form-label !normal-case">Способ доставки</label>
@@ -585,6 +593,27 @@
                                                     </option>
                                                 @endforeach
                                             </select>
+                                        </div>
+                                        <div class="w-full sm:w-auto sm:min-w-[14rem]">
+                                            <label for="delivery-vehicle-plate" class="app-form-label !normal-case">Номер машины (доставка)</label>
+                                            <input
+                                                type="text"
+                                                id="delivery-vehicle-plate"
+                                                name="delivery_vehicle_plate"
+                                                value="{{ old('delivery_vehicle_plate', $application->delivery_vehicle_plate) }}"
+                                                maxlength="30"
+                                                class="app-input text-sm w-full"
+                                                placeholder="Например: А123ВС77 или выберите из списка"
+                                                list="company-delivery-vehicle-plates"
+                                                autocomplete="off"
+                                            />
+                                            @if(($companyDeliveryVehicles ?? collect())->isNotEmpty())
+                                                <datalist id="company-delivery-vehicle-plates">
+                                                    @foreach($companyDeliveryVehicles as $vehicle)
+                                                        <option value="{{ $vehicle->plate }}">{{ $vehicle->label ?? 'Своя машина' }}</option>
+                                                    @endforeach
+                                                </datalist>
+                                            @endif
                                         </div>
                                         <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
                                             Отметить всё как «В пути»

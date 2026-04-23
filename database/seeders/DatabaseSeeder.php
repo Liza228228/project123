@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             EquipmentSeeder::class,
             MainWarehouseStockSeeder::class,
             TransportOptionSeeder::class,
+            CompanyDeliveryVehicleSeeder::class,
             CustomEquipmentSupplyStatusSeeder::class,
             DeliveryStatusSeeder::class,
             ApplicationSeeder::class,

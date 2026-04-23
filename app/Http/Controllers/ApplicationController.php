@@ -6,6 +6,7 @@ use App\Models\Application;
 use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
+use App\Models\CompanyDeliveryVehicle;
 use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
 use App\Models\MeasurementUnit;
@@ -827,6 +828,9 @@ class ApplicationController extends Controller
         $transportOptions = TransportOption::query()
             ->orderBy('name')
             ->get(['id', 'name']);
+        $companyDeliveryVehicles = Schema::hasTable('company_delivery_vehicles')
+            ? CompanyDeliveryVehicle::query()->orderBy('plate')->get(['id', 'plate', 'label'])
+            : collect();
 
         return view('applications.show', compact(
             'application',
@@ -835,7 +839,8 @@ class ApplicationController extends Controller
             'remainingByItemId',
             'boilerChiefDeliverySubdivisions',
             'deliveredWarehouseIssueCandidates',
-            'transportOptions'
+            'transportOptions',
+            'companyDeliveryVehicles'
         ));
     }
 
@@ -1564,9 +1569,11 @@ class ApplicationController extends Controller
 
         $validated = $request->validate([
             'transport_option_id' => ['required', 'exists:transport_options,id'],
+            'delivery_vehicle_plate' => ['nullable', 'string', 'max:30', 'regex:/^[\p{L}\p{N}\s\-]*$/u'],
         ], [
             'transport_option_id.required' => 'Перед отметкой «В пути» укажите способ доставки.',
             'transport_option_id.exists' => 'Выбранный способ доставки не найден.',
+            'delivery_vehicle_plate.regex' => 'Номер транспорта: только буквы, цифры, пробел и дефис.',
         ]);
 
         $eligibleItems = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkDeliveryInTransit());
@@ -1585,8 +1592,12 @@ class ApplicationController extends Controller
                 'delivery_marked_at' => null,
             ]);
 
+        $plate = isset($validated['delivery_vehicle_plate'])
+            ? trim((string) $validated['delivery_vehicle_plate'])
+            : '';
         $application->update([
             'transport_option_id' => (int) $validated['transport_option_id'],
+            'delivery_vehicle_plate' => $plate !== '' ? $plate : null,
         ]);
 
         return redirect()->route('applications.show', $application)
