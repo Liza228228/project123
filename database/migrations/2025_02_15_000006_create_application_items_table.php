@@ -12,7 +12,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('application_id')->constrained('applications')->cascadeOnDelete();
             $table->foreignId('equipment_id')->nullable()->constrained('equipment')->nullOnDelete();
-            $table->string('equipment_name', 150)->nullable();
             $table->unsignedInteger('quantity')->default(1);
             $table->timestamps();
         });

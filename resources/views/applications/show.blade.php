@@ -84,11 +84,6 @@
                     {{ $message }}
                 </div>
             @enderror
-            @error('delivery_subdivision_id')
-                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                    {{ $message }}
-                </div>
-            @enderror
             @error('delivery_warehouse_id')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
@@ -269,38 +264,6 @@
                             @endif
                         </dl>
                     </section>
-
-                    @if(Auth::user()->hasRoleId(4) && $application->latestEditHistory)
-                        @php
-                            $hist = $application->latestEditHistory;
-                            $lastEditor = $hist->user;
-                            $editorRoleLabel = $lastEditor?->role?->name;
-                        @endphp
-                        <div class="rounded-xl border border-stone-200/90 bg-stone-50/80 p-4 space-y-2 dark:border-stone-600 dark:bg-stone-800/35">
-                            <p class="text-sm text-black dark:text-white">
-                                <span class="font-medium">В заявку внесены изменения</span>
-                                @if($lastEditor)
-                                    — {{ $lastEditor->surname }} {{ $lastEditor->name }}
-                                    @if($editorRoleLabel)
-                                        <span class="text-xs font-normal opacity-80">({{ $editorRoleLabel }})</span>
-                                    @endif
-                                @endif
-                                <span class="text-xs font-normal opacity-80"> — {{ $hist->edited_at->format('d.m.Y H:i') }}</span>
-                            </p>
-                            @if(filled($hist->equipment_change))
-                                <div class="text-sm text-black dark:text-white">
-                                    <span class="font-medium">Оборудование:</span>
-                                    <p class="mt-1 whitespace-pre-line">{{ $hist->equipment_change }}</p>
-                                </div>
-                            @endif
-                            @if(filled($hist->change_reason))
-                                <div class="text-sm text-black dark:text-white">
-                                    <span class="font-medium">Причина:</span>
-                                    <p class="mt-1 whitespace-pre-line">{{ $hist->change_reason }}</p>
-                                </div>
-                            @endif
-                        </div>
-                    @endif
 
                     @php
                         $approvalLockedAfterTransit = $application->items->contains(

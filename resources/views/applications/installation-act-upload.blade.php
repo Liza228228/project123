@@ -114,8 +114,8 @@
                                                         <td class="px-3 py-2">{{ $item->equipment_display_name }}</td>
                                                         <td class="px-3 py-2">
                                                             {{ $item->deliveryWarehouse?->name ?? '—' }}
-                                                            @if($item->deliverySubdivision)
-                                                                <span class="text-stone-500 dark:text-stone-400">({{ $item->deliverySubdivision->name }})</span>
+                                                            @if($item->deliveryWarehouse?->subdivision)
+                                                                <span class="text-stone-500 dark:text-stone-400">({{ $item->deliveryWarehouse->subdivision->name }})</span>
                                                             @endif
                                                         </td>
                                                         <td class="px-3 py-2 text-right">{{ $item->quantity_with_unit }}</td>

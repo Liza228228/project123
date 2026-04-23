@@ -10,8 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('application_items', function (Blueprint $table) {
-            $table->foreignId('custom_target_subdivision_id')->nullable()->after('delivery_marked_at')->constrained('subdivisions')->nullOnDelete();
-            $table->foreignId('custom_target_warehouse_id')->nullable()->after('custom_target_subdivision_id')->constrained('warehouses')->nullOnDelete();
+            $table->foreignId('custom_target_warehouse_id')->nullable()->after('delivery_marked_at')->constrained('warehouses')->nullOnDelete();
             $table->boolean('custom_foreman_in_transit')->default(false)->after('custom_target_warehouse_id');
         });
 
@@ -26,7 +25,6 @@ return new class extends Migration
     {
         Schema::table('application_items', function (Blueprint $table) {
             $table->dropConstrainedForeignId('custom_target_warehouse_id');
-            $table->dropConstrainedForeignId('custom_target_subdivision_id');
             $table->dropColumn('custom_foreman_in_transit');
         });
     }

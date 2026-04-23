@@ -8,19 +8,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('application_items', function (Blueprint $table) {
-            $table->string('base_name', 255)->nullable()->after('equipment_name');
-            $table->string('size_value', 120)->nullable()->after('base_name');
-            $table->string('measurement_type', 20)->default('piece')->after('quantity');
-            $table->string('quantity_unit', 20)->default('шт')->after('quantity');
-            $table->string('raw_input', 255)->nullable()->after('quantity_unit');
+        Schema::create('application_item_manual_details', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('application_item_id')->unique()->constrained('application_items')->cascadeOnDelete();
+            $table->string('equipment_name', 255)->nullable();
+            $table->string('base_name', 255)->nullable();
+            $table->string('size_value', 120)->nullable();
+            $table->string('measurement_type', 20)->default('piece');
+            $table->string('quantity_unit', 20)->default('шт');
+            $table->string('raw_input', 255)->nullable();
+            $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::table('application_items', function (Blueprint $table) {
-            $table->dropColumn(['base_name', 'size_value', 'quantity_unit', 'raw_input']);
-        });
+        Schema::dropIfExists('application_item_manual_details');
     }
 };

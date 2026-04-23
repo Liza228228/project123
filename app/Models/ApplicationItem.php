@@ -5,9 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ApplicationItem extends Model
 {
+    private const MANUAL_DETAIL_KEYS = [
+        'equipment_name',
+        'base_name',
+        'size_value',
+        'measurement_type',
+        'quantity_unit',
+        'raw_input',
+    ];
+
     public const CUSTOM_SUPPLY_PENDING_APPROVAL_ID = 1;
     public const CUSTOM_SUPPLY_ACCEPTED_ID = 2;
     public const CUSTOM_SUPPLY_ORDERED_ID = 3;
@@ -47,6 +57,11 @@ class ApplicationItem extends Model
         'is_checked' => false,
     ];
 
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $manualWriteBuffer = [];
+
     protected $fillable = [
         'application_id',
         'equipment_id',
@@ -63,11 +78,9 @@ class ApplicationItem extends Model
         'boiler_chief_checked',
         'reason_boiler_chief_not_selected',
         'delivery_status_id',
-        'delivery_subdivision_id',
         'delivery_warehouse_id',
         'delivery_marked_by_user_id',
         'delivery_marked_at',
-        'custom_target_subdivision_id',
         'custom_target_warehouse_id',
         'custom_foreman_in_transit',
     ];
@@ -85,6 +98,118 @@ class ApplicationItem extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saved(function (ApplicationItem $item): void {
+            $eid = $item->getAttributeFromArray('equipment_id');
+            if ($eid !== null && $eid !== '') {
+                $item->manualDetail()->delete();
+                $item->manualWriteBuffer = [];
+
+                return;
+            }
+
+            $existing = $item->manualDetail()->first();
+            $base = [
+                'equipment_name' => $existing?->equipment_name,
+                'base_name' => $existing?->base_name ?? '—',
+                'size_value' => $existing?->size_value,
+                'measurement_type' => $existing?->measurement_type ?? 'piece',
+                'quantity_unit' => $existing?->quantity_unit ?? 'шт',
+                'raw_input' => $existing?->raw_input,
+            ];
+            $merged = array_merge($base, $item->manualWriteBuffer);
+            $item->manualWriteBuffer = [];
+            $item->manualDetail()->updateOrCreate(
+                ['application_item_id' => $item->id],
+                $merged
+            );
+            $item->unsetRelation('manualDetail');
+        });
+    }
+
+    public function getAttribute($key)
+    {
+        if (in_array($key, self::MANUAL_DETAIL_KEYS, true)) {
+            if ($this->getAttributeFromArray('equipment_id')) {
+                return $this->resolveCatalogManualDetailField($key);
+            }
+            $this->loadMissing('manualDetail');
+            $m = $this->manualDetail;
+
+            return match ($key) {
+                'equipment_name' => $m?->equipment_name,
+                'base_name' => ($m && trim((string) $m->base_name) !== '') ? $m->base_name : '—',
+                'size_value' => $m?->size_value,
+                'measurement_type' => $m?->measurement_type ?? 'piece',
+                'quantity_unit' => $m?->quantity_unit ?? 'шт',
+                'raw_input' => $m?->raw_input,
+                default => null,
+            };
+        }
+
+        return parent::getAttribute($key);
+    }
+
+    public function setAttribute($key, $value)
+    {
+        if ($key === 'equipment_id') {
+            parent::setAttribute($key, $value);
+            if ($value !== null && $value !== '') {
+                $this->manualWriteBuffer = [];
+            }
+
+            return $this;
+        }
+
+        if (in_array($key, self::MANUAL_DETAIL_KEYS, true)) {
+            $eid = $this->getAttributeFromArray('equipment_id');
+            if ($eid !== null && $eid !== '') {
+                return $this;
+            }
+            $this->manualWriteBuffer[$key] = $value;
+
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
+    private function resolveCatalogManualDetailField(string $key): mixed
+    {
+        $this->loadMissing('equipment.measurementUnit.unitType');
+        $eq = $this->equipment;
+        if (! $eq) {
+            return match ($key) {
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+                'base_name' => '—',
+                default => null,
+            };
+        }
+
+        return match ($key) {
+            'equipment_name' => null,
+            'base_name' => ($eq->base_name !== null && trim((string) $eq->base_name) !== '') ? $eq->base_name : '—',
+            'size_value' => $eq->size_value,
+            'measurement_type' => $eq->measurementUnit?->unitType?->code ?? 'piece',
+            'quantity_unit' => $this->catalogQuantityUnitLabel($eq),
+            'raw_input' => null,
+            default => null,
+        };
+    }
+
+    private function catalogQuantityUnitLabel(Equipment $eq): string
+    {
+        $u = trim((string) ($eq->measurementUnit?->code ?? ''));
+        if ($u !== '') {
+            return $u;
+        }
+        $n = trim((string) ($eq->measurementUnit?->name ?? ''));
+
+        return $n !== '' ? $n : 'шт';
+    }
+
     public function application(): BelongsTo
     {
         return $this->belongsTo(Application::class);
@@ -95,9 +220,9 @@ class ApplicationItem extends Model
         return $this->belongsTo(Equipment::class);
     }
 
-    public function deliverySubdivision(): BelongsTo
+    public function manualDetail(): HasOne
     {
-        return $this->belongsTo(Subdivision::class, 'delivery_subdivision_id');
+        return $this->hasOne(ApplicationItemManualDetail::class, 'application_item_id');
     }
 
     public function deliveryWarehouse(): BelongsTo
@@ -110,11 +235,6 @@ class ApplicationItem extends Model
         return $this->belongsTo(User::class, 'delivery_marked_by_user_id');
     }
 
-    public function customTargetSubdivision(): BelongsTo
-    {
-        return $this->belongsTo(Subdivision::class, 'custom_target_subdivision_id');
-    }
-
     public function customTargetWarehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'custom_target_warehouse_id');
@@ -124,7 +244,7 @@ class ApplicationItem extends Model
     {
         $baseName = trim((string) ($this->base_name ?? ''));
         $size = trim((string) ($this->size_value ?? ''));
-        if ($baseName !== '') {
+        if ($baseName !== '' && $baseName !== '—') {
             return trim($baseName.($size !== '' ? ' '.$size : ''));
         }
 
@@ -132,7 +252,7 @@ class ApplicationItem extends Model
             return $this->equipment->name;
         }
 
-        return trim($this->equipment_name ?? '') ?: '—';
+        return trim((string) ($this->equipment_name ?? '')) ?: '—';
     }
 
     public function getQuantityWithUnitAttribute(): string
@@ -286,12 +406,16 @@ class ApplicationItem extends Model
     }
 
     /**
-     * Подразделение, куда должна прийти поставка: из заявки или из выбора мастера (склад получения).
+     * Подразделение, куда должна прийти поставка: из заявки или из склада, выбранного мастером.
      */
     public function resolvedDeliveryTargetSubdivisionId(): ?int
     {
-        if ($this->custom_target_subdivision_id !== null) {
-            return (int) $this->custom_target_subdivision_id;
+        if ($this->custom_target_warehouse_id !== null) {
+            $this->loadMissing('customTargetWarehouse');
+            $wh = $this->customTargetWarehouse;
+            if ($wh && $wh->subdivision_id !== null) {
+                return (int) $wh->subdivision_id;
+            }
         }
 
         return $this->application?->subdivision_id ? (int) $this->application->subdivision_id : null;

@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\Application;
-use App\Models\ApplicationEditHistory;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
 use App\Models\Equipment;
@@ -72,15 +71,6 @@ class ApplicationSeeder extends Seeder
             'subdivision_id' => $pickSub(1),
             'desired_delivery_date' => Carbon::now()->addDays(12),
         ]);
-        if ($director) {
-            ApplicationEditHistory::query()->create([
-                'application_id' => $app2->id,
-                'user_id' => $director->id,
-                'edited_at' => now()->subHours(6),
-                'equipment_change' => 'Добавлена позиция: «Нестандартный узел учёта (по согласованию)» × 1',
-                'change_reason' => 'Дополнение состава по согласованию с бригадиром.',
-            ]);
-        }
         ApplicationItem::query()->create([
             'application_id' => $app2->id,
             'equipment_id' => null,

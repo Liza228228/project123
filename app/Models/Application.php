@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -37,16 +36,6 @@ class Application extends Model
             'boiler_chief_stage_completed_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
-    }
-
-    public function editHistories(): HasMany
-    {
-        return $this->hasMany(ApplicationEditHistory::class)->orderByDesc('edited_at')->orderByDesc('id');
-    }
-
-    public function latestEditHistory(): HasOne
-    {
-        return $this->hasOne(ApplicationEditHistory::class)->latestOfMany('edited_at');
     }
 
     public function applicationStatus(): BelongsTo
@@ -357,7 +346,7 @@ class Application extends Model
                     })
                     ->orWhereHas('transportOption', fn ($q) => $q->where('name', 'like', $like))
                     ->orWhereHas('items', function ($q) use ($like) {
-                        $q->where('equipment_name', 'like', $like)
+                        $q->whereHas('manualDetail', fn ($m) => $m->where('equipment_name', 'like', $like))
                             ->orWhereHas('equipment', fn ($eq) => $eq->where('name', 'like', $like));
                     });
             });
@@ -534,8 +523,13 @@ class Application extends Model
             }
 
             $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
+            $item->loadMissing('deliveryWarehouse');
+            $deliverySubId = $item->deliveryWarehouse?->subdivision_id !== null
+                ? (int) $item->deliveryWarehouse->subdivision_id
+                : null;
             if ($targetSubdivisionId !== null
-                && (int) ($item->delivery_subdivision_id ?? 0) !== $targetSubdivisionId) {
+                && $deliverySubId !== null
+                && $deliverySubId !== $targetSubdivisionId) {
                 return false;
             }
         }

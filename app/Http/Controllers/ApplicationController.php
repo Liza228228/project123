@@ -14,7 +14,6 @@ use App\Models\TransportOption;
 use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
-use App\Services\ApplicationChangeRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -100,7 +99,17 @@ class ApplicationController extends Controller
         $this->applyIndexSorting($applicationsQuery, $sortState);
 
         $applications = $applicationsQuery
-            ->with(['subdivision', 'responsibleUser', 'items.equipment', 'user', 'approvedBy', 'sourceApplication', 'transportOption', 'applicationStatus'])
+            ->with([
+                'subdivision',
+                'responsibleUser',
+                'items.equipment.measurementUnit.unitType',
+                'items.manualDetail',
+                'user',
+                'approvedBy',
+                'sourceApplication',
+                'transportOption',
+                'applicationStatus',
+            ])
             ->paginate($perPage)
             ->withQueryString();
 
@@ -170,7 +179,7 @@ class ApplicationController extends Controller
             abort(404);
         }
 
-        $application->load(['items.equipment', 'subdivision', 'user']);
+        $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'subdivision', 'user']);
 
         $toOrder = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOrdered())->sortBy('id');
         $toWarehouse = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOnWarehouse())->sortBy('id');
@@ -321,11 +330,9 @@ class ApplicationController extends Controller
             'base_name' => $equipment->base_name,
             'size_value' => $equipment->size_value,
             'delivery_status_id' => null,
-            'delivery_subdivision_id' => null,
             'delivery_warehouse_id' => null,
             'delivery_marked_by_user_id' => null,
             'delivery_marked_at' => null,
-            'custom_target_subdivision_id' => null,
             'custom_target_warehouse_id' => null,
             'custom_foreman_in_transit' => false,
         ]);
@@ -370,9 +377,9 @@ class ApplicationController extends Controller
         $deliveredWarehouseIssueCandidates = collect();
         if ($selectedApplication instanceof Application) {
             $selectedApplication->loadMissing([
-                'items.equipment',
-                'items.deliverySubdivision',
-                'items.deliveryWarehouse',
+                'items.equipment.measurementUnit.unitType',
+                'items.manualDetail',
+                'items.deliveryWarehouse.subdivision',
             ]);
             $deliveredWarehouseIssueCandidates = $this->deliveredWarehouseIssueCandidates($selectedApplication);
         }
@@ -543,7 +550,7 @@ class ApplicationController extends Controller
             }
 
             $application->refresh();
-            $application->load(['items.equipment']);
+            $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail']);
             $installationStockSummary = $this->writeOffDeliveredItemsOnRecipientWarehouses(
                 $application,
                 $request->user(),
@@ -734,7 +741,6 @@ class ApplicationController extends Controller
                 'reason_not_selected' => null,
                 'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
                 'delivery_status_id' => null,
-                'delivery_subdivision_id' => null,
                 'delivery_warehouse_id' => null,
                 'delivery_marked_by_user_id' => null,
                 'delivery_marked_at' => null,
@@ -755,7 +761,7 @@ class ApplicationController extends Controller
         // Автодоводка "выполненных" заявок: списываем доставленные позиции (если еще не списаны)
         // и сразу пытаемся перенести заявку в архив.
         if ($application->archived_at === null) {
-            $application->loadMissing(['subdivision', 'items.equipment', 'installationActPhotos']);
+            $application->loadMissing(['subdivision', 'items.equipment.measurementUnit.unitType', 'items.manualDetail', 'installationActPhotos']);
             $this->writeOffDeliveredItemsOnRecipientWarehouses(
                 $application,
                 $request->user(),
@@ -773,15 +779,14 @@ class ApplicationController extends Controller
             'responsibleUser',
             'user',
             'approvedBy',
-            'items.equipment',
-            'items.deliverySubdivision',
+            'items.equipment.measurementUnit.unitType',
+            'items.manualDetail',
             'items.deliveryWarehouse',
             'items.deliveryMarkedBy',
             'items.customTargetWarehouse',
             'sourceApplication',
             'transportOption',
             'applicationStatus',
-            'latestEditHistory.user.role',
             'installationActPhotos',
         ]);
 
@@ -966,7 +971,7 @@ class ApplicationController extends Controller
             : 'Списание со склада поступления по заявке (после доставки / монтажа).';
 
         $summary = DB::transaction(function () use ($application, $request, $movementComment) {
-            $application->load(['items.equipment']);
+            $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail']);
 
             return $this->writeOffDeliveredItemsOnRecipientWarehouses(
                 $application,
@@ -1101,7 +1106,7 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
 
-        $application->load(['items.equipment', 'applicationStatus']);
+        $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
 
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
@@ -1129,10 +1134,7 @@ class ApplicationController extends Controller
 
         $isSiteForeman = $request->user()->hasRoleId(4);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
-        $application->load(['items.equipment', 'applicationStatus']);
-
-        $shouldRecordManagementEdit = $request->user()->hasAnyRoleId($this->managementEditorRoleIds());
-        $snapshotBefore = $shouldRecordManagementEdit ? ApplicationChangeRecorder::snapshot($application) : null;
+        $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
@@ -1310,7 +1312,6 @@ class ApplicationController extends Controller
                     'boiler_chief_checked' => false,
                     'reason_boiler_chief_not_selected' => null,
                     'delivery_status_id' => null,
-                    'delivery_subdivision_id' => null,
                     'delivery_warehouse_id' => null,
                     'delivery_marked_by_user_id' => null,
                     'delivery_marked_at' => null,
@@ -1334,7 +1335,6 @@ class ApplicationController extends Controller
                     'boiler_chief_checked' => false,
                     'reason_boiler_chief_not_selected' => null,
                     'delivery_status_id' => null,
-                    'delivery_subdivision_id' => null,
                     'delivery_warehouse_id' => null,
                     'delivery_marked_by_user_id' => null,
                     'delivery_marked_at' => null,
@@ -1358,24 +1358,6 @@ class ApplicationController extends Controller
             $application->load('items');
             $this->refreshBoilerChiefGateAfterItemChanges($application);
         });
-
-        if ($shouldRecordManagementEdit && $snapshotBefore !== null) {
-            $application->refresh();
-            $application->load(['subdivision', 'responsibleUser', 'transportOption', 'items.equipment']);
-            $equipmentLines = ApplicationChangeRecorder::equipmentDiff($snapshotBefore, $application);
-            $equipmentChange = $equipmentLines === [] ? '' : implode("\n", $equipmentLines);
-            $changeReason = trim((string) ($validated['management_change_reason'] ?? ''));
-            if ($equipmentChange !== '' || $changeReason !== '') {
-                DB::transaction(function () use ($application, $request, $equipmentChange, $changeReason) {
-                    $application->editHistories()->create([
-                        'user_id' => $request->user()->id,
-                        'edited_at' => now(),
-                        'equipment_change' => $equipmentChange !== '' ? $equipmentChange : null,
-                        'change_reason' => $changeReason !== '' ? $changeReason : null,
-                    ]);
-                });
-            }
-        }
 
         return redirect()->to(route('applications.show', $application).'#approval-form')
             ->with('status', 'Заявка успешно обновлена.');
@@ -1445,7 +1427,6 @@ class ApplicationController extends Controller
                 ];
                 if (! $isChecked) {
                     $payload['delivery_status_id'] = null;
-                    $payload['delivery_subdivision_id'] = null;
                     $payload['delivery_warehouse_id'] = null;
                     $payload['delivery_marked_by_user_id'] = null;
                     $payload['delivery_marked_at'] = null;
@@ -1599,7 +1580,6 @@ class ApplicationController extends Controller
             ->whereIn('id', $eligibleItems->pluck('id'))
             ->update([
                 'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
-                'delivery_subdivision_id' => null,
                 'delivery_warehouse_id' => null,
                 'delivery_marked_by_user_id' => null,
                 'delivery_marked_at' => null,
@@ -1672,9 +1652,7 @@ class ApplicationController extends Controller
             ]);
         }
 
-        $deliverySubdivisionId = $warehouseSubdivisionId;
-
-        DB::transaction(function () use ($request, $application, $item, $deliverySubdivisionId, $deliveryWarehouseId) {
+        DB::transaction(function () use ($request, $application, $item, $deliveryWarehouseId) {
             $item->refresh();
 
             if (! $item->canMarkDeliveryDeliveredByBoilerChief()) {
@@ -1712,7 +1690,6 @@ class ApplicationController extends Controller
 
             $item->update([
                 'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
-                'delivery_subdivision_id' => $deliverySubdivisionId,
                 'delivery_warehouse_id' => $deliveryWarehouseId,
                 'delivery_marked_by_user_id' => $request->user()->id,
                 'delivery_marked_at' => now(),
@@ -1824,7 +1801,6 @@ class ApplicationController extends Controller
         }
 
         $item->update([
-            'custom_target_subdivision_id' => (int) $application->subdivision_id,
             'custom_target_warehouse_id' => (int) $warehouse->id,
         ]);
 
@@ -2570,9 +2546,9 @@ class ApplicationController extends Controller
     private function deliveredWarehouseIssueCandidates(Application $application): Collection
     {
         $application->loadMissing([
-            'items.equipment',
-            'items.deliverySubdivision',
-            'items.deliveryWarehouse',
+            'items.equipment.measurementUnit.unitType',
+            'items.manualDetail',
+            'items.deliveryWarehouse.subdivision',
         ]);
 
         return $application->items->filter(function (ApplicationItem $item) use ($application) {

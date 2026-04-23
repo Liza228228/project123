@@ -8,6 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::dropIfExists('application_edit_histories');
+    }
+
+    public function down(): void
+    {
         Schema::create('application_edit_histories', function (Blueprint $table) {
             $table->id();
             $table->foreignId('application_id')->constrained('applications')->cascadeOnDelete();
@@ -17,10 +22,5 @@ return new class extends Migration
             $table->text('change_reason')->nullable();
             $table->timestamps();
         });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('application_edit_histories');
     }
 };

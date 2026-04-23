@@ -19,7 +19,8 @@ final class ApplicationChangeRecorder
             'subdivision',
             'responsibleUser',
             'transportOption',
-            'items.equipment',
+            'items.equipment.measurementUnit.unitType',
+            'items.manualDetail',
         ]);
 
         return [
@@ -49,7 +50,8 @@ final class ApplicationChangeRecorder
             'subdivision',
             'responsibleUser',
             'transportOption',
-            'items.equipment',
+            'items.equipment.measurementUnit.unitType',
+            'items.manualDetail',
         ]);
 
         $lines = [];
@@ -136,7 +138,7 @@ final class ApplicationChangeRecorder
      */
     public static function equipmentDiff(array $before, Application $after): array
     {
-        $after->loadMissing(['items.equipment']);
+        $after->loadMissing(['items.equipment.measurementUnit.unitType', 'items.manualDetail']);
 
         $lines = [];
 
