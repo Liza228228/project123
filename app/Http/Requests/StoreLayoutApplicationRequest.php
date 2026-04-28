@@ -20,8 +20,7 @@ class StoreLayoutApplicationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'request_layout_id' => ['required', 'integer', 'exists:request_layout,id'],
-            'recipient_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'layout_structure_id' => ['required', 'integer', 'exists:layout_structures,id'],
             'signer_1_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'signer_2_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'signer_3_user_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -35,16 +34,12 @@ class StoreLayoutApplicationRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            $id = (int) $this->input('request_layout_id', 0);
+            $id = (int) $this->input('layout_structure_id', 0);
             if ($id <= 0) {
                 return;
             }
             $layout = RequestLayout::query()->find($id);
             if (! $layout) {
-                return;
-            }
-            if ((int) $layout->user_assigner_id !== (int) $this->user()?->id) {
-                $validator->errors()->add('request_layout_id', 'Нет доступа к выбранному макету.');
                 return;
             }
 
@@ -86,8 +81,7 @@ class StoreLayoutApplicationRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'request_layout_id' => 'макет',
-            'recipient_user_id' => 'получатель',
+            'layout_structure_id' => 'макет',
             'signer_1_user_id' => '',
             'signer_2_user_id' => '',
             'signer_3_user_id' => '',
@@ -112,7 +106,7 @@ class StoreLayoutApplicationRequest extends FormRequest
     public function layout(): RequestLayout
     {
         /** @var RequestLayout $l */
-        $l = RequestLayout::query()->findOrFail((int) $this->validated('request_layout_id'));
+        $l = RequestLayout::query()->findOrFail((int) $this->validated('layout_structure_id'));
 
         return $l;
     }

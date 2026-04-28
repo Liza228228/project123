@@ -6,9 +6,9 @@ use App\Models\Application;
 use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
-use App\Models\CompanyDeliveryVehicle;
 use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
+use App\Models\MaterialStockMovementType;
 use App\Models\MeasurementUnit;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
@@ -78,7 +78,14 @@ class ApplicationController extends Controller
             $applicationsQuery->where(function ($outer) {
                 $outer->whereDoesntHave('user', function ($q) {
                     $q->where('role_id', 4);
-                })->orWhereNotNull('applications.boiler_chief_stage_completed_at');
+                })->orWhere(function ($q) {
+                    $q->whereHas('items')
+                        ->whereDoesntHave('items', function ($itemQuery) {
+                            $itemQuery
+                                ->where('is_checked', false)
+                                ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
+                        });
+                });
             });
         }
 
@@ -286,6 +293,62 @@ class ApplicationController extends Controller
     }
 
     /**
+     * Способы доставки без привязки к конкретному госномеру (категории в справочнике транспорта).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
+     */
+    private function transportMethodOptionsForForms(): Collection
+    {
+        $q = TransportOption::query()->orderBy('name');
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            $q->whereNull('plate');
+        }
+
+        return $q->get();
+    }
+
+    /**
+     * Записи транспорта с номером — подсказки для поля «Номер машины».
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
+     */
+    private function transportOptionsWithPlateForDatalist(): Collection
+    {
+        if (! Schema::hasColumn('transport_options', 'plate')) {
+            return new Collection;
+        }
+
+        return TransportOption::query()
+            ->whereNotNull('plate')
+            ->orderBy('plate')
+            ->get(['id', 'plate', 'label']);
+    }
+
+    /**
+     * @return list<object|string>
+     */
+    private function transportOptionIdRuleForCreateUpdateForms(): array
+    {
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            return ['nullable', Rule::exists('transport_options', 'id')->whereNull('plate')];
+        }
+
+        return ['nullable', 'exists:transport_options,id'];
+    }
+
+    /**
+     * @return list<object|string>
+     */
+    private function transportOptionIdRuleForDeliveryInTransit(): array
+    {
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            return ['required', Rule::exists('transport_options', 'id')->whereNull('plate')];
+        }
+
+        return ['required', 'exists:transport_options,id'];
+    }
+
+    /**
      * Приход на основной склад по позиции со своим названием (общая логика для одной позиции).
      *
      * @throws ValidationException
@@ -301,9 +364,10 @@ class ApplicationController extends Controller
         }
 
         $docRef = $this->customReceiptDocumentRef($application->id, (int) $item->id);
+        $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
         $existingReceipt = MaterialStockMovement::query()
-            ->where('document_ref', $docRef)
-            ->where('type', 'receipt')
+            ->where('material_stock_movement_type_id', $receiptTypeId)
+            ->whereCorrelationKey($docRef)
             ->first();
 
         if ($existingReceipt) {
@@ -313,14 +377,14 @@ class ApplicationController extends Controller
             MaterialStockMovement::query()->create([
                 'equipment_id' => $equipment->id,
                 'warehouse_id' => (int) $mainWarehouse->id,
-                'type' => 'receipt',
+                'material_stock_movement_type_id' => $receiptTypeId,
                 'quantity' => (float) $item->quantity,
                 'unit_price' => null,
-                'happened_at' => now(),
-                'document_ref' => $docRef,
                 'counterparty' => null,
-                'comment' => 'Приход по заявке №'.$application->id.' (позиция со своим названием).',
-                'created_by_user_id' => $request->user()->id,
+                'comment' => MaterialStockMovement::packCommentWithCorrelation(
+                    $docRef,
+                    'Приход по заявке №'.$application->id.' (позиция со своим названием).'
+                ),
             ]);
         }
 
@@ -328,14 +392,10 @@ class ApplicationController extends Controller
             'equipment_id' => $equipment->id,
             'equipment_name' => null,
             'custom_equipment_supply_status_id' => null,
-            'base_name' => $equipment->base_name,
-            'size_value' => $equipment->size_value,
+            'base_name' => trim((string) ($item->base_name ?? '')) !== '' ? $item->base_name : $equipment->name,
+            'size_value' => $equipment->value,
             'delivery_status_id' => null,
             'delivery_warehouse_id' => null,
-            'delivery_marked_by_user_id' => null,
-            'delivery_marked_at' => null,
-            'custom_target_warehouse_id' => null,
-            'custom_foreman_in_transit' => false,
         ]);
     }
 
@@ -351,9 +411,7 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
         $prefill = null;
-        $transportOptions = TransportOption::query()
-            ->orderBy('name')
-            ->get();
+        $transportOptions = $this->transportMethodOptionsForForms();
 
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
@@ -539,10 +597,10 @@ class ApplicationController extends Controller
             }
             $application->installationActPhotos()->delete();
 
-            $this->deleteStoredPublicDiskFileIfExists($application->installation_act_path);
+            $this->deleteStoredPublicDiskFileIfExists($application->act_of_installation);
             $newActName = $this->safeUploadedOriginalName($actFile, 'act-installation');
             $newActPath = $actFile->storeAs($installationActsDir, $newActName, $storageDisk);
-            $application->update(['installation_act_path' => $newActPath]);
+            $application->update(['act_of_installation' => $newActPath]);
 
             foreach ($photoFiles as $photoFile) {
                 $application->installationActPhotos()->create([
@@ -611,9 +669,7 @@ class ApplicationController extends Controller
                 'quantity_unit' => $item->quantity_unit ?? 'шт',
             ])->all(),
         ];
-        $transportOptions = TransportOption::query()
-            ->orderBy('name')
-            ->get();
+        $transportOptions = $this->transportMethodOptionsForForms();
 
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
@@ -626,7 +682,7 @@ class ApplicationController extends Controller
     {
         $this->authorizeCanCreateApplications($request);
 
-        $isSiteForeman = $request->user()->hasRoleId(4);
+        $isSiteForemanLike = $request->user()->hasAnyRoleId([4, self::BOILER_CHIEF_ROLE_ID]);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
 
         $validated = $request->validate([
@@ -644,7 +700,7 @@ class ApplicationController extends Controller
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
             'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'transport_option_id' => ['nullable', 'exists:transport_options,id'],
+            'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
             'commercial_offer' => ['nullable', 'file', 'mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png', 'max:10240'],
         ], [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
@@ -670,7 +726,7 @@ class ApplicationController extends Controller
         );
 
         $this->validateMeasurementPairs($validated['items']);
-        if ($isSiteForeman) {
+        if ($isSiteForemanLike) {
             $this->validateCatalogStockAvailabilityForRequestItems($validated['items']);
         }
 
@@ -694,7 +750,7 @@ class ApplicationController extends Controller
         }
 
         $validated['user_id'] = $request->user()->id;
-        if ($isSiteForeman) {
+        if ($isSiteForemanLike) {
             $validated['responsible_user_id'] = $request->user()->id;
         } elseif (empty($validated['responsible_user_id'])) {
             $validated['responsible_user_id'] = $request->user()->id;
@@ -718,8 +774,8 @@ class ApplicationController extends Controller
             'transport_option_id' => null,
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
-            'commercial_offer_path' => $commercialOfferPath,
-            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING),
+            'commercial_offer' => $commercialOfferPath,
+            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
         ]);
 
         foreach ($validated['items'] as $item) {
@@ -743,8 +799,6 @@ class ApplicationController extends Controller
                 'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
                 'delivery_status_id' => null,
                 'delivery_warehouse_id' => null,
-                'delivery_marked_by_user_id' => null,
-                'delivery_marked_at' => null,
             ]);
         }
 
@@ -783,8 +837,6 @@ class ApplicationController extends Controller
             'items.equipment.measurementUnit.unitType',
             'items.manualDetail',
             'items.deliveryWarehouse',
-            'items.deliveryMarkedBy',
-            'items.customTargetWarehouse',
             'sourceApplication',
             'transportOption',
             'applicationStatus',
@@ -825,12 +877,8 @@ class ApplicationController extends Controller
         }
 
         $deliveredWarehouseIssueCandidates = $this->deliveredWarehouseIssueCandidates($application);
-        $transportOptions = TransportOption::query()
-            ->orderBy('name')
-            ->get(['id', 'name']);
-        $companyDeliveryVehicles = Schema::hasTable('company_delivery_vehicles')
-            ? CompanyDeliveryVehicle::query()->orderBy('plate')->get(['id', 'plate', 'label'])
-            : collect();
+        $transportOptions = $this->transportMethodOptionsForForms();
+        $companyDeliveryVehicles = $this->transportOptionsWithPlateForDatalist();
 
         return view('applications.show', compact(
             'application',
@@ -920,17 +968,18 @@ class ApplicationController extends Controller
                     ]);
                 }
 
+                $issueRef = $this->issueDocumentRef($application->id, (int) $item->id);
                 MaterialStockMovement::query()->create([
                     'equipment_id' => (int) $item->equipment_id,
                     'warehouse_id' => (int) $mainWarehouse->id,
-                    'type' => 'issue',
+                    'material_stock_movement_type_id' => MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE),
                     'quantity' => $row['quantity'],
                     'unit_price' => null,
-                    'happened_at' => now(),
-                    'document_ref' => $this->issueDocumentRef($application->id, (int) $item->id),
                     'counterparty' => 'Заявка №'.$application->id.' / '.$application->subdivision?->name,
-                    'comment' => trim((string) ($validated['comment'] ?? '')) ?: null,
-                    'created_by_user_id' => $request->user()->id,
+                    'comment' => MaterialStockMovement::packCommentWithCorrelation(
+                        $issueRef,
+                        trim((string) ($validated['comment'] ?? '')) ?: 'Списание по заявке.'
+                    ),
                 ]);
             }
         });
@@ -1107,9 +1156,7 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
 
-        $transportOptions = TransportOption::query()
-            ->orderBy('name')
-            ->get();
+        $transportOptions = $this->transportMethodOptionsForForms();
 
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
 
@@ -1161,7 +1208,7 @@ class ApplicationController extends Controller
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
             'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'transport_option_id' => ['nullable', 'exists:transport_options,id'],
+            'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
         ], [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
@@ -1276,11 +1323,7 @@ class ApplicationController extends Controller
             ]);
 
             if ((int) $validated['subdivision_id'] !== $previousSubdivisionId) {
-                $application->items()->update([
-                    'boiler_chief_checked' => false,
-                    'reason_boiler_chief_not_selected' => null,
-                ]);
-                $application->update(['boiler_chief_stage_completed_at' => null]);
+                // Boiler chief completion is derived from item-level approvals.
             }
 
             $application->items()
@@ -1314,12 +1357,8 @@ class ApplicationController extends Controller
                     'quantity_unit' => $normalized['quantity_unit'],
                     'raw_input' => $normalized['raw_input'],
                     'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
-                    'boiler_chief_checked' => false,
-                    'reason_boiler_chief_not_selected' => null,
                     'delivery_status_id' => null,
                     'delivery_warehouse_id' => null,
-                    'delivery_marked_by_user_id' => null,
-                    'delivery_marked_at' => null,
                 ]);
             }
 
@@ -1337,23 +1376,19 @@ class ApplicationController extends Controller
                     'is_checked' => false,
                     'reason_not_selected' => null,
                     'custom_equipment_supply_status_id' => $payload['equipment_id'] ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
-                    'boiler_chief_checked' => false,
-                    'reason_boiler_chief_not_selected' => null,
                     'delivery_status_id' => null,
                     'delivery_warehouse_id' => null,
-                    'delivery_marked_by_user_id' => null,
-                    'delivery_marked_at' => null,
                 ]);
             }
 
             $application->refresh();
             $application->load('items');
             $approvalPayload = Application::aggregateApprovalPayloadFromItems($application->items);
-            $approvedStatusId = ApplicationStatus::idFor(ApplicationStatus::CODE_APPROVED);
+            $approvedStatusId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
 
             $application->update([
                 'application_status_id' => $approvalPayload['application_status_id'],
-                'approval_rejection_reason' => $approvalPayload['approval_rejection_reason'],
+                'reason_for_refusal' => $approvalPayload['reason_for_refusal'],
                 'approved_by_user_id' => $approvalPayload['application_status_id'] === $approvedStatusId
                     ? $existingApprovedByUserId
                     : null,
@@ -1433,8 +1468,6 @@ class ApplicationController extends Controller
                 if (! $isChecked) {
                     $payload['delivery_status_id'] = null;
                     $payload['delivery_warehouse_id'] = null;
-                    $payload['delivery_marked_by_user_id'] = null;
-                    $payload['delivery_marked_at'] = null;
                 }
                 if ($item->equipment_id === null) {
                     $payload['custom_equipment_supply_status_id'] = $this->customSupplyStatusAfterApprovalToggle(
@@ -1452,7 +1485,7 @@ class ApplicationController extends Controller
             $payload = Application::aggregateApprovalPayloadFromItems($application->items);
             $application->update([
                 'application_status_id' => $payload['application_status_id'],
-                'approval_rejection_reason' => $payload['approval_rejection_reason'],
+                'reason_for_refusal' => $payload['reason_for_refusal'],
                 'approved_by_user_id' => $request->user()->id,
             ]);
         });
@@ -1484,7 +1517,7 @@ class ApplicationController extends Controller
                 ->with('status', 'Нет позиций для согласования.');
         }
 
-        if ($application->boiler_chief_stage_completed_at !== null) {
+        if (! $application->needsBoilerChiefReviewBeforeManagement()) {
             return redirect()->route('applications.show', $application)
                 ->withErrors(['boiler_chief' => 'Этап согласования начальником котельной уже завершён.']);
         }
@@ -1501,21 +1534,21 @@ class ApplicationController extends Controller
         foreach ($application->items as $item) {
             $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id] ?? null;
             if (! is_array($row)) {
-                $errors["boiler_items.{$item->id}.boiler_chief_checked"] = 'Отсутствуют данные по позиции.';
+                $errors["boiler_items.{$item->id}.is_checked"] = 'Отсутствуют данные по позиции.';
 
                 continue;
             }
-            $checkedRaw = $row['boiler_chief_checked'] ?? '0';
+            $checkedRaw = $row['is_checked'] ?? '0';
             $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
             if (! $isChecked) {
-                $reason = trim((string) ($row['reason_boiler_chief_not_selected'] ?? ''));
+                $reason = trim((string) ($row['reason_not_selected'] ?? ''));
                 if ($reason === '' && $bulkUncheckedReason !== '') {
                     $reason = $bulkUncheckedReason;
                 }
                 if ($reason === '') {
-                    $errors["boiler_items.{$item->id}.reason_boiler_chief_not_selected"] = 'Укажите причину не согласования.';
+                    $errors["boiler_items.{$item->id}.reason_not_selected"] = 'Укажите причину не согласования.';
                 } elseif (mb_strlen($reason) > 500) {
-                    $errors["boiler_items.{$item->id}.reason_boiler_chief_not_selected"] = 'Причина не может быть длиннее 500 символов.';
+                    $errors["boiler_items.{$item->id}.reason_not_selected"] = 'Причина не может быть длиннее 500 символов.';
                 }
             }
         }
@@ -1529,28 +1562,24 @@ class ApplicationController extends Controller
         DB::transaction(function () use ($application, $itemsInput, $bulkUncheckedReason) {
             foreach ($application->items as $item) {
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
-                $checkedRaw = $row['boiler_chief_checked'] ?? '0';
+                $checkedRaw = $row['is_checked'] ?? '0';
                 $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-                $reason = trim((string) ($row['reason_boiler_chief_not_selected'] ?? ''));
+                $reason = trim((string) ($row['reason_not_selected'] ?? ''));
                 if (! $isChecked && $reason === '' && $bulkUncheckedReason !== '') {
                     $reason = $bulkUncheckedReason;
                 }
                 $item->update([
-                    'boiler_chief_checked' => $isChecked,
-                    'reason_boiler_chief_not_selected' => $isChecked ? null : $reason,
+                    'is_checked' => $isChecked,
+                    'reason_not_selected' => $isChecked ? null : $reason,
                 ]);
             }
 
             $application->refresh();
             $application->load('items');
-            $allBoiler = $application->items->every(fn (ApplicationItem $i) => (bool) $i->boiler_chief_checked);
-            $application->update([
-                'boiler_chief_stage_completed_at' => $allBoiler ? now() : null,
-            ]);
         });
 
         $application->refresh();
-        $statusMessage = $application->boiler_chief_stage_completed_at !== null
+        $statusMessage = ! $application->needsBoilerChiefReviewBeforeManagement()
             ? 'Согласование начальника котельной завершено. Заявка доступна директору, техническому директору и начальнику отдела снабжения для дальнейшего согласования позиций.'
             : 'Согласование начальника котельной сохранено. Пока не все позиции согласованы — заявка не передаётся на следующий этап.';
 
@@ -1568,12 +1597,10 @@ class ApplicationController extends Controller
         $application->load('items');
 
         $validated = $request->validate([
-            'transport_option_id' => ['required', 'exists:transport_options,id'],
-            'delivery_vehicle_plate' => ['nullable', 'string', 'max:30', 'regex:/^[\p{L}\p{N}\s\-]*$/u'],
+            'transport_option_id' => $this->transportOptionIdRuleForDeliveryInTransit(),
         ], [
             'transport_option_id.required' => 'Перед отметкой «В пути» укажите способ доставки.',
             'transport_option_id.exists' => 'Выбранный способ доставки не найден.',
-            'delivery_vehicle_plate.regex' => 'Номер транспорта: только буквы, цифры, пробел и дефис.',
         ]);
 
         $eligibleItems = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkDeliveryInTransit());
@@ -1588,16 +1615,10 @@ class ApplicationController extends Controller
             ->update([
                 'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
                 'delivery_warehouse_id' => null,
-                'delivery_marked_by_user_id' => null,
-                'delivery_marked_at' => null,
             ]);
 
-        $plate = isset($validated['delivery_vehicle_plate'])
-            ? trim((string) $validated['delivery_vehicle_plate'])
-            : '';
         $application->update([
             'transport_option_id' => (int) $validated['transport_option_id'],
-            'delivery_vehicle_plate' => $plate !== '' ? $plate : null,
         ]);
 
         return redirect()->route('applications.show', $application)
@@ -1679,31 +1700,30 @@ class ApplicationController extends Controller
             }
 
             $docRef = $this->deliveryReceiptDocumentRef($application->id, (int) $item->id, $deliveryWarehouseId);
+            $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
             $alreadyReceived = MaterialStockMovement::query()
-                ->where('type', 'receipt')
-                ->where('document_ref', $docRef)
+                ->where('material_stock_movement_type_id', $receiptTypeId)
+                ->whereCorrelationKey($docRef)
                 ->exists();
 
             if (! $alreadyReceived) {
                 MaterialStockMovement::query()->create([
                     'equipment_id' => (int) $item->equipment_id,
                     'warehouse_id' => $deliveryWarehouseId,
-                    'type' => 'receipt',
+                    'material_stock_movement_type_id' => $receiptTypeId,
                     'quantity' => (float) $item->quantity,
                     'unit_price' => null,
-                    'happened_at' => now(),
-                    'document_ref' => $docRef,
                     'counterparty' => 'Доставка по заявке №'.$application->id,
-                    'comment' => 'Поступление на склад получателя по отметке «Доставлено».',
-                    'created_by_user_id' => $request->user()->id,
+                    'comment' => MaterialStockMovement::packCommentWithCorrelation(
+                        $docRef,
+                        'Поступление на склад получателя по отметке «Доставлено».'
+                    ),
                 ]);
             }
 
             $item->update([
                 'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
                 'delivery_warehouse_id' => $deliveryWarehouseId,
-                'delivery_marked_by_user_id' => $request->user()->id,
-                'delivery_marked_at' => now(),
             ]);
         });
 
@@ -1778,70 +1798,6 @@ class ApplicationController extends Controller
 
         return redirect()->route('applications.show', $application)
             ->with('status', 'Позиция отмечена как «В пути» (поставка от поставщика).');
-    }
-
-    public function saveCustomItemTargetWarehouse(Request $request, Application $application, ApplicationItem $item): RedirectResponse
-    {
-        if (! $request->user()->hasRoleId(4)) {
-            abort(403, 'Указать склад получения может только мастер участка.');
-        }
-
-        $this->authorizeViewApplication($request, $application);
-        $this->authorizeForemanCanModifyApplication($request, $application);
-
-        if ((int) $item->application_id !== (int) $application->id) {
-            abort(404);
-        }
-
-        if (! $item->canSaveCustomTargetWarehouseForForeman()) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['custom_target' => 'Нельзя изменить склад получения для этой позиции.']);
-        }
-
-        $validated = $request->validate([
-            'custom_target_warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
-        ], [
-            'custom_target_warehouse_id.required' => 'Выберите склад получения.',
-        ]);
-
-        $warehouse = Warehouse::query()->findOrFail((int) $validated['custom_target_warehouse_id']);
-        if ((int) ($warehouse->subdivision_id ?? 0) !== (int) $application->subdivision_id) {
-            throw ValidationException::withMessages([
-                'custom_target_warehouse_id' => 'Склад должен относиться к подразделению этой заявки.',
-            ]);
-        }
-
-        $item->update([
-            'custom_target_warehouse_id' => (int) $warehouse->id,
-        ]);
-
-        return redirect()->route('applications.show', $application)
-            ->with('status', 'Склад получения для позиции со своим названием сохранён.');
-    }
-
-    public function markCustomForemanInTransitToTarget(Request $request, Application $application, ApplicationItem $item): RedirectResponse
-    {
-        if (! $request->user()->hasRoleId(4)) {
-            abort(403, 'Эта отметка доступна только мастеру участка.');
-        }
-
-        $this->authorizeViewApplication($request, $application);
-
-        if ((int) $item->application_id !== (int) $application->id) {
-            abort(404);
-        }
-
-        if (! $item->canMarkCustomForemanInTransitToTarget()) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['custom_target' => 'Сначала выберите склад получения; отметить «в пути» можно после того, как снабжение отметило заказ (позиция «Заказано» или «В пути»).']);
-        }
-
-        $item->update([
-            'custom_foreman_in_transit' => true,
-        ]);
-
-        return redirect()->route('applications.show', $application)
-            ->with('status', 'Отмечено: оборудование в пути на выбранный склад подразделения.');
     }
 
     public function markCustomEquipmentOnWarehouse(Request $request, Application $application, ApplicationItem $item): RedirectResponse
@@ -1920,7 +1876,14 @@ class ApplicationController extends Controller
             $query->where(function ($outer) {
                 $outer->whereDoesntHave('user', function ($q) {
                     $q->where('role_id', 4);
-                })->orWhereNotNull('applications.boiler_chief_stage_completed_at');
+                })->orWhere(function ($q) {
+                    $q->whereHas('items')
+                        ->whereDoesntHave('items', function ($itemQuery) {
+                            $itemQuery
+                                ->where('is_checked', false)
+                                ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
+                        });
+                });
             });
         }
 
@@ -2009,8 +1972,8 @@ class ApplicationController extends Controller
             ->with('subdivision')
             ->where(function ($outer) {
                 $outer->where(function ($q) {
-                    $q->whereNotNull('installation_act_path')
-                        ->where('installation_act_path', '!=', '');
+                    $q->whereNotNull('act_of_installation')
+                        ->where('act_of_installation', '!=', '');
                 })->orWhereHas('installationActPhotos');
             })
             ->orderByDesc('id')
@@ -2044,7 +2007,7 @@ class ApplicationController extends Controller
         }
 
         if ($user->hasAnyRoleId([1, 2, 6, 3])) {
-            if ($this->isForemanCreatedApplication($application) && $application->boiler_chief_stage_completed_at === null) {
+            if ($this->isForemanCreatedApplication($application) && $application->needsBoilerChiefReviewBeforeManagement()) {
                 abort(403, 'Заявка пока недоступна: сначала её согласует начальник котельной по подразделению.');
             }
 
@@ -2056,60 +2019,20 @@ class ApplicationController extends Controller
 
     private function applyBoilerChiefAutoGate(Application $application): void
     {
-        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
-            return;
-        }
-
-        if ($this->isForemanCreatedApplication($application)) {
-            return;
-        }
-
-        if (! Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)) {
-            $application->update([
-                'boiler_chief_stage_completed_at' => now(),
-            ]);
-            $application->items()->update([
-                'boiler_chief_checked' => true,
-                'reason_boiler_chief_not_selected' => null,
-            ]);
-        }
+        // Completion of boiler chief stage is derived from item-level approvals.
     }
 
     private function refreshBoilerChiefGateAfterItemChanges(Application $application): void
     {
-        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
-            return;
-        }
-
-        if ($this->isForemanCreatedApplication($application)) {
-            return;
-        }
-
-        if (! Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)) {
-            $application->update([
-                'boiler_chief_stage_completed_at' => now(),
-            ]);
-            $application->items()->update([
-                'boiler_chief_checked' => true,
-                'reason_boiler_chief_not_selected' => null,
-            ]);
-
-            return;
-        }
-
-        $application->load('items');
-        $allBoiler = $application->items->every(fn (ApplicationItem $i) => (bool) $i->boiler_chief_checked);
-        if (! $allBoiler) {
-            $application->update(['boiler_chief_stage_completed_at' => null]);
-        }
+        // Completion of boiler chief stage is derived from item-level flags.
     }
 
     private function authorizeCanCreateApplications(Request $request): void
     {
-        $allowed = $request->user() && $request->user()->hasAnyRoleId([1, 6, 2, 4]);
+        $allowed = $request->user() && $request->user()->hasAnyRoleId([1, 6, 2, 4, self::BOILER_CHIEF_ROLE_ID]);
 
         if (! $allowed) {
-            abort(403, 'Создание заявок разрешено только директору, техническому директору, начальнику отдела снабжения и мастеру участка.');
+            abort(403, 'Создание заявок разрешено только директору, техническому директору, начальнику отдела снабжения, мастеру участка и начальнику котельной.');
         }
     }
 
@@ -2136,8 +2059,8 @@ class ApplicationController extends Controller
 
     private function authorizeCanRepeatApplications(Request $request): void
     {
-        if (! $request->user() || ! $request->user()->hasRoleId(4)) {
-            abort(403, 'Создание повторной заявки разрешено только мастеру участка.');
+        if (! $request->user() || ! $request->user()->hasAnyRoleId([4, self::BOILER_CHIEF_ROLE_ID])) {
+            abort(403, 'Создание повторной заявки разрешено только мастеру участка и начальнику котельной.');
         }
     }
 
@@ -2225,18 +2148,21 @@ class ApplicationController extends Controller
         if ($user->hasRoleId(4)) {
             return $user->assignedSubdivisions()->orderBy('name')->get();
         }
+        if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
+            return $user->boilerChiefSubdivisions()->orderBy('name')->get();
+        }
 
         return Subdivision::query()->orderBy('name')->get();
     }
 
     private function resolveCommercialOfferPath(Application $application): ?string
     {
-        return $this->resolveStoredPublicDiskAbsolutePath(trim((string) ($application->commercial_offer_path ?? '')));
+        return $this->resolveStoredPublicDiskAbsolutePath(trim((string) ($application->commercial_offer ?? '')));
     }
 
     private function resolveInstallationActPath(Application $application): ?string
     {
-        return $this->resolveStoredPublicDiskAbsolutePath(trim((string) ($application->installation_act_path ?? '')));
+        return $this->resolveStoredPublicDiskAbsolutePath(trim((string) ($application->act_of_installation ?? '')));
     }
 
     private function resolveStoredPublicDiskAbsolutePath(string $relativePath): ?string
@@ -2398,17 +2324,8 @@ class ApplicationController extends Controller
 
     private function resolveMainWarehouseForAccounting(): ?Warehouse
     {
-        $primary = Warehouse::query()
-            ->where('is_primary', true)
-            ->orderBy('id')
-            ->first();
-
-        if ($primary) {
-            return $primary;
-        }
-
         return Warehouse::query()
-            ->whereRaw('LOWER(name) like ?', ['%администрац%'])
+            ->where('is_primary', true)
             ->orderBy('id')
             ->first();
     }
@@ -2445,7 +2362,7 @@ class ApplicationController extends Controller
         if ($application->items->isEmpty()) {
             return false;
         }
-        if (! filled(trim((string) ($application->installation_act_path ?? '')))) {
+        if (! filled(trim((string) ($application->act_of_installation ?? '')))) {
             return false;
         }
         if ($application->installationActPhotos->isEmpty()) {
@@ -2468,7 +2385,7 @@ class ApplicationController extends Controller
         }
 
         $completedId = ApplicationStatus::query()
-            ->where('code', ApplicationStatus::CODE_COMPLETED)
+            ->where('name', ApplicationStatus::NAME_COMPLETED)
             ->value('id');
 
         $payload = ['archived_at' => now()];
@@ -2488,8 +2405,8 @@ class ApplicationController extends Controller
 
         $candidates = Application::query()
             ->whereNull('archived_at')
-            ->whereNotNull('installation_act_path')
-            ->where('installation_act_path', '!=', '')
+            ->whereNotNull('act_of_installation')
+            ->where('act_of_installation', '!=', '')
             ->with(['items', 'installationActPhotos'])
             ->orderByDesc('id')
             ->limit(200)
@@ -2576,14 +2493,14 @@ class ApplicationController extends Controller
             $docRef = $this->installationIssueDocumentRef((int) $application->id, (int) $item->id);
 
             return ! MaterialStockMovement::query()
-                ->where('type', 'issue')
-                ->where('document_ref', $docRef)
+                ->where('material_stock_movement_type_id', MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE))
+                ->whereCorrelationKey($docRef)
                 ->exists();
         })->values();
     }
 
     /**
-     * Для доставленных на склад получателя позиций: одно списание на полную согласованную величину по строке (идемпотентно по document_ref).
+     * Для доставленных на склад получателя позиций: одно списание на полную согласованную величину по строке (идемпотентно по ключу в comment).
      *
      * @return array{issued_lines: int, warnings: list<string>}
      */
@@ -2616,8 +2533,8 @@ class ApplicationController extends Controller
 
             $docRef = $this->installationIssueDocumentRef((int) $application->id, (int) $item->id);
             $alreadyIssued = MaterialStockMovement::query()
-                ->where('type', 'issue')
-                ->where('document_ref', $docRef)
+                ->where('material_stock_movement_type_id', MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE))
+                ->whereCorrelationKey($docRef)
                 ->exists();
             if ($alreadyIssued) {
                 continue;
@@ -2631,22 +2548,23 @@ class ApplicationController extends Controller
             // Для старых заявок/данных: если по доставленной позиции не записан приход на склад получателя,
             // дописываем его идемпотентно, чтобы автосписание и автоархивация могли отработать.
             $deliveryReceiptRef = $this->deliveryReceiptDocumentRef((int) $application->id, (int) $item->id, $warehouseId);
+            $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
             $hasDeliveryReceipt = MaterialStockMovement::query()
-                ->where('type', 'receipt')
-                ->where('document_ref', $deliveryReceiptRef)
+                ->where('material_stock_movement_type_id', $receiptTypeId)
+                ->whereCorrelationKey($deliveryReceiptRef)
                 ->exists();
             if (! $hasDeliveryReceipt) {
                 MaterialStockMovement::query()->create([
                     'equipment_id' => (int) $item->equipment_id,
                     'warehouse_id' => $warehouseId,
-                    'type' => 'receipt',
+                    'material_stock_movement_type_id' => $receiptTypeId,
                     'quantity' => $quantity,
                     'unit_price' => null,
-                    'happened_at' => now(),
-                    'document_ref' => $deliveryReceiptRef,
                     'counterparty' => 'Восстановление прихода по доставке заявки №'.$application->id,
-                    'comment' => 'Автовосстановление прихода перед списанием доставленного оборудования.',
-                    'created_by_user_id' => $user->id,
+                    'comment' => MaterialStockMovement::packCommentWithCorrelation(
+                        $deliveryReceiptRef,
+                        'Автовосстановление прихода перед списанием доставленного оборудования.'
+                    ),
                 ]);
             }
 
@@ -2660,14 +2578,11 @@ class ApplicationController extends Controller
             MaterialStockMovement::query()->create([
                 'equipment_id' => (int) $item->equipment_id,
                 'warehouse_id' => $warehouseId,
-                'type' => 'issue',
+                'material_stock_movement_type_id' => MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE),
                 'quantity' => $quantity,
                 'unit_price' => null,
-                'happened_at' => now(),
-                'document_ref' => $docRef,
                 'counterparty' => 'Заявка №'.$application->id.' / '.$application->subdivision?->name,
-                'comment' => $movementComment,
-                'created_by_user_id' => $user->id,
+                'comment' => MaterialStockMovement::packCommentWithCorrelation($docRef, $movementComment),
             ]);
             $issuedLines++;
         }
@@ -2717,7 +2632,7 @@ class ApplicationController extends Controller
             $baseName = trim((string) ($item->equipment_name ?? ''));
         }
         $sizeValue = trim((string) ($item->size_value ?? ''));
-        $name = trim($baseName.($sizeValue !== '' ? ' '.$sizeValue : ''));
+        $name = $baseName;
 
         if ($name === '' || $name === '—') {
             throw ValidationException::withMessages([
@@ -2726,7 +2641,6 @@ class ApplicationController extends Controller
         }
 
         $name = mb_substr($name, 0, 150);
-        $baseName = mb_substr($baseName !== '' ? $baseName : $name, 0, 120);
         $sizeForDb = $sizeValue !== '' ? mb_substr($sizeValue, 0, 120) : null;
 
         $measurementUnitId = $this->resolveMeasurementUnitIdForApplicationItem($item);
@@ -2735,8 +2649,7 @@ class ApplicationController extends Controller
 
         return Equipment::query()->create([
             'name' => $reservedName,
-            'base_name' => $baseName,
-            'size_value' => $sizeForDb,
+            'value' => $sizeForDb,
             'measurement_unit_id' => $measurementUnitId,
             'is_catalog' => false,
         ]);
@@ -2761,8 +2674,8 @@ class ApplicationController extends Controller
     private function issuedQuantityForApplicationItem(int $applicationId, int $itemId): float
     {
         $sum = MaterialStockMovement::query()
-            ->where('type', 'issue')
-            ->where('document_ref', $this->issueDocumentRef($applicationId, $itemId))
+            ->where('material_stock_movement_type_id', MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE))
+            ->whereCorrelationKey($this->issueDocumentRef($applicationId, $itemId))
             ->sum('quantity');
 
         return (float) $sum;
@@ -2770,10 +2683,11 @@ class ApplicationController extends Controller
 
     private function warehouseEquipmentBalance(int $equipmentId, int $warehouseId): float
     {
+        $issueId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
         $sum = MaterialStockMovement::query()
             ->where('equipment_id', $equipmentId)
             ->where('warehouse_id', $warehouseId)
-            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'issue' THEN -quantity ELSE quantity END), 0) as balance")
+            ->selectRaw('COALESCE(SUM(CASE WHEN material_stock_movement_type_id = ? THEN -quantity ELSE quantity END), 0) as balance', [$issueId])
             ->value('balance');
 
         return (float) $sum;

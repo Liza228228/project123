@@ -49,8 +49,8 @@
 
                     <div class="px-5 sm:px-8 py-6 space-y-6 border-b border-orange-100/90 dark:border-orange-900/40">
                         <div>
-                            <label for="request_layout_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет</label>
-                            <select id="request_layout_id" name="request_layout_id" required
+                            <label for="layout_structure_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет</label>
+                            <select id="layout_structure_id" name="layout_structure_id" required
                                     x-model.number="layoutId" @change="loadFields()"
                                     class="app-select">
                                 <option value="">— Выберите макет —</option>
@@ -60,15 +60,6 @@
                             </select>
                         </div>
 
-                        <div>
-                            <label for="recipient_user_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Получатель (для шапки), опционально</label>
-                            <select id="recipient_user_id" name="recipient_user_id" class="app-select">
-                                <option value="">— Не выбрано —</option>
-                                <template x-for="u in users" :key="u.id">
-                                    <option :value="u.id" x-text="u.label"></option>
-                                </template>
-                            </select>
-                        </div>
                         <div class="space-y-2 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
                             <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
                             <div>

@@ -36,44 +36,48 @@ return new class extends Migration
             if (! Schema::hasColumn('application_items', 'custom_equipment_supply_status_id')) {
                 $table->foreignId('custom_equipment_supply_status_id')
                     ->nullable()
-                    ->after('custom_equipment_supply_status')
+                    ->after('reason_not_selected')
                     ->constrained('custom_equipment_supply_statuses')
                     ->nullOnDelete();
             }
             if (! Schema::hasColumn('application_items', 'delivery_status_id')) {
                 $table->foreignId('delivery_status_id')
                     ->nullable()
-                    ->after('delivery_status')
+                    ->after('reason_not_selected')
                     ->constrained('delivery_statuses')
                     ->nullOnDelete();
             }
         });
 
-        $customStatusIdByCode = [
-            'pending_approval' => 1,
-            'accepted' => 2,
-            'ordered' => 3,
-            'supply_in_transit' => 4,
-            'on_warehouse' => 5,
-            'awaiting_arrival' => 2,
-            'on_main_warehouse' => 5,
-        ];
+        if (Schema::hasColumn('application_items', 'custom_equipment_supply_status')) {
+            $customStatusIdByCode = [
+                'pending_approval' => 1,
+                'accepted' => 2,
+                'ordered' => 3,
+                'supply_in_transit' => 4,
+                'on_warehouse' => 5,
+                'awaiting_arrival' => 2,
+                'on_main_warehouse' => 5,
+            ];
 
-        foreach ($customStatusIdByCode as $legacyCode => $newId) {
-            DB::table('application_items')
-                ->where('custom_equipment_supply_status', $legacyCode)
-                ->update(['custom_equipment_supply_status_id' => $newId]);
+            foreach ($customStatusIdByCode as $legacyCode => $newId) {
+                DB::table('application_items')
+                    ->where('custom_equipment_supply_status', $legacyCode)
+                    ->update(['custom_equipment_supply_status_id' => $newId]);
+            }
         }
 
-        $deliveryStatusIdByCode = [
-            'in_transit' => 1,
-            'delivered' => 2,
-        ];
+        if (Schema::hasColumn('application_items', 'delivery_status')) {
+            $deliveryStatusIdByCode = [
+                'in_transit' => 1,
+                'delivered' => 2,
+            ];
 
-        foreach ($deliveryStatusIdByCode as $legacyCode => $newId) {
-            DB::table('application_items')
-                ->where('delivery_status', $legacyCode)
-                ->update(['delivery_status_id' => $newId]);
+            foreach ($deliveryStatusIdByCode as $legacyCode => $newId) {
+                DB::table('application_items')
+                    ->where('delivery_status', $legacyCode)
+                    ->update(['delivery_status_id' => $newId]);
+            }
         }
 
         Schema::table('application_items', function (Blueprint $table) {
@@ -93,7 +97,7 @@ return new class extends Migration
                 $table->string('custom_equipment_supply_status', 40)->nullable()->after('reason_not_selected');
             }
             if (! Schema::hasColumn('application_items', 'delivery_status')) {
-                $table->string('delivery_status', 30)->nullable()->after('reason_boiler_chief_not_selected');
+                $table->string('delivery_status', 30)->nullable()->after('reason_not_selected');
             }
         });
 

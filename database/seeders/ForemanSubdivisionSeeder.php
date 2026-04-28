@@ -17,8 +17,6 @@ class ForemanSubdivisionSeeder extends Seeder
             ],
         ];
 
-        $assignerId = User::query()->where('role_id', 1)->value('id');
-
         foreach ($assignments as $foremanEmail => $subdivisionNames) {
             $foreman = User::query()
                 ->where('email', $foremanEmail)
@@ -33,13 +31,7 @@ class ForemanSubdivisionSeeder extends Seeder
                 ->whereIn('name', $subdivisionNames)
                 ->pluck('id');
 
-            $syncData = $subdivisionIds
-                ->mapWithKeys(fn (int $subdivisionId): array => [
-                    $subdivisionId => ['assigned_by_user_id' => $assignerId],
-                ])
-                ->all();
-
-            $foreman->assignedSubdivisions()->sync($syncData);
+            $foreman->assignedSubdivisions()->sync($subdivisionIds->all());
         }
     }
 }

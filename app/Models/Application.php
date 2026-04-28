@@ -16,17 +16,15 @@ class Application extends Model
     protected $fillable = [
         'subdivision_id',
         'responsible_user_id',
-        'commercial_offer_path',
-        'installation_act_path',
+        'commercial_offer',
+        'act_of_installation',
         'desired_delivery_date',
         'approved_by_user_id',
         'user_id',
         'source_application_id',
         'transport_option_id',
-        'delivery_vehicle_plate',
         'application_status_id',
-        'approval_rejection_reason',
-        'boiler_chief_stage_completed_at',
+        'reason_for_refusal',
         'archived_at',
     ];
 
@@ -34,7 +32,6 @@ class Application extends Model
     {
         return [
             'desired_delivery_date' => 'date',
-            'boiler_chief_stage_completed_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
     }
@@ -77,7 +74,7 @@ class Application extends Model
     /** Есть сохранённый файл акта и/или фото к акту. */
     public function hasInstallationActEvidence(): bool
     {
-        if (filled(trim((string) ($this->installation_act_path ?? '')))) {
+        if (filled(trim((string) ($this->act_of_installation ?? '')))) {
             return true;
         }
 
@@ -104,7 +101,7 @@ class Application extends Model
             return false;
         }
 
-        return $this->resolvedStatusCode() === ApplicationStatus::CODE_APPROVED;
+        return $this->resolvedStatusName() === ApplicationStatus::NAME_APPROVED;
     }
 
     public function isStatusRejected(): bool
@@ -113,29 +110,29 @@ class Application extends Model
             return false;
         }
 
-        return $this->resolvedStatusCode() === ApplicationStatus::CODE_REJECTED;
+        return $this->resolvedStatusName() === ApplicationStatus::NAME_REJECTED;
     }
 
     public function isStatusPending(): bool
     {
-        return $this->resolvedStatusCode() === ApplicationStatus::CODE_PENDING;
+        return $this->resolvedStatusName() === ApplicationStatus::NAME_PENDING;
     }
 
     public function isStatusPartial(): bool
     {
-        return $this->resolvedStatusCode() === ApplicationStatus::CODE_PARTIAL;
+        return $this->resolvedStatusName() === ApplicationStatus::NAME_PARTIAL;
     }
 
-    private function resolvedStatusCode(): string
+    private function resolvedStatusName(): string
     {
         $this->loadMissing('items', 'applicationStatus');
 
         if ($this->items->isEmpty()) {
-            return ApplicationStatus::CODE_PENDING;
+            return ApplicationStatus::NAME_PENDING;
         }
 
         if ($this->needsBoilerChiefReviewBeforeManagement()) {
-            return ApplicationStatus::CODE_PENDING;
+            return ApplicationStatus::NAME_PENDING;
         }
 
         $checkedCount = $this->items->where('is_checked', true)->count();
@@ -146,26 +143,26 @@ class Application extends Model
         $resolvedCount = $checkedCount + $rejectedWithReasonCount;
 
         if ($resolvedCount === $totalCount) {
-            return ApplicationStatus::CODE_APPROVED;
+            return ApplicationStatus::NAME_APPROVED;
         }
 
         if ($checkedCount === 0) {
             if (
                 Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
-                && $this->boiler_chief_stage_completed_at !== null
+                && ! $this->needsBoilerChiefReviewBeforeManagement()
             ) {
                 $hasMgmtReason = $this->items->contains(
                     fn (ApplicationItem $i) => trim((string) ($i->reason_not_selected ?? '')) !== ''
                 );
                 if (! $hasMgmtReason) {
-                    return ApplicationStatus::CODE_PENDING;
+                    return ApplicationStatus::NAME_PENDING;
                 }
             }
 
-            return ApplicationStatus::CODE_REJECTED;
+            return ApplicationStatus::NAME_REJECTED;
         }
 
-        return ApplicationStatus::CODE_PARTIAL;
+        return ApplicationStatus::NAME_PARTIAL;
     }
 
     /**
@@ -173,15 +170,17 @@ class Application extends Model
      */
     public function needsBoilerChiefReviewBeforeManagement(): bool
     {
-        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
-            return false;
-        }
-
         if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
             return false;
         }
+        $this->loadMissing('items');
+        if ($this->items->isEmpty()) {
+            return true;
+        }
 
-        return $this->boiler_chief_stage_completed_at === null;
+        return $this->items->contains(
+            fn (ApplicationItem $i) => ! (bool) $i->is_checked && trim((string) ($i->reason_not_selected ?? '')) === ''
+        );
     }
 
     /**
@@ -189,15 +188,10 @@ class Application extends Model
      */
     public function awaitsManagementEquipmentApproval(): bool
     {
-        if (! Schema::hasColumn('applications', 'boiler_chief_stage_completed_at')) {
-            return false;
-        }
-
         if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
             return false;
         }
-
-        if ($this->boiler_chief_stage_completed_at === null) {
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
             return false;
         }
 
@@ -234,27 +228,18 @@ class Application extends Model
         return $r !== '' ? $r : null;
     }
 
-    public function itemLineBoilerChiefRejectionReason(int $itemId): ?string
-    {
-        $this->loadMissing('items');
-        $r = $this->items->firstWhere('id', $itemId)?->reason_boiler_chief_not_selected;
-        $r = $r !== null ? trim((string) $r) : '';
-
-        return $r !== '' ? $r : null;
-    }
-
     /**
      * Статус заявки и поле причин после сохранения согласования по позициям.
      *
      * @param  Collection<int, ApplicationItem>  $items
-     * @return array{application_status_id: int, approval_rejection_reason: string|null}
+     * @return array{application_status_id: int, reason_for_refusal: string|null}
      */
     public static function aggregateApprovalPayloadFromItems(Collection $items): array
     {
         if ($items->isEmpty()) {
             return [
-                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING),
-                'approval_rejection_reason' => null,
+                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
+                'reason_for_refusal' => null,
             ];
         }
 
@@ -264,10 +249,9 @@ class Application extends Model
             fn (ApplicationItem $i) => ! (bool) $i->is_checked && trim((string) ($i->reason_not_selected ?? '')) !== ''
         )->count();
         $resolvedCount = $checked + $rejectedWithReasonCount;
-        $approvedId = ApplicationStatus::idFor(ApplicationStatus::CODE_APPROVED);
-        $rejectedId = ApplicationStatus::idFor(ApplicationStatus::CODE_REJECTED);
-        $partialId = ApplicationStatus::query()->where('code', ApplicationStatus::CODE_PARTIAL)->value('id');
-        $partialId = $partialId !== null ? (int) $partialId : $rejectedId;
+        $approvedId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
+        $rejectedId = ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED);
+        $partialId = ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL);
 
         if ($resolvedCount === $total) {
             $lines = $items
@@ -279,7 +263,7 @@ class Application extends Model
 
             return [
                 'application_status_id' => $approvedId,
-                'approval_rejection_reason' => $lines->take(5)->implode('; ') ?: null,
+                'reason_for_refusal' => $lines->take(5)->implode('; ') ?: null,
             ];
         }
 
@@ -293,13 +277,13 @@ class Application extends Model
 
             return [
                 'application_status_id' => $rejectedId,
-                'approval_rejection_reason' => $summary !== '' ? $summary : null,
+                'reason_for_refusal' => $summary !== '' ? $summary : null,
             ];
         }
 
         return [
             'application_status_id' => $partialId,
-            'approval_rejection_reason' => null,
+            'reason_for_refusal' => null,
         ];
     }
 
@@ -353,7 +337,7 @@ class Application extends Model
             });
         }
 
-        $pendingId = ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING);
+        $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
 
         match ($equipmentFilter) {
             'has_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', true)),
@@ -462,13 +446,12 @@ class Application extends Model
 
         $base = 'APP:'.$this->id.':ITEM:'.(int) $item->id;
 
+        $issueTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
+
         return (float) MaterialStockMovement::query()
-            ->where('type', 'issue')
+            ->where('material_stock_movement_type_id', $issueTypeId)
             ->where('equipment_id', (int) $item->equipment_id)
-            ->where(function ($q) use ($base) {
-                $q->where('document_ref', $base)
-                    ->orWhere('document_ref', 'like', $base.':%');
-            })
+            ->whereCorrelationKey($base)
             ->sum('quantity');
     }
 
@@ -553,7 +536,7 @@ class Application extends Model
 
         $this->loadMissing('items');
 
-        if (! filled(trim((string) ($this->installation_act_path ?? '')))) {
+        if (! filled(trim((string) ($this->act_of_installation ?? '')))) {
             return false;
         }
 
@@ -586,7 +569,7 @@ class Application extends Model
         }
 
         $completedId = ApplicationStatus::query()
-            ->where('code', ApplicationStatus::CODE_COMPLETED)
+            ->where('name', ApplicationStatus::NAME_COMPLETED)
             ->value('id');
 
         $payload = ['archived_at' => Carbon::now()];
@@ -610,7 +593,7 @@ class Application extends Model
 
         $this->loadMissing('applicationStatus');
 
-        return $this->applicationStatus?->code === ApplicationStatus::CODE_COMPLETED;
+        return $this->applicationStatus?->name === ApplicationStatus::NAME_COMPLETED;
     }
 
     public static function archiveFilterFromRequest(Request $request): string

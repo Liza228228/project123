@@ -2,22 +2,22 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MaterialStockMovement extends Model
 {
+    public const CORR_PREFIX = '__CORR__:';
+
     protected $fillable = [
         'equipment_id',
         'warehouse_id',
-        'type',
+        'material_stock_movement_type_id',
         'quantity',
         'unit_price',
-        'happened_at',
-        'document_ref',
         'counterparty',
         'comment',
-        'created_by_user_id',
     ];
 
     protected function casts(): array
@@ -25,8 +25,29 @@ class MaterialStockMovement extends Model
         return [
             'quantity' => 'decimal:3',
             'unit_price' => 'decimal:2',
-            'happened_at' => 'datetime',
         ];
+    }
+
+    public static function packCommentWithCorrelation(string $correlationKey, string $body = ''): string
+    {
+        $key = trim($correlationKey);
+        $prefix = self::CORR_PREFIX.$key;
+        $body = trim($body);
+
+        return $body === '' ? $prefix : $prefix."\n".$body;
+    }
+
+    /**
+     * Совпадение с ключом идемпотентности в comment (точное, с текстом после перевода строки или с суффиксом через «:», например …:INSTALL).
+     */
+    public function scopeWhereCorrelationKey(Builder $query, string $correlationKey): void
+    {
+        $p = self::CORR_PREFIX.trim($correlationKey);
+        $query->where(function (Builder $w) use ($p) {
+            $w->where('comment', $p)
+                ->orWhere('comment', 'like', $p."\n%")
+                ->orWhere('comment', 'like', $p.':%');
+        });
     }
 
     public function equipment(): BelongsTo
@@ -39,16 +60,19 @@ class MaterialStockMovement extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
-    public function createdBy(): BelongsTo
+    public function movementType(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by_user_id');
+        return $this->belongsTo(MaterialStockMovementType::class, 'material_stock_movement_type_id');
     }
 
     public function signedQuantity(): float
     {
         $quantity = (float) $this->quantity;
+        $name = $this->relationLoaded('movementType')
+            ? $this->movementType?->name
+            : MaterialStockMovementType::query()->whereKey($this->material_stock_movement_type_id)->value('name');
 
-        if ($this->type === 'issue') {
+        if ($name === MaterialStockMovementType::NAME_ISSUE) {
             return -$quantity;
         }
 

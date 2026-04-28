@@ -13,6 +13,11 @@ return new class extends Migration
             $table->foreignId('application_id')->constrained('applications')->cascadeOnDelete();
             $table->foreignId('equipment_id')->nullable()->constrained('equipment')->nullOnDelete();
             $table->unsignedInteger('quantity')->default(1);
+            $table->boolean('is_checked')->default(false);
+            $table->text('reason_not_selected')->nullable();
+            $table->unsignedBigInteger('custom_equipment_supply_status_id')->nullable();
+            $table->unsignedBigInteger('delivery_status_id')->nullable();
+            $table->foreignId('delivery_warehouse_id')->nullable()->constrained('warehouses')->nullOnDelete();
             $table->timestamps();
         });
     }

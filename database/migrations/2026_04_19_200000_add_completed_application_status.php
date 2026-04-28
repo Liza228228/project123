@@ -12,13 +12,12 @@ return new class extends Migration
             return;
         }
 
-        if (DB::table('application_statuses')->where('code', 'completed')->exists()) {
+        if (DB::table('application_statuses')->where('name', 'Выполнена')->exists()) {
             return;
         }
 
         $now = now();
         DB::table('application_statuses')->insert([
-            'code' => 'completed',
             'name' => 'Выполнена',
             'created_at' => $now,
             'updated_at' => $now,
@@ -31,13 +30,13 @@ return new class extends Migration
             return;
         }
 
-        $completedId = DB::table('application_statuses')->where('code', 'completed')->value('id');
+        $completedId = DB::table('application_statuses')->where('name', 'Выполнена')->value('id');
         if ($completedId === null) {
             return;
         }
 
         if (Schema::hasTable('applications')) {
-            $approvedId = DB::table('application_statuses')->where('code', 'approved')->value('id');
+            $approvedId = DB::table('application_statuses')->where('name', 'Согласована')->value('id');
             if ($approvedId !== null) {
                 DB::table('applications')
                     ->where('application_status_id', $completedId)
@@ -45,6 +44,6 @@ return new class extends Migration
             }
         }
 
-        DB::table('application_statuses')->where('code', 'completed')->delete();
+        DB::table('application_statuses')->where('name', 'Выполнена')->delete();
     }
 };

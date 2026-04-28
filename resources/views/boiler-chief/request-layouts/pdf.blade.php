@@ -17,11 +17,6 @@
         br {
             line-height: 1.2em;
         }
-        .registry {
-            font-size: 10px;
-            color: #444;
-            margin: 0 0 16px 0;
-        }
         .header-block {
             margin: 0 0 14px 0;
             white-space: normal;
@@ -87,9 +82,6 @@
     </style>
 </head>
 <body>
-    @isset($registryNumber)
-        <p class="registry"><strong>Реестровый №:</strong> {{ $registryNumber }}</p>
-    @endisset
     @if(! empty($showHeader))
         @if(! empty($headerUsesStructuredLayout))
             <div class="header-block">{!! $headerHtml !!}</div>

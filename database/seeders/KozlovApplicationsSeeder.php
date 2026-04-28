@@ -11,6 +11,7 @@ use App\Models\TransportOption;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 
 class KozlovApplicationsSeeder extends Seeder
 {
@@ -21,8 +22,12 @@ class KozlovApplicationsSeeder extends Seeder
             return;
         }
 
-        $pendingId = ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING);
-        $transportId = (int) (TransportOption::query()->orderBy('id')->value('id') ?? 0);
+        $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+        $transportQuery = TransportOption::query()->orderBy('id');
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            $transportQuery->whereNull('plate');
+        }
+        $transportId = (int) ($transportQuery->value('id') ?? 0);
         $subdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
         $equipment = Equipment::query()->where('is_catalog', true)->orderBy('id')->limit(6)->get();
 

@@ -11,6 +11,7 @@ use App\Models\TransportOption;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 
 class ApplicationSeeder extends Seeder
 {
@@ -28,7 +29,11 @@ class ApplicationSeeder extends Seeder
         }
 
         $subdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
-        $transportId = TransportOption::query()->orderBy('name')->value('id');
+        $transportQuery = TransportOption::query()->orderBy('name');
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            $transportQuery->whereNull('plate');
+        }
+        $transportId = $transportQuery->value('id');
         $types = Equipment::query()->orderBy('id')->limit(8)->get();
 
         if ($types->count() < 3) {
@@ -37,10 +42,9 @@ class ApplicationSeeder extends Seeder
 
         $pickSub = static fn (int $i) => $subdivisionIds[$i % count($subdivisionIds)];
 
-        $pendingId = ApplicationStatus::idFor(ApplicationStatus::CODE_PENDING);
-        $approvedId = ApplicationStatus::idFor(ApplicationStatus::CODE_APPROVED);
-        $partialId = ApplicationStatus::query()->where('code', ApplicationStatus::CODE_PARTIAL)->value('id');
-        $partialId = $partialId !== null ? (int) $partialId : ApplicationStatus::idFor(ApplicationStatus::CODE_REJECTED);
+        $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+        $approvedId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
+        $partialId = ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL);
 
         $base = [
             'user_id' => $foreman->id,
@@ -84,7 +88,7 @@ class ApplicationSeeder extends Seeder
             'desired_delivery_date' => Carbon::now()->addDays(20),
             'approved_by_user_id' => $director?->id,
             'application_status_id' => $partialId,
-            'approval_rejection_reason' => null,
+            'reason_for_refusal' => null,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app3->id,
@@ -108,7 +112,7 @@ class ApplicationSeeder extends Seeder
             'desired_delivery_date' => Carbon::now()->addDays(30),
             'approved_by_user_id' => $director?->id,
             'application_status_id' => $approvedId,
-            'approval_rejection_reason' => null,
+            'reason_for_refusal' => null,
         ]);
         ApplicationItem::query()->create([
             'application_id' => $app4->id,

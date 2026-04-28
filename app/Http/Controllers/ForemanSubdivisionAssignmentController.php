@@ -8,6 +8,8 @@ use App\Models\Warehouse;
 use App\Services\DadataAddressService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -76,6 +78,10 @@ class ForemanSubdivisionAssignmentController extends Controller
     {
         $this->authorizeForManage($request);
 
+        $request->merge([
+            'subdivision_name' => trim((string) $request->input('subdivision_name', '')),
+        ]);
+
         $validated = $request->validate([
             'subdivision_name' => ['required', 'string', 'max:255', 'unique:subdivisions,name'],
         ], [
@@ -85,8 +91,18 @@ class ForemanSubdivisionAssignmentController extends Controller
             'subdivision_name.unique' => 'Подразделение с таким названием уже существует.',
         ]);
 
+        $normalizedName = mb_strtolower(trim((string) $validated['subdivision_name']));
+        $alreadyExists = Subdivision::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
+            ->exists();
+        if ($alreadyExists) {
+            throw ValidationException::withMessages([
+                'subdivision_name' => 'Подразделение с таким названием уже существует.',
+            ]);
+        }
+
         Subdivision::query()->create([
-            'name' => trim($validated['subdivision_name']),
+            'name' => $validated['subdivision_name'],
         ]);
 
         return redirect()
@@ -155,16 +171,27 @@ class ForemanSubdivisionAssignmentController extends Controller
             // If DaData is unavailable, we still save raw address.
         }
 
-        Warehouse::query()->create([
-            'subdivision_id' => (int) $validated['subdivision_id'],
-            'name' => trim($validated['warehouse_name']),
-            'code' => trim($validated['code']),
-            'address' => $normalizedAddress,
-            ...$addressParts,
-            'is_primary' => (bool) ($validated['is_primary'] ?? false),
-            'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
-            'warehouse_type_id' => null,
-        ]);
+        $warehouseName = trim((string) $validated['warehouse_name']);
+        $isAdministrationWarehouse = preg_match('/администрац/iu', $warehouseName) === 1;
+        $isPrimary = (bool) ($validated['is_primary'] ?? false) || $isAdministrationWarehouse;
+
+        DB::transaction(function () use ($validated, $warehouseName, $normalizedAddress, $addressParts, $isPrimary): void {
+            if ($isPrimary) {
+                // In the system there must be only one priority warehouse.
+                Warehouse::query()->where('is_primary', true)->update(['is_primary' => false]);
+            }
+
+            Warehouse::query()->create([
+                'subdivision_id' => (int) $validated['subdivision_id'],
+                'name' => $warehouseName,
+                'code' => trim((string) $validated['code']),
+                'address' => $normalizedAddress,
+                ...$addressParts,
+                'is_primary' => $isPrimary,
+                'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
+                'warehouse_type_id' => null,
+            ]);
+        });
 
         return redirect()
             ->route('foreman-subdivisions.index')
@@ -203,13 +230,7 @@ class ForemanSubdivisionAssignmentController extends Controller
             ->unique()
             ->values();
 
-        $syncData = $selectedIds
-            ->mapWithKeys(fn (int $id): array => [
-                $id => ['assigned_by_user_id' => $request->user()->id],
-            ])
-            ->all();
-
-        $foreman->assignedSubdivisions()->sync($syncData);
+        $foreman->assignedSubdivisions()->sync($selectedIds->all());
 
         return redirect()
             ->route('foreman-subdivisions.assignments')

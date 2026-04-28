@@ -20,14 +20,14 @@
             <form method="POST" action="{{ route('materials.store-material') }}" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3" id="equipment-catalog-form">
                 @csrf
                 <div class="md:col-span-2">
-                    <x-input-label for="base_name" value="Базовое название" />
-                    <x-text-input id="base_name" name="base_name" type="text" class="mt-1 block w-full" required />
-                    <x-input-error :messages="$errors->get('base_name')" class="mt-1" />
+                    <x-input-label for="name" value="Название оборудования" />
+                    <x-text-input id="name" name="name" type="text" class="mt-1 block w-full" required />
+                    <x-input-error :messages="$errors->get('name')" class="mt-1" />
                 </div>
                 <div>
-                    <x-input-label for="size_value" value="Размер / маркировка" />
-                    <x-text-input id="size_value" name="size_value" type="text" class="mt-1 block w-full" />
-                    <x-input-error :messages="$errors->get('size_value')" class="mt-1" />
+                    <x-input-label for="value" value="Размер / маркировка" />
+                    <x-text-input id="value" name="value" type="text" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('value')" class="mt-1" />
                 </div>
                 <div>
                     <x-input-label for="measurement_type" value="Тип измерения" />
@@ -60,7 +60,7 @@
             @endif
             <form method="POST" action="{{ route('materials.store-movement') }}" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                 @csrf
-                <input type="hidden" name="type" value="receipt" />
+                <input type="hidden" name="material_stock_movement_type_id" value="{{ (int) ($receiptTypeId ?? 0) }}" />
                 @if($mainWarehouse)
                     <input type="hidden" name="warehouse_id" value="{{ $mainWarehouse->id }}" />
                 @endif
@@ -69,7 +69,7 @@
                     <select id="equipment_id" name="equipment_id" class="app-select mt-1" required>
                         <option value="">Выберите оборудование</option>
                         @foreach($materials as $material)
-                            <option value="{{ $material->id }}">{{ $material->name }} ({{ $material->measurementUnit?->code ?? 'шт' }})</option>
+                            <option value="{{ $material->id }}">{{ $material->display_name }} ({{ $material->measurementUnit?->code ?? 'шт' }})</option>
                         @endforeach
                     </select>
                     <x-input-error :messages="$errors->get('equipment_id')" class="mt-1" />
@@ -100,12 +100,6 @@
                     <x-input-label for="unit_price" value="Цена за единицу (опц.)" />
                     <x-text-input id="unit_price" name="unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" />
                     <x-input-error :messages="$errors->get('unit_price')" class="mt-1" />
-                </div>
-
-                <div>
-                    <x-input-label for="happened_at" value="Дата/время операции" />
-                    <x-text-input id="happened_at" name="happened_at" type="datetime-local" class="mt-1 block w-full" value="{{ now()->format('Y-m-d\TH:i') }}" required />
-                    <x-input-error :messages="$errors->get('happened_at')" class="mt-1" />
                 </div>
 
                 <div class="md:col-span-3">
@@ -183,37 +177,27 @@
                             <th class="text-left py-2 pr-3">Склад</th>
                             <th class="text-left py-2 pr-3">Тип</th>
                             <th class="text-right py-2 pr-3">Количество</th>
-                            <th class="text-left py-2 pr-3">Документ</th>
-                            <th class="text-left py-2 pr-3 max-w-[14rem]">Комментарий</th>
-                            <th class="text-left py-2">Исполнитель</th>
+                            <th class="text-left py-2 max-w-[18rem]">Комментарий</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($movements as $movement)
                             @php
-                                $signed = $movement->type === 'issue' ? -(float) $movement->quantity : (float) $movement->quantity;
+                                $signed = $movement->signedQuantity();
                             @endphp
                             <tr class="border-b border-stone-100 dark:border-stone-700/60">
-                                <td class="py-2 pr-3">{{ $movement->happened_at?->format('d.m.Y H:i') }}</td>
+                                <td class="py-2 pr-3">{{ $movement->created_at?->format('d.m.Y H:i') }}</td>
                                 <td class="py-2 pr-3">{{ $movement->equipment?->name ?? '—' }} @if($movement->equipment) ({{ $movement->equipment->measurementUnit?->code ?? 'шт' }}) @endif</td>
                                 <td class="py-2 pr-3">{{ $movement->warehouse?->name }}</td>
-                                <td class="py-2 pr-3">
-                                    @if($movement->type === 'receipt') Приход
-                                    @elseif($movement->type === 'issue') Списание
-                                    @else Корректировка @endif
-                                </td>
+                                <td class="py-2 pr-3">{{ $movement->movementType?->name ?? '—' }}</td>
                                 <td class="py-2 pr-3 text-right {{ $signed < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400' }}">
                                     {{ number_format($signed, 3, '.', ' ') }}
                                 </td>
-                                <td class="py-2 pr-3 font-mono text-xs">{{ $movement->document_ref ?: '—' }}</td>
-                                <td class="py-2 pr-3 max-w-[14rem] text-xs text-black/80 dark:text-white/80 break-words">{{ $movement->comment ? \Illuminate\Support\Str::limit($movement->comment, 120) : '—' }}</td>
-                                <td class="py-2">
-                                    {{ trim(($movement->createdBy?->surname ?? '').' '.($movement->createdBy?->name ?? '')) ?: '—' }}
-                                </td>
+                                <td class="py-2 max-w-[18rem] text-xs text-black/80 dark:text-white/80 break-words">{{ $movement->comment ? \Illuminate\Support\Str::limit($movement->comment, 160) : '—' }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
+                                <td colspan="6" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
                             </tr>
                         @endforelse
                     </tbody>

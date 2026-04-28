@@ -25,14 +25,12 @@ class Subdivision extends Model
     public function siteForemen(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'foreman_subdivision_user', 'subdivision_id', 'foreman_user_id')
-            ->withPivot('assigned_by_user_id')
             ->withTimestamps();
     }
 
     public function boilerChiefUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'boiler_chief_subdivision_user', 'subdivision_id', 'boiler_chief_user_id')
-            ->withPivot('assigned_by_user_id')
             ->withTimestamps();
     }
 

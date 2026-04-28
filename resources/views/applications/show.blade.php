@@ -39,7 +39,7 @@
                         Акт установки
                     </a>
                 @endif
-                @if (Auth::user()->hasRoleId(4))
+                @if (Auth::user()->hasAnyRoleId([4, 7]))
                     <a href="{{ route('applications.repeat', $application) }}"
                        class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto"
                        onclick="return window.confirm('Вы уверены, что хотите создать повторную заявку?');">
@@ -59,7 +59,7 @@
             @if($application->archived_at)
                 <div class="mb-4 rounded-xl border border-emerald-200/90 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100 space-y-2">
                     <p>Заявка находится в архиве выполненных (актуальные документы и списания по складу зафиксированы). Дата архивации: {{ $application->archived_at->format('d.m.Y H:i') }}.</p>
-                    @if(Auth::user()->hasRoleId(4))
+                    @if(Auth::user()->hasAnyRoleId([4, 7]))
                         <p class="text-emerald-900/95 dark:text-emerald-100/95">Новую заявку с теми же позициями можно оформить кнопкой «Создать повторную» выше.</p>
                     @endif
                 </div>
@@ -70,11 +70,6 @@
                 </div>
             @enderror
             @error('custom_supply')
-                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                    {{ $message }}
-                </div>
-            @enderror
-            @error('custom_target')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
                 </div>
@@ -90,11 +85,6 @@
                 </div>
             @enderror
             @error('transport_option_id')
-                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                    {{ $message }}
-                </div>
-            @enderror
-            @error('delivery_vehicle_plate')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
                 </div>
@@ -162,9 +152,6 @@
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
                                     @if($application->transportOption)
                                         {{ $application->transportOption->name }}
-                                        @if(filled($application->delivery_vehicle_plate))
-                                            <span class="block text-xs font-normal opacity-80 mt-0.5">Автомобиль: {{ $application->delivery_vehicle_plate }}</span>
-                                        @endif
                                     @else
                                         —
                                     @endif
@@ -193,9 +180,9 @@
                             <div class="sm:col-span-2">
                                 <dt class="app-form-label !normal-case">Коммерческое предложение</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
-                                    @if($application->commercial_offer_path)
+                                    @if($application->commercial_offer)
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <span>{{ basename($application->commercial_offer_path) }}</span>
+                                            <span>{{ basename($application->commercial_offer) }}</span>
                                         </div>
                                         <div class="mt-2 flex flex-wrap items-center gap-2">
                                             <a
@@ -221,9 +208,9 @@
                             <div class="sm:col-span-2">
                                 <dt class="app-form-label !normal-case">Акт установки</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
-                                    @if($application->installation_act_path)
+                                    @if($application->act_of_installation)
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <span>{{ basename($application->installation_act_path) }}</span>
+                                            <span>{{ basename($application->act_of_installation) }}</span>
                                         </div>
                                         <div class="mt-2 flex flex-wrap items-center gap-2">
                                             <a
@@ -284,7 +271,7 @@
                         $canBoilerChiefApprove = Auth::user()->hasRoleId(7) && $application->needsBoilerChiefReviewBeforeManagement();
                         $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id));
                         $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id));
-                        $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->boiler_chief_checked);
+                        $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked);
                         $canManageDeliveryTransit = Auth::user()->hasAnyRoleId([1, 6, 2]);
                         $inTransitCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryInTransit());
                         $chiefCanMarkDelivered = Auth::user()->hasAnyRoleId([7, 4]);
@@ -339,14 +326,14 @@
                                 <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
                                     @foreach($application->items->sortBy('id') as $item)
                                         @php
-                                            $oldBc = old("boiler_items.{$item->id}.boiler_chief_checked", $item->boiler_chief_checked ? '1' : '0');
+                                            $oldBc = old("boiler_items.{$item->id}.is_checked", $application->itemLineIsApproved($item->id) ? '1' : '0');
                                             $isBcCheckedOld = (string) $oldBc === '1';
                                         @endphp
                                         <li class="bc-approval-row space-y-2 bg-white px-4 py-3 dark:bg-stone-900/40">
                                             <div class="flex items-start gap-3">
-                                                <input type="hidden" name="boiler_items[{{ $item->id }}][boiler_chief_checked]" value="0">
+                                                <input type="hidden" name="boiler_items[{{ $item->id }}][is_checked]" value="0">
                                                 <input type="checkbox"
-                                                    name="boiler_items[{{ $item->id }}][boiler_chief_checked]"
+                                                    name="boiler_items[{{ $item->id }}][is_checked]"
                                                     value="1"
                                                     class="bc-approval-item-checkbox mt-0.5 h-5 w-5 shrink-0 rounded border-stone-200 text-black shadow-sm focus:ring-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:checked:bg-stone-700"
                                                     @checked($isBcCheckedOld)
@@ -361,13 +348,13 @@
                                                 <label class="block text-xs text-black dark:text-white mb-0.5" for="bc-reason-{{ $item->id }}">Причина не согласования</label>
                                                 <input type="text"
                                                     id="bc-reason-{{ $item->id }}"
-                                                    name="boiler_items[{{ $item->id }}][reason_boiler_chief_not_selected]"
-                                                    value="{{ $isBcCheckedOld ? '' : old("boiler_items.{$item->id}.reason_boiler_chief_not_selected", $application->itemLineBoilerChiefRejectionReason($item->id) ?? '') }}"
+                                                    name="boiler_items[{{ $item->id }}][reason_not_selected]"
+                                                    value="{{ $isBcCheckedOld ? '' : old("boiler_items.{$item->id}.reason_not_selected", $application->itemLineRejectionReason($item->id) ?? '') }}"
                                                     placeholder="Обязательно, если позиция не согласована"
                                                     maxlength="500"
-                                                    class="bc-approval-reason-input app-input text-sm @error('boiler_items.'.$item->id.'.reason_boiler_chief_not_selected') !border-red-500 dark:!border-red-400 @enderror"
+                                                    class="bc-approval-reason-input app-input text-sm @error('boiler_items.'.$item->id.'.reason_not_selected') !border-red-500 dark:!border-red-400 @enderror"
                                                 />
-                                                @error('boiler_items.'.$item->id.'.reason_boiler_chief_not_selected')
+                                                @error('boiler_items.'.$item->id.'.reason_not_selected')
                                                     <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                 @enderror
                                             </div>
@@ -594,27 +581,6 @@
                                                 @endforeach
                                             </select>
                                         </div>
-                                        <div class="w-full sm:w-auto sm:min-w-[14rem]">
-                                            <label for="delivery-vehicle-plate" class="app-form-label !normal-case">Номер машины (доставка)</label>
-                                            <input
-                                                type="text"
-                                                id="delivery-vehicle-plate"
-                                                name="delivery_vehicle_plate"
-                                                value="{{ old('delivery_vehicle_plate', $application->delivery_vehicle_plate) }}"
-                                                maxlength="30"
-                                                class="app-input text-sm w-full"
-                                                placeholder="Например: А123ВС77 или выберите из списка"
-                                                list="company-delivery-vehicle-plates"
-                                                autocomplete="off"
-                                            />
-                                            @if(($companyDeliveryVehicles ?? collect())->isNotEmpty())
-                                                <datalist id="company-delivery-vehicle-plates">
-                                                    @foreach($companyDeliveryVehicles as $vehicle)
-                                                        <option value="{{ $vehicle->plate }}">{{ $vehicle->label ?? 'Своя машина' }}</option>
-                                                    @endforeach
-                                                </datalist>
-                                            @endif
-                                        </div>
                                         <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
                                             Отметить всё как «В пути»
                                         </button>
@@ -642,8 +608,8 @@
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
-                                            @if($application->itemLineBoilerChiefRejectionReason($item->id))
-                                                <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium">Причина:</span> {{ $application->itemLineBoilerChiefRejectionReason($item->id) }}</p>
+                                            @if($application->itemLineRejectionReason($item->id))
+                                                <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                             @endif
                                         </li>
                                     @endforeach
@@ -683,7 +649,7 @@
                             @if($chiefCanMarkDelivered && $chiefDeliveryCandidates->isNotEmpty())
                                 <div class="mt-4 space-y-3 rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-emerald-800/50 dark:bg-emerald-950/25">
                                     <p class="text-xs text-black dark:text-white">
-                                        Для позиций <span class="font-medium">«В пути»</span> подразделение получения уже задано заявкой и мастером участка — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование. После «Доставлено» количество отображается на остатках склада; списание выполняется отдельно (при сохранении акта установки или через операцию списания со склада поступления).
+                                        Для позиций <span class="font-medium">«В пути»</span> подразделение получения задано заявкой — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование. После «Доставлено» количество отображается на остатках склада; списание выполняется отдельно (при сохранении акта установки или через операцию списания со склада поступления).
                                     </p>
                                     <ul class="space-y-2">
                                         @foreach($chiefDeliveryCandidates->sortBy('id') as $deliveryItem)
@@ -705,18 +671,13 @@
                                                             <p class="text-xs text-black dark:text-white">
                                                                 <span class="font-medium">Подразделение:</span> {{ $subForChief->name }}
                                                             </p>
-                                                            @if($deliveryItem->custom_target_warehouse_id && $deliveryItem->customTargetWarehouse)
-                                                                <p class="text-[11px] text-stone-600 dark:text-stone-400">
-                                                                    Мастер указал склад: {{ $deliveryItem->customTargetWarehouse->name }}
-                                                                </p>
-                                                            @endif
                                                             <label class="app-form-label !normal-case text-xs" for="delivery-wh-{{ $deliveryItem->id }}">Склад поступления</label>
                                                             <select name="delivery_warehouse_id" id="delivery-wh-{{ $deliveryItem->id }}" class="app-select text-sm w-full max-w-md" required>
                                                                 <option value="" disabled @selected(! old('delivery_warehouse_id'))>Выберите склад</option>
                                                                 @foreach($subForChief->warehouses->sortBy('name') as $warehouse)
                                                                     <option
                                                                         value="{{ $warehouse->id }}"
-                                                                        @selected((string) old('delivery_warehouse_id', (string) $deliveryItem->custom_target_warehouse_id) === (string) $warehouse->id)
+                                                                        @selected((string) old('delivery_warehouse_id', (string) $deliveryItem->delivery_warehouse_id) === (string) $warehouse->id)
                                                                     >
                                                                         {{ $warehouse->code }} — {{ $warehouse->name }}
                                                                     </option>
@@ -736,81 +697,6 @@
                                                     <p class="text-xs text-amber-800 dark:text-amber-100">
                                                         Подразделение заявки не совпадает с вашей зоной ответственности — отметку доставки оформить нельзя.
                                                     </p>
-                                                @endif
-                                            </li>
-                                        @endforeach
-                                    </ul>
-                                </div>
-                            @endif
-                        @endif
-
-                        @if(Auth::user()->hasRoleId(4))
-                            @php
-                                $foremanCustomItems = $application->items->filter(function ($i) {
-                                    if (! $i->usesFreeTextEquipment() || ! $i->is_checked || $i->equipment_id !== null) {
-                                        return false;
-                                    }
-
-                                    return $i->canSaveCustomTargetWarehouseForForeman()
-                                        || $i->canMarkCustomForemanInTransitToTarget()
-                                        || $i->custom_foreman_in_transit;
-                                });
-                            @endphp
-                            @if($foremanCustomItems->isNotEmpty())
-                                <div class="mt-4 space-y-3 rounded-xl border border-sky-200/80 bg-sky-50/50 p-4 dark:border-sky-800/50 dark:bg-sky-950/25">
-                                    <h4 class="app-section-title text-xs sm:text-sm">Своё оборудование: склад получения</h4>
-                                    <p class="text-xs text-black dark:text-white">
-                                        Укажите склад подразделения, на который заказана поставка. После того как снабжение отметит заказ, нажмите <span class="font-medium">«В пути на выбранный склад»</span>, чтобы зафиксировать движение к вашему складу.
-                                    </p>
-                                    @if($application->subdivision && $application->subdivision->warehouses->isEmpty())
-                                        <p class="text-xs text-amber-800 dark:text-amber-100">
-                                            У подразделения нет складов в справочнике — добавьте склад в настройках подразделений, чтобы выбрать получателя.
-                                        </p>
-                                    @endif
-                                    <ul class="space-y-3">
-                                        @foreach($foremanCustomItems->sortBy('id') as $fItem)
-                                            <li class="rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 px-3 py-2 space-y-2">
-                                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                    <span class="text-sm font-medium text-black dark:text-white">
-                                                        {{ $fItem->equipment_display_name }} × {{ $fItem->quantity_with_unit }}
-                                                    </span>
-                                                    @include('applications.partials.custom-equipment-supply-badge', ['item' => $fItem])
-                                                </div>
-                                                @if($fItem->custom_foreman_in_transit && $fItem->customForemanTransitSummary())
-                                                    <p class="text-xs font-medium text-sky-900 dark:text-sky-100">
-                                                        {{ $fItem->customForemanTransitSummary() }}
-                                                    </p>
-                                                @endif
-                                                @if($fItem->canSaveCustomTargetWarehouseForForeman())
-                                                    <form method="POST" action="{{ route('applications.custom-target-warehouse', [$application, $fItem]) }}" class="flex flex-col sm:flex-row gap-2 sm:items-end">
-                                                        @csrf
-                                                        <div class="min-w-0 flex-1">
-                                                            <label class="app-form-label !normal-case text-xs" for="custom-target-wh-{{ $fItem->id }}">Склад получения</label>
-                                                            <select name="custom_target_warehouse_id" id="custom-target-wh-{{ $fItem->id }}" class="app-select text-sm w-full" required>
-                                                                <option value="" disabled @selected(! $fItem->custom_target_warehouse_id)>Выберите склад</option>
-                                                                @foreach($application->subdivision->warehouses->sortBy('name') as $wh)
-                                                                    <option value="{{ $wh->id }}" @selected((int) $fItem->custom_target_warehouse_id === (int) $wh->id)>
-                                                                        {{ $wh->code }} — {{ $wh->name }}
-                                                                    </option>
-                                                                @endforeach
-                                                            </select>
-                                                        </div>
-                                                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap shrink-0">
-                                                            Сохранить склад
-                                                        </button>
-                                                    </form>
-                                                @elseif($fItem->customTargetWarehouse)
-                                                    <p class="text-xs text-black dark:text-white">
-                                                        Склад получения: <span class="font-medium">{{ $fItem->customTargetWarehouse->name }}</span>
-                                                    </p>
-                                                @endif
-                                                @if($fItem->canMarkCustomForemanInTransitToTarget())
-                                                    <form method="POST" action="{{ route('applications.custom-foreman-in-transit', [$application, $fItem]) }}" class="flex justify-end">
-                                                        @csrf
-                                                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
-                                                            В пути на выбранный склад
-                                                        </button>
-                                                    </form>
                                                 @endif
                                             </li>
                                         @endforeach

@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
-use App\Models\User;
+use App\Models\MaterialStockMovementType;
 use App\Models\Warehouse;
 use Illuminate\Database\Seeder;
 
@@ -17,52 +17,54 @@ class MainWarehouseStockSeeder extends Seeder
             return;
         }
 
-        $actorId = (int) User::query()->orderBy('id')->value('id');
-        if ($actorId <= 0) {
-            return;
-        }
-
         $equipment = Equipment::query()
             ->where('is_catalog', true)
             ->with('measurementUnit:id,code')
             ->orderBy('id')
             ->get(['id', 'measurement_unit_id']);
 
+        $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+
         foreach ($equipment as $item) {
             $quantity = $this->defaultQuantityForUnitCode((string) ($item->measurementUnit?->code ?? 'шт'));
-            $documentRef = 'INIT-STOCK:WH:'.$mainWarehouse->id.':EQ:'.$item->id;
+            $corrKey = 'INIT-STOCK:WH:'.$mainWarehouse->id.':EQ:'.$item->id;
+            $comment = MaterialStockMovement::packCommentWithCorrelation(
+                $corrKey,
+                'Первичное наполнение основного склада из сидера.'
+            );
 
-            MaterialStockMovement::query()->updateOrCreate(
-                [
-                    'warehouse_id' => (int) $mainWarehouse->id,
-                    'equipment_id' => (int) $item->id,
-                    'type' => 'receipt',
-                    'document_ref' => $documentRef,
-                ],
-                [
+            $existing = MaterialStockMovement::query()
+                ->where('warehouse_id', (int) $mainWarehouse->id)
+                ->where('equipment_id', (int) $item->id)
+                ->where('material_stock_movement_type_id', $receiptTypeId)
+                ->whereCorrelationKey($corrKey)
+                ->first();
+
+            if ($existing) {
+                $existing->update([
                     'quantity' => $quantity,
                     'unit_price' => null,
-                    'happened_at' => now(),
                     'counterparty' => 'Начальные остатки',
-                    'comment' => 'Первичное наполнение основного склада из сидера.',
-                    'created_by_user_id' => $actorId,
-                ]
-            );
+                    'comment' => $comment,
+                ]);
+            } else {
+                MaterialStockMovement::query()->create([
+                    'warehouse_id' => (int) $mainWarehouse->id,
+                    'equipment_id' => (int) $item->id,
+                    'material_stock_movement_type_id' => $receiptTypeId,
+                    'quantity' => $quantity,
+                    'unit_price' => null,
+                    'counterparty' => 'Начальные остатки',
+                    'comment' => $comment,
+                ]);
+            }
         }
     }
 
     private function resolveMainWarehouse(): ?Warehouse
     {
-        $primary = Warehouse::query()
-            ->where('is_primary', true)
-            ->orderBy('id')
-            ->first();
-        if ($primary) {
-            return $primary;
-        }
-
         return Warehouse::query()
-            ->whereRaw('LOWER(name) like ?', ['%администрац%'])
+            ->where('is_primary', true)
             ->orderBy('id')
             ->first();
     }

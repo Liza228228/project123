@@ -163,9 +163,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'document_header_layout_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('document_header_layouts', 'id')->where(function ($q): void {
-                    $q->where('user_assigner_id', (int) $this->user()?->id);
-                }),
+                Rule::exists('document_header_layouts', 'id'),
             ],
         ];
     }

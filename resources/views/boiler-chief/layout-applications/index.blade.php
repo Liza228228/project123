@@ -34,7 +34,7 @@
                                 <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/35">
                                     @foreach($submissions as $row)
                                         <tr class="bg-white hover:bg-orange-50/40 dark:bg-stone-950 dark:hover:bg-orange-950/25">
-                                            <td class="px-4 py-3 font-medium text-stone-900 dark:text-stone-100">{{ $row->registry_number ?? $row->id }}</td>
+                                            <td class="px-4 py-3 font-medium text-stone-900 dark:text-stone-100">{{ $row->id }}</td>
                                             <td class="px-4 py-3 text-stone-700 dark:text-stone-200">{{ $row->requestLayout?->title ?? '—' }}</td>
                                             <td class="px-4 py-3 text-stone-600 dark:text-stone-300">{{ $row->creator?->fullName() ?? '—' }}</td>
                                             <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -61,7 +61,7 @@
                         <div class="md:hidden space-y-3">
                             @foreach($submissions as $row)
                                 <article class="rounded-xl border border-orange-200/80 bg-white p-4 shadow-sm dark:border-orange-900/45 dark:bg-stone-950 space-y-2">
-                                    <p class="text-sm font-medium text-stone-900 dark:text-white">№ {{ $row->registry_number ?? $row->id }} · {{ $row->requestLayout?->title ?? '—' }}</p>
+                                    <p class="text-sm font-medium text-stone-900 dark:text-white">№ {{ $row->id }} · {{ $row->requestLayout?->title ?? '—' }}</p>
                                     <p class="text-xs text-stone-500 dark:text-stone-400">Автор: {{ $row->creator?->fullName() ?? '—' }}</p>
                                     <a href="{{ route('boiler-chief.layout-applications.pdf', $row) }}"
                                        class="ui-btn ui-btn--primary inline-flex w-full justify-center rounded-lg px-3 py-2 text-sm">PDF</a>

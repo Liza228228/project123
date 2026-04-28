@@ -77,13 +77,12 @@ class EquipmentSeeder extends Seeder
 
         foreach ($names as $name) {
             [$baseName, $sizeValue] = $this->splitEquipmentName($name);
-            $normalizedName = mb_substr(trim($name), 0, 150);
+            $normalizedName = mb_substr(trim($baseName), 0, 150);
 
             Equipment::query()->updateOrCreate(
                 ['name' => $normalizedName],
                 [
-                    'base_name' => mb_substr($baseName, 0, 120),
-                    'size_value' => $sizeValue !== null ? mb_substr($sizeValue, 0, 120) : null,
+                    'value' => $sizeValue !== null ? mb_substr($sizeValue, 0, 120) : null,
                     'measurement_unit_id' => $pieceUnitId > 0 ? $pieceUnitId : null,
                     'is_catalog' => true,
                 ]

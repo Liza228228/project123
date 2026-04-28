@@ -24,11 +24,13 @@
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div class="min-w-0">
                                         <p class="text-sm font-medium text-black dark:text-white truncate">{{ $layout->title }}</p>
-                                        <p class="text-xs text-stone-500 dark:text-stone-400">
-                                            Создатель:
-                                            {{ $layout->userAssigner?->surname ?? '—' }}
-                                            {{ $layout->userAssigner?->name ?? '' }}
-                                        </p>
+                                        @if($layout->approver)
+                                            <p class="text-xs text-stone-500 dark:text-stone-400">
+                                                Согласующий:
+                                                {{ $layout->approver->surname }}
+                                                {{ $layout->approver->name }}
+                                            </p>
+                                        @endif
                                     </div>
                                     <a href="{{ route('applications.installation-act.layout-fill.fill', $layout) }}"
                                        class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">

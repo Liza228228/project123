@@ -5,18 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ApplicationStatus extends Model
+class MaterialStockMovementType extends Model
 {
-    public const NAME_PENDING = 'На согласовании';
+    public const NAME_RECEIPT = 'Приход';
 
-    public const NAME_APPROVED = 'Согласована';
+    public const NAME_ISSUE = 'Списание';
 
-    public const NAME_REJECTED = 'Не согласована';
+    public const NAME_ADJUSTMENT = 'Корректировка';
 
-    public const NAME_PARTIAL = 'Частично согласована';
-
-    /** Заявка закрыта: акт, фото, списания — перенос в архив выполненных. */
-    public const NAME_COMPLETED = 'Выполнена';
+    public $timestamps = false;
 
     protected $fillable = [
         'name',
@@ -27,11 +24,6 @@ class ApplicationStatus extends Model
      */
     protected static ?array $idByNameCache = null;
 
-    public function applications(): HasMany
-    {
-        return $this->hasMany(Application::class, 'application_status_id');
-    }
-
     public static function idFor(string $name): int
     {
         if (self::$idByNameCache === null) {
@@ -39,7 +31,7 @@ class ApplicationStatus extends Model
         }
 
         if (! isset(self::$idByNameCache[$name])) {
-            throw new \RuntimeException('Неизвестный статус заявки: '.$name);
+            throw new \InvalidArgumentException('Неизвестный тип движения: '.$name);
         }
 
         return (int) self::$idByNameCache[$name];
@@ -48,5 +40,10 @@ class ApplicationStatus extends Model
     public static function forgetIdCache(): void
     {
         self::$idByNameCache = null;
+    }
+
+    public function movements(): HasMany
+    {
+        return $this->hasMany(MaterialStockMovement::class, 'material_stock_movement_type_id');
     }
 }

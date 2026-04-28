@@ -71,13 +71,7 @@ class BoilerChiefSubdivisionAssignmentController extends Controller
             ->unique()
             ->values();
 
-        $syncData = $selectedIds
-            ->mapWithKeys(fn (int $id): array => [
-                $id => ['assigned_by_user_id' => $request->user()->id],
-            ])
-            ->all();
-
-        $chief->boilerChiefSubdivisions()->sync($syncData);
+        $chief->boilerChiefSubdivisions()->sync($selectedIds->all());
 
         return redirect()
             ->route('boiler-chief-subdivisions.assignments')

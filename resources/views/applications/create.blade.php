@@ -45,7 +45,7 @@
 
                             @include('applications.partials.subdivision-warehouses-hint')
 
-                            @if (! Auth::user()->hasRoleId(4))
+                            @if (! Auth::user()->hasAnyRoleId([4, 7]))
                                 <div class="sm:col-span-2">
                                     <label for="responsible_user_id" class="app-form-label">Ответственный</label>
                                     <select id="responsible_user_id" name="responsible_user_id" class="app-select">

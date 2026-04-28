@@ -75,14 +75,8 @@ class ApplicationItem extends Model
         'is_checked',
         'reason_not_selected',
         'custom_equipment_supply_status_id',
-        'boiler_chief_checked',
-        'reason_boiler_chief_not_selected',
         'delivery_status_id',
         'delivery_warehouse_id',
-        'delivery_marked_by_user_id',
-        'delivery_marked_at',
-        'custom_target_warehouse_id',
-        'custom_foreman_in_transit',
     ];
 
     protected function casts(): array
@@ -90,9 +84,6 @@ class ApplicationItem extends Model
         return [
             'quantity' => 'integer',
             'is_checked' => 'boolean',
-            'boiler_chief_checked' => 'boolean',
-            'delivery_marked_at' => 'datetime',
-            'custom_foreman_in_transit' => 'boolean',
             'custom_equipment_supply_status_id' => 'integer',
             'delivery_status_id' => 'integer',
         ];
@@ -190,13 +181,34 @@ class ApplicationItem extends Model
 
         return match ($key) {
             'equipment_name' => null,
-            'base_name' => ($eq->base_name !== null && trim((string) $eq->base_name) !== '') ? $eq->base_name : '—',
-            'size_value' => $eq->size_value,
+            'base_name' => $this->catalogBaseNameLabel($eq),
+            'size_value' => $eq->value,
             'measurement_type' => $eq->measurementUnit?->unitType?->code ?? 'piece',
             'quantity_unit' => $this->catalogQuantityUnitLabel($eq),
             'raw_input' => null,
             default => null,
         };
+    }
+
+    private function catalogBaseNameLabel(Equipment $eq): string
+    {
+        $name = trim((string) $eq->name);
+        if ($name === '') {
+            return '—';
+        }
+
+        $size = trim((string) ($eq->value ?? ''));
+        if ($size !== '') {
+            $suffix = ' '.$size;
+            if (mb_substr($name, -mb_strlen($suffix)) === $suffix) {
+                $base = trim((string) mb_substr($name, 0, mb_strlen($name) - mb_strlen($suffix)));
+                if ($base !== '') {
+                    return $base;
+                }
+            }
+        }
+
+        return $name;
     }
 
     private function catalogQuantityUnitLabel(Equipment $eq): string
@@ -228,16 +240,6 @@ class ApplicationItem extends Model
     public function deliveryWarehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'delivery_warehouse_id');
-    }
-
-    public function deliveryMarkedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'delivery_marked_by_user_id');
-    }
-
-    public function customTargetWarehouse(): BelongsTo
-    {
-        return $this->belongsTo(Warehouse::class, 'custom_target_warehouse_id');
     }
 
     public function getEquipmentDisplayNameAttribute(): string
@@ -365,59 +367,10 @@ class ApplicationItem extends Model
     }
 
     /**
-     * Мастер участка: указать склад подразделения заявки, куда должна прийти поставка.
-     */
-    public function canSaveCustomTargetWarehouseForForeman(): bool
-    {
-        return $this->usesFreeTextEquipment()
-            && $this->is_checked
-            && $this->resolvedCustomSupplyStatus() !== self::CUSTOM_SUPPLY_PENDING_APPROVAL;
-    }
-
-    /**
-     * Мастер участка: отметить, что груз в пути на выбранный склад (после того как снабжение отметило заказ).
-     */
-    public function canMarkCustomForemanInTransitToTarget(): bool
-    {
-        if (! $this->usesFreeTextEquipment() || ! $this->is_checked || $this->custom_target_warehouse_id === null) {
-            return false;
-        }
-        if ($this->custom_foreman_in_transit) {
-            return false;
-        }
-
-        $s = $this->resolvedCustomSupplyStatus();
-
-        return $s === self::CUSTOM_SUPPLY_ORDERED || $s === self::CUSTOM_SUPPLY_IN_TRANSIT;
-    }
-
-    public function customForemanTransitSummary(): ?string
-    {
-        if (! $this->usesFreeTextEquipment() || ! $this->custom_foreman_in_transit) {
-            return null;
-        }
-
-        $wh = $this->customTargetWarehouse;
-        if ($wh) {
-            return 'В пути на склад: '.$wh->name;
-        }
-
-        return 'В пути на выбранный склад';
-    }
-
-    /**
-     * Подразделение, куда должна прийти поставка: из заявки или из склада, выбранного мастером.
+     * Подразделение-получатель для доставки каталожного оборудования (из заявки).
      */
     public function resolvedDeliveryTargetSubdivisionId(): ?int
     {
-        if ($this->custom_target_warehouse_id !== null) {
-            $this->loadMissing('customTargetWarehouse');
-            $wh = $this->customTargetWarehouse;
-            if ($wh && $wh->subdivision_id !== null) {
-                return (int) $wh->subdivision_id;
-            }
-        }
-
         return $this->application?->subdivision_id ? (int) $this->application->subdivision_id : null;
     }
 

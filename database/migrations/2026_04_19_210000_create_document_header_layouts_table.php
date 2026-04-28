@@ -12,7 +12,6 @@ return new class extends Migration
             $table->id();
             $table->string('title', 255);
             $table->json('schema');
-            $table->foreignId('user_assigner_id')->constrained('users')->cascadeOnDelete();
             $table->timestamps();
             $table->softDeletes();
         });

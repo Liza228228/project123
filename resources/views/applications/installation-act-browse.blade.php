@@ -1,6 +1,6 @@
 @php
-    $actBasename = $selectedApplication && filled(trim((string) ($selectedApplication->installation_act_path ?? '')))
-        ? basename($selectedApplication->installation_act_path)
+    $actBasename = $selectedApplication && filled(trim((string) ($selectedApplication->act_of_installation ?? '')))
+        ? basename($selectedApplication->act_of_installation)
         : null;
 @endphp
 <x-app-layout>

@@ -28,12 +28,13 @@ return new class extends Migration
         Schema::create('equipment', function (Blueprint $table) {
             $table->id();
             $table->string('name', 150);
-            $table->string('base_name', 120)->nullable();
-            $table->string('size_value', 120)->nullable();
+            $table->string('value', 120)->nullable();
             $table->foreignId('measurement_unit_id')->nullable()->constrained('measurement_units')->nullOnDelete();
+            $table->boolean('is_catalog')->default(true);
             $table->timestamps();
 
             $table->unique('name');
+            $table->index('is_catalog');
         });
     }
 

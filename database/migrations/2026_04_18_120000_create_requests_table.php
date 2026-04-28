@@ -10,12 +10,9 @@ return new class extends Migration
     {
         Schema::create('requests', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('registry_number')->nullable()->unique();
             $table->json('data');
             $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('checked_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('request_layout_id')->constrained('request_layout')->cascadeOnDelete();
-            $table->string('refusal', 255)->nullable();
+            $table->foreignId('layout_structure_id')->constrained('layout_structures')->cascadeOnDelete();
             $table->timestamps();
             $table->softDeletes();
         });

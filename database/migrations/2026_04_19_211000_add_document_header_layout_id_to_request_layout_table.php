@@ -8,8 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('request_layout', function (Blueprint $table) {
-            if (! Schema::hasColumn('request_layout', 'document_header_layout_id')) {
+        if (! Schema::hasTable('layout_structures')) {
+            return;
+        }
+
+        Schema::table('layout_structures', function (Blueprint $table) {
+            if (! Schema::hasColumn('layout_structures', 'document_header_layout_id')) {
                 $table->foreignId('document_header_layout_id')
                     ->nullable()
                     ->after('division_assigner_id')
@@ -21,8 +25,12 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('request_layout', function (Blueprint $table) {
-            if (Schema::hasColumn('request_layout', 'document_header_layout_id')) {
+        if (! Schema::hasTable('layout_structures')) {
+            return;
+        }
+
+        Schema::table('layout_structures', function (Blueprint $table) {
+            if (Schema::hasColumn('layout_structures', 'document_header_layout_id')) {
                 $table->dropForeign(['document_header_layout_id']);
                 $table->dropColumn('document_header_layout_id');
             }

@@ -65,16 +65,6 @@ class User extends Authenticatable
         return $this->hasMany(Application::class);
     }
 
-    public function requestLayouts(): HasMany
-    {
-        return $this->hasMany(RequestLayout::class, 'user_assigner_id');
-    }
-
-    public function documentHeaderLayouts(): HasMany
-    {
-        return $this->hasMany(DocumentHeaderLayout::class, 'user_assigner_id');
-    }
-
     public function layoutApplications(): HasMany
     {
         return $this->hasMany(RequestSubmission::class, 'created_by');
@@ -88,7 +78,6 @@ class User extends Authenticatable
     public function assignedSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'foreman_subdivision_user', 'foreman_user_id', 'subdivision_id')
-            ->withPivot('assigned_by_user_id')
             ->withTimestamps();
     }
 
@@ -96,7 +85,6 @@ class User extends Authenticatable
     public function boilerChiefSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'boiler_chief_subdivision_user', 'boiler_chief_user_id', 'subdivision_id')
-            ->withPivot('assigned_by_user_id')
             ->withTimestamps();
     }
 

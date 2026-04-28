@@ -5,7 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Если миграция drop удалила таблицу, а recreate не выполнялась — создаём заново.
+ * Раньше создавала requests без softDeletes при отсутствии таблицы.
+ * Схема — в 2026_04_18_120000_create_requests_table; здесь только аварийное создание.
  */
 return new class extends Migration
 {
@@ -17,17 +18,16 @@ return new class extends Migration
 
         Schema::create('requests', function (Blueprint $table) {
             $table->id();
-            $table->unsignedInteger('registry_number')->nullable()->unique();
             $table->json('data');
             $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('request_layout_id')->constrained('request_layout')->cascadeOnDelete();
-            $table->foreignId('recipient_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('layout_structure_id')->constrained('layout_structures')->cascadeOnDelete();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
     public function down(): void
     {
-        // Не удаляем: таблица могла существовать до этой миграции.
+        //
     }
 };

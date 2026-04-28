@@ -12,8 +12,7 @@ class Equipment extends Model
 
     protected $fillable = [
         'name',
-        'base_name',
-        'size_value',
+        'value',
         'measurement_unit_id',
         'is_catalog',
     ];
@@ -33,5 +32,13 @@ class Equipment extends Model
     public function measurementUnit(): BelongsTo
     {
         return $this->belongsTo(MeasurementUnit::class, 'measurement_unit_id');
+    }
+
+    public function getDisplayNameAttribute(): string
+    {
+        $name = trim((string) $this->name);
+        $value = trim((string) ($this->value ?? ''));
+
+        return $value !== '' ? trim($name.' '.$value) : $name;
     }
 }

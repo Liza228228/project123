@@ -18,9 +18,7 @@ class BoilerChiefLayoutApplicationController extends Controller
 {
     public function index(Request $request): View
     {
-        $userId = (int) $request->user()->id;
         $submissions = RequestSubmission::query()
-            ->whereHas('requestLayout', fn ($q) => $q->where('user_assigner_id', $userId))
             ->with(['requestLayout', 'creator'])
             ->orderByDesc('id')
             ->paginate(20);
@@ -33,7 +31,6 @@ class BoilerChiefLayoutApplicationController extends Controller
     public function create(Request $request): View
     {
         $layouts = RequestLayout::query()
-            ->where('user_assigner_id', $request->user()->id)
             ->orderBy('title')
             ->get();
 
@@ -76,25 +73,13 @@ class BoilerChiefLayoutApplicationController extends Controller
             $values['_document_date'] = $request->date('form_document_date')->format('d.m.Y');
         }
 
-        if ($request->filled('recipient_user_id')) {
-            $ru = User::query()->find((int) $request->input('recipient_user_id'));
-            if ($ru instanceof User) {
-                $values['recipient_name'] = $ru->fullName();
-            }
-        }
-
-        $registryNumber = RequestSubmission::allocateRegistryNumber();
-        RequestSubmission::query()->create([
-            'registry_number' => $registryNumber,
+        $submission = RequestSubmission::query()->create([
             'data' => $values,
             'created_by' => $request->user()->id,
-            'request_layout_id' => $layout->id,
-            'recipient_user_id' => $request->filled('recipient_user_id')
-                ? (int) $request->input('recipient_user_id')
-                : null,
+            'layout_structure_id' => $layout->id,
         ]);
 
-        return $this->streamPdfResponse($layout, $values, $registryNumber, $builder);
+        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
     }
 
     public function pdf(
@@ -110,14 +95,8 @@ class BoilerChiefLayoutApplicationController extends Controller
         }
 
         $values = is_array($submission->data) ? $submission->data : [];
-        if ($submission->recipient_user_id) {
-            $ru = User::query()->find((int) $submission->recipient_user_id);
-            if ($ru instanceof User) {
-                $values['recipient_name'] = $ru->fullName();
-            }
-        }
 
-        return $this->streamPdfResponse($layout, $values, $submission->registry_number, $builder);
+        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
     }
 
     public function destroy(Request $request, RequestSubmission $submission): RedirectResponse
@@ -132,8 +111,8 @@ class BoilerChiefLayoutApplicationController extends Controller
     private function streamPdfResponse(
         RequestLayout $layout,
         array $values,
-        ?int $registryNumber,
-        RequestLayoutDocumentBuilder $builder
+        RequestLayoutDocumentBuilder $builder,
+        ?int $submissionId = null
     ): SymfonyResponse {
         $layout->load(['approver', 'divisionAssigner', 'documentHeaderLayout']);
         $parts = $builder->pdfParts($layout, $values);
@@ -163,13 +142,9 @@ class BoilerChiefLayoutApplicationController extends Controller
             'presentationSubtitleSizePt' => $parts['presentationSubtitleSizePt'] ?? 12,
         ];
 
-        if ($registryNumber !== null) {
-            $viewData['registryNumber'] = $registryNumber;
-        }
-
         $pdf = Pdf::loadView('boiler-chief.request-layouts.pdf', $viewData)->setPaper('a4', 'portrait');
 
-        $fileName = 'zajavka-'.($registryNumber ?? now()->format('YmdHis')).'.pdf';
+        $fileName = 'zajavka-'.($submissionId ?? now()->format('YmdHis')).'.pdf';
 
         return response($pdf->output(), 200, [
             'Content-Type' => 'application/pdf',
@@ -195,13 +170,10 @@ class BoilerChiefLayoutApplicationController extends Controller
             abort(403);
         }
         $submission->loadMissing('requestLayout');
-        $layout = $submission->requestLayout;
-        if (! $layout) {
+        if (! $submission->requestLayout) {
             abort(404);
         }
-        $isOwner = (int) $layout->user_assigner_id === (int) $user->id;
-        $isCreator = (int) $submission->created_by === (int) $user->id;
-        if (! $isOwner && ! $isCreator) {
+        if (! $user->hasRoleId(7)) {
             abort(403);
         }
     }

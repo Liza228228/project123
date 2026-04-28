@@ -11,7 +11,7 @@ class RequestLayout extends Model
 {
     use SoftDeletes;
 
-    protected $table = 'request_layout';
+    protected $table = 'layout_structures';
 
     protected $fillable = [
         'title',
@@ -20,7 +20,6 @@ class RequestLayout extends Model
         'type',
         'version',
         'approver_id',
-        'user_assigner_id',
         'division_assigner_id',
         'document_header_layout_id',
     ];
@@ -41,11 +40,6 @@ class RequestLayout extends Model
         return $this->belongsTo(User::class, 'approver_id');
     }
 
-    public function userAssigner(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'user_assigner_id');
-    }
-
     public function divisionAssigner(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'division_assigner_id');
@@ -58,6 +52,6 @@ class RequestLayout extends Model
 
     public function submissions(): HasMany
     {
-        return $this->hasMany(RequestSubmission::class, 'request_layout_id');
+        return $this->hasMany(RequestSubmission::class, 'layout_structure_id');
     }
 }

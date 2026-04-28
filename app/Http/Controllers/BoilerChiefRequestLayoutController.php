@@ -26,7 +26,6 @@ class BoilerChiefRequestLayoutController extends Controller
     public function index(Request $request): View
     {
         $layouts = RequestLayout::query()
-            ->where('user_assigner_id', $request->user()->id)
             ->with(['documentHeaderLayout'])
             ->orderByDesc('updated_at')
             ->get();
@@ -51,7 +50,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'approver_id' => $payload['approver_id'],
             'division_assigner_id' => $payload['division_assigner_id'],
             'document_header_layout_id' => $payload['document_header_layout_id'],
-            'user_assigner_id' => $request->user()->id,
         ]);
 
         return redirect()
@@ -239,7 +237,7 @@ class BoilerChiefRequestLayoutController extends Controller
         $this->assertSiteForeman($request->user());
 
         $layouts = RequestLayout::query()
-            ->with(['userAssigner:id,surname,name,patronymic'])
+            ->with(['approver:id,surname,name,patronymic'])
             ->orderByDesc('updated_at')
             ->get();
 
@@ -285,7 +283,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'departments' => Department::query()->orderBy('name')->get(),
             'roles' => Role::query()->orderBy('name')->get(),
             'documentHeaderLayouts' => DocumentHeaderLayout::query()
-                ->where('user_assigner_id', $request->user()->id)
                 ->orderBy('title')
                 ->get(),
         ];
@@ -312,15 +309,15 @@ class BoilerChiefRequestLayoutController extends Controller
 
     private function assertOwner(RequestLayout $layout, ?User $user): void
     {
-        if (! $user || (int) $layout->user_assigner_id !== (int) $user->id) {
+        if (! $user || ! $user->hasRoleId(7)) {
             abort(403);
         }
     }
 
     private function assertSiteForeman(?User $user): void
     {
-        if (! $user || ! $user->hasRoleId(4)) {
-            abort(403, 'Доступ разрешён только мастеру участка.');
+        if (! $user || ! $user->hasAnyRoleId([1, 2, 4, 6, 7])) {
+            abort(403, 'Доступ разрешён только мастеру участка, начальнику котельной, директору, техническому директору или начальнику отдела снабжения.');
         }
     }
 

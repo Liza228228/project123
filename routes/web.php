@@ -6,6 +6,7 @@ use App\Http\Controllers\BoilerChiefLayoutApplicationController;
 use App\Http\Controllers\BoilerChiefRequestLayoutController;
 use App\Http\Controllers\BoilerChiefSubdivisionAssignmentController;
 use App\Http\Controllers\DadataAddressController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ForemanSubdivisionAssignmentController;
 use App\Http\Controllers\MaterialAccountingController;
 use App\Http\Controllers\ProfileController;
@@ -18,9 +19,9 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth'])
+    ->name('dashboard');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -80,8 +81,6 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/{application}/items/{item}/custom-supply-ordered', [ApplicationController::class, 'markCustomEquipmentOrdered'])->name('custom-supply-ordered');
     Route::post('/{application}/items/{item}/custom-supply-in-transit', [ApplicationController::class, 'markCustomEquipmentSupplyInTransit'])->name('custom-supply-in-transit');
     Route::post('/{application}/items/{item}/custom-supply-on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouse'])->name('custom-supply-on-warehouse');
-    Route::post('/{application}/items/{item}/custom-target-warehouse', [ApplicationController::class, 'saveCustomItemTargetWarehouse'])->name('custom-target-warehouse');
-    Route::post('/{application}/items/{item}/custom-foreman-in-transit', [ApplicationController::class, 'markCustomForemanInTransitToTarget'])->name('custom-foreman-in-transit');
     Route::post('/{application}/issue-stock', [ApplicationController::class, 'issueStock'])->name('issue-stock');
     Route::post('/{application}/issue-delivered-warehouse-stock', [ApplicationController::class, 'issueDeliveredWarehouseStock'])->name('issue-delivered-warehouse-stock');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');

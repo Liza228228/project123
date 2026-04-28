@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 class DepartmentSeeder extends Seeder
 {
     /**
-     * Справочник подразделений для связи request_layout.division_assigner_id.
+     * Справочник подразделений для связи layout_structures.division_assigner_id.
      * По умолчанию копирует названия из subdivisions, если они уже есть в БД.
      */
     public function run(): void

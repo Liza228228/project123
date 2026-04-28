@@ -15,7 +15,6 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
     public function index(Request $request): View
     {
         $layouts = DocumentHeaderLayout::query()
-            ->where('user_assigner_id', $request->user()->id)
             ->orderByDesc('updated_at')
             ->get();
 
@@ -33,7 +32,6 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
         DocumentHeaderLayout::query()->create([
             'title' => $payload['title'],
             'schema' => $payload['schema'],
-            'user_assigner_id' => $request->user()->id,
         ]);
 
         return redirect()
@@ -78,7 +76,7 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
 
     private function assertOwner(DocumentHeaderLayout $layout, ?User $user): void
     {
-        if (! $user || (int) $layout->user_assigner_id !== (int) $user->id) {
+        if (! $user || ! $user->hasRoleId(7)) {
             abort(403);
         }
     }

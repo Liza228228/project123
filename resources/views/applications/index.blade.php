@@ -32,7 +32,7 @@
                         Своё оборудование к заказу
                     </a>
                 @endif
-                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4]) && !($isBoilerChief ?? false))
+                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
                     <a href="{{ route('applications.create') }}" class="ui-btn ui-btn--primary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
                         Создать заявку
                     </a>
@@ -261,7 +261,7 @@
                                     </div>
                                     @if(Auth::user()->hasRoleId(3))
                                         @php
-                                            $hasInstallationDocs = filled(trim((string) ($application->installation_act_path ?? '')))
+                                            $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                 || (int) ($application->installation_act_photos_count ?? 0) > 0;
                                         @endphp
                                         <div class="flex flex-col gap-2">
@@ -427,7 +427,7 @@
                                         <td class="px-4 py-3 text-right align-top w-[1%]">
                                             @if(Auth::user()->hasRoleId(3))
                                                 @php
-                                                    $hasInstallationDocs = filled(trim((string) ($application->installation_act_path ?? '')))
+                                                    $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                         || (int) ($application->installation_act_photos_count ?? 0) > 0;
                                                 @endphp
                                                 <div class="inline-flex flex-col gap-2 items-end">

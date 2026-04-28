@@ -9,6 +9,8 @@ class TransportOption extends Model
 {
     protected $fillable = [
         'name',
+        'plate',
+        'label',
     ];
 
     public function applications(): HasMany
