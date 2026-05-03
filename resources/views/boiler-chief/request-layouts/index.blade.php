@@ -86,7 +86,7 @@
                 </div>
             @endif
 
-            <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
+            <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/35 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
                 <div class="p-4 sm:p-6">
                     @if($layouts->isEmpty())
                         <p class="py-12 text-center text-sm text-stone-500 dark:text-stone-400 max-w-lg mx-auto leading-relaxed">
@@ -128,7 +128,7 @@
                                 </thead>
                                 <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/35">
                                     @foreach($layouts as $layout)
-                                        <tr class="bg-white hover:bg-orange-50/40 dark:bg-stone-950 dark:hover:bg-orange-950/25">
+                                        <tr class="bg-orange-50/20 hover:bg-orange-50/55 dark:bg-stone-950 dark:hover:bg-orange-950/25">
                                             <td class="px-4 py-3 font-medium text-stone-900 dark:text-stone-100">{{ $layout->title }}</td>
                                             <td class="px-4 py-3 text-stone-600 dark:text-stone-300">
                                                 {{ ($layout->has_header || $layout->document_header_layout_id) ? 'Да' : 'Нет' }}
@@ -160,7 +160,7 @@
              x-transition.opacity
              @keydown.escape.window="reportOpen = false">
             <div class="absolute inset-0" @click="reportOpen = false"></div>
-            <div class="relative w-full max-w-lg overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-2xl ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:ring-orange-950/35"
+            <div class="relative w-full max-w-lg overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/40 shadow-2xl ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:ring-orange-950/35"
                  @click.stop>
                 <div class="flex items-center justify-between border-b border-orange-100/90 px-5 py-4 dark:border-orange-900/40">
                     <h3 class="text-base font-semibold text-stone-900 dark:text-white">Новая заявка</h3>

@@ -47,6 +47,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             $rawRoleId = $signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? null;
             if ($rawRoleId === '' || $rawRoleId === null) {
                 $normalizedSignatureRoles[$slot] = null;
+
                 continue;
             }
             $normalizedSignatureRoles[$slot] = (int) $rawRoleId;
@@ -79,7 +80,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
     }
 
     /**
-     * Название поля для подстановок: буквы, цифры, пробелы и «_»; без прочих символов.
+     * Нормализует ключ поля: обрезка, одиночные пробелы, только буквы/цифры/пробел/«_».
      */
     private function sanitizeRequestLayoutFieldKey(string $key): string
     {
@@ -91,9 +92,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         $key = trim(preg_replace('/\s+/u', ' ', $key));
         if ($key === '') {
             return '';
-        }
-        if (preg_match('/^\p{N}/u', mb_substr($key, 0, 1))) {
-            $key = 'поле '.$key;
         }
         if (mb_strlen($key) > 64) {
             $key = mb_substr($key, 0, 64);
@@ -118,7 +116,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'document_title' => ['nullable', 'string', 'max:255'],
             'heading_template' => ['nullable', 'string', 'max:50000'],
             'pdf_header_align' => ['nullable', 'string', 'in:left,center,right'],
-            'pdf_body_align' => ['nullable', 'string', 'in:left,center,justify'],
+            'pdf_body_align' => ['nullable', 'string', 'in:left,center,right,justify'],
             'pdf_footer_left_align' => ['nullable', 'string', 'in:left,center'],
             'pdf_footer_right_align' => ['nullable', 'string', 'in:left,center,right'],
             'header_template' => ['nullable', 'string', 'max:50000'],
@@ -126,7 +124,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'signature_template' => ['nullable', 'string', 'max:50000'],
             'body_template' => ['required', 'string', 'max:50000'],
             'fields' => ['required', 'array', 'min:1'],
-            'fields.*.key' => ['required', 'string', 'max:64', 'regex:/^[\p{L}_][\p{L}\p{N}_\s]*$/u'],
+            'fields.*.key' => ['required', 'string', 'max:64', 'regex:/^[\p{L}\p{N}_][\p{L}\p{N}_\s]*$/u'],
             'fields.*.label' => ['nullable', 'string', 'max:255'],
             'fields.*.type' => ['required', 'string', 'in:text,number,textarea,date,address'],
             'needs_statement_header' => ['sometimes', 'boolean'],
@@ -174,7 +172,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'fields.*.key.regex' => 'Название поля для подстановок: начните с буквы или «_», далее буквы, цифры, пробелы и «_»; не длиннее 64 символов.',
+            'fields.*.key.regex' => 'Ключ поля: буква, цифра или «_» в начале, далее буквы, цифры, пробелы и «_»; не длиннее 64 символов.',
         ];
     }
 
@@ -267,7 +265,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         $validated = $this->validated();
         $fields = [];
         foreach ($validated['fields'] as $row) {
-            $key = $row['key'];
+            $key = trim((string) $row['key']);
             $label = isset($row['label']) ? trim((string) $row['label']) : '';
             if ($label === '') {
                 $label = $key;
@@ -359,7 +357,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                 ),
                 'pdf_body_align' => $this->normalizedPdfAlign(
                     $validated['pdf_body_align'] ?? null,
-                    ['left', 'center', 'justify'],
+                    ['left', 'center', 'right', 'justify'],
                     'center'
                 ),
                 'pdf_footer_left_align' => $this->normalizedPdfAlign(
@@ -399,23 +397,23 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         return match ($preset) {
             'one_signer_author' => [
                 "{{фио}}\n\nДата: {{document_date}}",
-                "________________ / {{signatory_print_name}}".$mp,
+                '________________ / {{signatory_print_name}}'.$mp,
             ],
             'two_signers' => [
                 " {{signer_1_fio}}\n {{signer_2_fio}}\n\nДата: {{document_date}}",
-                "________________ / {{signatory_print_name}}".$mp,
+                '________________ / {{signatory_print_name}}'.$mp,
             ],
             'three_signers' => [
                 " {{signer_1_fio}}\n {{signer_2_fio}}\n {{signer_3_fio}}\n\nДата: {{document_date}}",
-                "________________".$mp,
+                '________________'.$mp,
             ],
             'classic_split' => [
                 "{{фио}}\n\n{{текст}}\n\nДата: {{document_date}}",
-                "________________ / {{signatory_print_name}}".$mp,
+                '________________ / {{signatory_print_name}}'.$mp,
             ],
             default => [
                 "{{фио}}\n\nДата: {{document_date}}",
-                "________________ / {{signatory_print_name}}".$mp,
+                '________________ / {{signatory_print_name}}'.$mp,
             ],
         };
     }

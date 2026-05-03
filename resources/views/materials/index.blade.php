@@ -5,9 +5,9 @@
         </h2>
     </x-slot>
 
-    <div class="py-2 sm:py-8 md:py-10 max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-4">
+    <div class="py-2 sm:py-8 md:py-10 max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
         @if(!($canManage ?? false))
-            <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+            <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
                 <p class="text-sm text-black dark:text-white opacity-90">
                     Доступен просмотр остатков и журнала по складам. Добавление оборудования и операции прихода/расхода доступны только директору, техническому директору и начальнику отдела снабжения.
                 </p>
@@ -15,7 +15,7 @@
         @endif
 
         @if($canManage ?? false)
-        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+        <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white">1) Добавить оборудование в справочник</h3>
             <form method="POST" action="{{ route('materials.store-material') }}" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3" id="equipment-catalog-form">
                 @csrf
@@ -26,21 +26,24 @@
                 </div>
                 <div>
                     <x-input-label for="value" value="Размер / маркировка" />
-                    <x-text-input id="value" name="value" type="text" class="mt-1 block w-full" />
+                    <x-text-input id="value" name="value" type="text" class="mt-1 block w-full" value="{{ old('value') }}" />
+                    <p id="value-format-hint" class="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                        Для типа «Длина» разрешены только цифры и знаки разделителя.
+                    </p>
                     <x-input-error :messages="$errors->get('value')" class="mt-1" />
                 </div>
                 <div>
                     <x-input-label for="measurement_type" value="Тип измерения" />
                     <select id="measurement_type" name="measurement_type" class="app-select mt-1" required>
                         @foreach(($measurementTypeOptions ?? []) as $typeCode => $typeName)
-                            <option value="{{ $typeCode }}">{{ $typeName }}</option>
+                            <option value="{{ $typeCode }}" @selected(old('measurement_type') === $typeCode)>{{ $typeName }}</option>
                         @endforeach
                     </select>
                     <x-input-error :messages="$errors->get('measurement_type')" class="mt-1" />
                 </div>
                 <div class="md:col-span-2">
                     <x-input-label for="measurement_unit_id" value="Единица измерения" />
-                    <select id="measurement_unit_id" name="measurement_unit_id" class="app-select mt-1" required></select>
+                    <select id="measurement_unit_id" name="measurement_unit_id" class="app-select mt-1" data-selected-id="{{ old('measurement_unit_id') }}" required></select>
                     <x-input-error :messages="$errors->get('measurement_unit_id')" class="mt-1" />
                 </div>
                 <div class="md:col-span-4">
@@ -51,7 +54,7 @@
         @endif
 
         @if($canManage ?? false)
-        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+        <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white">2) Поступление оборудования на основной склад</h3>
             @if(!$mainWarehouse)
                 <div class="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
@@ -69,7 +72,7 @@
                     <select id="equipment_id" name="equipment_id" class="app-select mt-1" required>
                         <option value="">Выберите оборудование</option>
                         @foreach($materials as $material)
-                            <option value="{{ $material->id }}">{{ $material->display_name }} ({{ $material->measurementUnit?->code ?? 'шт' }})</option>
+                            <option value="{{ $material->id }}" @selected((int) old('equipment_id') === (int) $material->id)>{{ $material->display_name }} ({{ $material->measurementUnit?->code ?? 'шт' }})</option>
                         @endforeach
                     </select>
                     <x-input-error :messages="$errors->get('equipment_id')" class="mt-1" />
@@ -92,19 +95,25 @@
 
                 <div>
                     <x-input-label for="quantity" value="Количество" />
-                    <x-text-input id="quantity" name="quantity" type="number" step="0.001" class="mt-1 block w-full" required />
+                    <x-text-input id="quantity" name="quantity" type="number" step="0.001" class="mt-1 block w-full" value="{{ old('quantity') }}" required />
                     <x-input-error :messages="$errors->get('quantity')" class="mt-1" />
                 </div>
 
                 <div>
                     <x-input-label for="unit_price" value="Цена за единицу (опц.)" />
-                    <x-text-input id="unit_price" name="unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" />
+                    <x-text-input id="unit_price" name="unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" value="{{ old('unit_price') }}" />
                     <x-input-error :messages="$errors->get('unit_price')" class="mt-1" />
+                </div>
+
+                <div>
+                    <x-input-label for="counterparty" value="Контрагент (опц.)" />
+                    <x-text-input id="counterparty" name="counterparty" type="text" maxlength="255" class="mt-1 block w-full" value="{{ old('counterparty') }}" />
+                    <x-input-error :messages="$errors->get('counterparty')" class="mt-1" />
                 </div>
 
                 <div class="md:col-span-3">
                     <x-input-label for="comment" value="Комментарий (опц.)" />
-                    <textarea id="comment" name="comment" rows="2" class="app-input mt-1 min-h-[5rem] py-2.5"></textarea>
+                    <textarea id="comment" name="comment" rows="2" class="app-input mt-1 min-h-[5rem] py-2.5">{{ old('comment') }}</textarea>
                     <x-input-error :messages="$errors->get('comment')" class="mt-1" />
                 </div>
 
@@ -115,7 +124,7 @@
         </div>
         @endif
 
-        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+        <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <div class="flex flex-wrap items-end gap-3 justify-between">
                 <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? '3) Остатки оборудования' : '1) Остатки оборудования' }}</h3>
                 <form method="GET" action="{{ ($canManage ?? false) ? route('materials.index') : route('materials.overview') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -135,7 +144,7 @@
             <p class="mt-2 text-xs text-black/70 dark:text-white/70">
                 Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход» и в журнале операций ниже.
             </p>
-            <div class="mt-4 overflow-x-auto">
+            <div class="mt-4 app-table-shell">
                 <table class="min-w-full text-sm text-black dark:text-white">
                     <thead>
                         <tr class="border-b border-stone-200 dark:border-stone-700">
@@ -166,9 +175,9 @@
             </div>
         </div>
 
-        <div class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg shadow-sm p-4 sm:p-6">
+        <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? '4) Журнал операций по оборудованию' : '2) Журнал операций по оборудованию' }}</h3>
-            <div class="mt-4 overflow-x-auto">
+            <div class="mt-4 app-table-shell">
                 <table class="min-w-full text-sm text-black dark:text-white">
                     <thead>
                         <tr class="border-b border-stone-200 dark:border-stone-700">
@@ -176,6 +185,7 @@
                             <th class="text-left py-2 pr-3">Оборудование</th>
                             <th class="text-left py-2 pr-3">Склад</th>
                             <th class="text-left py-2 pr-3">Тип</th>
+                            <th class="text-left py-2 pr-3">Контрагент</th>
                             <th class="text-right py-2 pr-3">Количество</th>
                             <th class="text-left py-2 max-w-[18rem]">Комментарий</th>
                         </tr>
@@ -190,6 +200,7 @@
                                 <td class="py-2 pr-3">{{ $movement->equipment?->name ?? '—' }} @if($movement->equipment) ({{ $movement->equipment->measurementUnit?->code ?? 'шт' }}) @endif</td>
                                 <td class="py-2 pr-3">{{ $movement->warehouse?->name }}</td>
                                 <td class="py-2 pr-3">{{ $movement->movementType?->name ?? '—' }}</td>
+                                <td class="py-2 pr-3 text-xs text-black/80 dark:text-white/80">{{ $movement->counterparty ?: '—' }}</td>
                                 <td class="py-2 pr-3 text-right {{ $signed < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400' }}">
                                     {{ number_format($signed, 3, '.', ' ') }}
                                 </td>
@@ -197,7 +208,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
+                                <td colspan="7" class="py-4 text-center text-black/70 dark:text-white/70">Операций пока нет.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -217,19 +228,69 @@
         var unitsByType = @json($measurementUnitsByType);
         var typeSelect = document.getElementById('measurement_type');
         var unitSelect = document.getElementById('measurement_unit_id');
+        var valueInput = document.getElementById('value');
+        var valueHint = document.getElementById('value-format-hint');
         if (!typeSelect || !unitSelect) return;
 
         function fillUnits() {
             var units = unitsByType[typeSelect.value] || [];
+            var selectedUnitId = String(unitSelect.dataset.selectedId || '');
             unitSelect.innerHTML = '';
             units.forEach(function (unit, idx) {
-                var option = new Option(unit.code + ' — ' + unit.name, unit.id, idx === 0, idx === 0);
+                var shouldSelect = selectedUnitId !== ''
+                    ? String(unit.id) === selectedUnitId
+                    : idx === 0;
+                var option = new Option(unit.code + ' — ' + unit.name, unit.id, shouldSelect, shouldSelect);
                 unitSelect.add(option);
             });
+            unitSelect.dataset.selectedId = '';
         }
 
-        typeSelect.addEventListener('change', fillUnits);
+        function isLengthType() {
+            return typeSelect.value === 'length';
+        }
+
+        function sanitizeLengthValue(raw) {
+            return String(raw || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
+        }
+
+        function syncValueRestrictions() {
+            if (!valueInput) {
+                return;
+            }
+            if (isLengthType()) {
+                valueInput.setAttribute('inputmode', 'decimal');
+                valueInput.setAttribute('pattern', '^[0-9.,\\-\\s/]*$');
+                if (valueHint) {
+                    valueHint.classList.remove('hidden');
+                }
+                valueInput.value = sanitizeLengthValue(valueInput.value);
+            } else {
+                valueInput.removeAttribute('inputmode');
+                valueInput.removeAttribute('pattern');
+                if (valueHint) {
+                    valueHint.classList.add('hidden');
+                }
+            }
+        }
+
+        typeSelect.addEventListener('change', function () {
+            fillUnits();
+            syncValueRestrictions();
+        });
+        if (valueInput) {
+            valueInput.addEventListener('input', function () {
+                if (!isLengthType()) {
+                    return;
+                }
+                var cleaned = sanitizeLengthValue(valueInput.value);
+                if (cleaned !== valueInput.value) {
+                    valueInput.value = cleaned;
+                }
+            });
+        }
         fillUnits();
+        syncValueRestrictions();
     })();
 </script>
 @endif

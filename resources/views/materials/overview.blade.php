@@ -16,7 +16,7 @@
             Выберите подразделение и склад — ниже отобразятся приход, расход и остаток по каждой позиции оборудования, по которой на этом складе были движения.
         </p>
 
-        <div class="rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6 space-y-5">
+        <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6 space-y-5">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <h3 class="text-base font-semibold text-black dark:text-white">Просмотр склада</h3>
                 @if($hasFilters)
@@ -90,7 +90,7 @@
         </div>
 
         @if($selectedWarehouse)
-            <div class="rounded-2xl border border-stone-200/90 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6 space-y-4">
+            <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6 space-y-4">
                 <div class="flex flex-col gap-1 border-b border-stone-200/80 pb-4 dark:border-stone-600/80">
                     <p class="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">Остатки</p>
                     <h3 class="text-lg font-semibold text-black dark:text-white leading-snug">

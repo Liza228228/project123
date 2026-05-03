@@ -466,6 +466,7 @@
                     <select name="pdf_body_align" class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white shadow-sm text-sm">
                         <option value="center" @selected($pdfBodyAlign === 'center')>По центру</option>
                         <option value="justify" @selected($pdfBodyAlign === 'justify')>По ширине</option>
+                        <option value="right" @selected($pdfBodyAlign === 'right')>Справа</option>
                         <option value="left" @selected($pdfBodyAlign === 'left')>Слева</option>
                     </select>
                 </div>

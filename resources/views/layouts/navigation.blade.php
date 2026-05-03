@@ -5,6 +5,7 @@
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS);
         $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
         $canUseReportGenerator = $user->hasRoleId(7);
+        $canFillReport = $user->hasAnyRoleId([1, 2, 3, 4, 6, 7]);
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
@@ -62,6 +63,14 @@
                            class="ui-btn ui-btn--secondary px-3 py-2"
                            @if(request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')) aria-current="page" @endif>
                             Акт установки
+                        </a>
+                    @endif
+
+                    @if ($canFillReport)
+                        <a href="{{ route('applications.installation-act.layout-fill.index') }}"
+                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           @if(request()->routeIs('applications.installation-act.layout-fill.*')) aria-current="page" @endif>
+                            Отчет
                         </a>
                     @endif
 
@@ -219,6 +228,12 @@
             @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
                 <x-responsive-nav-link :href="route('applications.installation-act.upload')" :active="request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')">
                     Акт установки
+                </x-responsive-nav-link>
+            @endif
+
+            @if ($canFillReport)
+                <x-responsive-nav-link :href="route('applications.installation-act.layout-fill.index')" :active="request()->routeIs('applications.installation-act.layout-fill.*')">
+                    Отчет
                 </x-responsive-nav-link>
             @endif
 

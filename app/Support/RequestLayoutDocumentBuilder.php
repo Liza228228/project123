@@ -106,7 +106,7 @@ final class RequestLayoutDocumentBuilder
             'footerLeftText' => $mergedFooterLeft,
             'signatureText' => $mergedSignature,
             'pdfHeaderAlign' => $this->pdfAlign($schema, 'pdf_header_align', 'right', ['left', 'center', 'right']),
-            'pdfBodyAlign' => $this->pdfAlign($schema, 'pdf_body_align', 'center', ['left', 'center', 'justify']),
+            'pdfBodyAlign' => $this->pdfAlign($schema, 'pdf_body_align', 'center', ['left', 'center', 'right', 'justify']),
             'pdfFooterLeftAlign' => $this->pdfAlign($schema, 'pdf_footer_left_align', 'left', ['left', 'center']),
             'pdfFooterRightAlign' => $this->pdfAlign($schema, 'pdf_footer_right_align', 'right', ['left', 'center', 'right']),
             'presentationHeadingSizePt' => max(8, min(36, (int) ($schema['presentation_heading_size_pt'] ?? 15))),
@@ -342,12 +342,25 @@ final class RequestLayoutDocumentBuilder
     {
         $map = [];
         foreach ($schema['fields'] ?? [] as $field) {
-            $k = isset($field['key']) ? (string) $field['key'] : '';
+            $k = isset($field['key']) ? trim((string) $field['key']) : '';
             if ($k === '') {
                 continue;
             }
             $raw = $values[$k] ?? '';
             $map[$k] = is_scalar($raw) || $raw === null ? (string) $raw : '';
+        }
+
+        // Раньше ключи, начинающиеся с цифры, сохранялись как «поле N» — даём подстановку и для {{N}}.
+        foreach (array_keys($map) as $mk) {
+            if (! is_string($mk)) {
+                continue;
+            }
+            if (preg_match('/^поле\h+(\p{N}+)$/u', $mk, $m)) {
+                $short = (string) ($m[1] ?? '');
+                if ($short !== '' && ! array_key_exists($short, $map)) {
+                    $map[$short] = $map[$mk];
+                }
+            }
         }
 
         $recipientName = trim((string) ($values['recipient_name'] ?? ''));
@@ -806,6 +819,7 @@ final class RequestLayoutDocumentBuilder
             'p' => true, 'br' => true, 'hr' => true, 'b' => true, 'strong' => true,
             'i' => true, 'em' => true, 'u' => true, 'div' => true, 'span' => true,
             'ul' => true, 'ol' => true, 'li' => true, 'h1' => true, 'h2' => true, 'h3' => true, 'h4' => true, 'font' => true,
+            'table' => true, 'thead' => true, 'tbody' => true, 'tr' => true, 'td' => true, 'th' => true,
         ];
 
         libxml_use_internal_errors(true);
@@ -880,7 +894,7 @@ final class RequestLayoutDocumentBuilder
 
     private function stripPdfElementAttributes(DOMElement $el, string $tag): void
     {
-        $styleTags = ['div', 'span', 'font', 'p', 'li', 'h1', 'h2', 'h3', 'h4'];
+        $styleTags = ['div', 'span', 'font', 'p', 'li', 'h1', 'h2', 'h3', 'h4', 'table', 'td', 'th', 'tr'];
         $remove = [];
         foreach (iterator_to_array($el->attributes ?? []) as $attr) {
             $name = strtolower($attr->name);
@@ -900,6 +914,9 @@ final class RequestLayoutDocumentBuilder
             if ($tag === 'font' && in_array($name, ['color', 'face', 'size'], true)) {
                 continue;
             }
+            if (in_array($tag, ['table', 'td', 'th', 'tr'], true) && in_array($name, ['border', 'cellpadding', 'cellspacing', 'colspan', 'rowspan'], true)) {
+                continue;
+            }
             $remove[] = $attr->name;
         }
         foreach ($remove as $n) {
@@ -916,7 +933,7 @@ final class RequestLayoutDocumentBuilder
         $parts = array_filter(array_map('trim', explode(';', $style)));
         $out = [];
         foreach ($parts as $part) {
-            if (preg_match('/^(text-align|font-size|font-family|font-weight|text-decoration|line-height)\s*:\s*.+$/iu', $part)) {
+            if (preg_match('/^(text-align|font-size|font-family|font-weight|text-decoration|line-height|width|border|border-collapse|padding)\s*:\s*.+$/iu', $part)) {
                 $out[] = $part;
             }
         }

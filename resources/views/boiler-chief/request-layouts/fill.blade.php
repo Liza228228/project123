@@ -4,8 +4,12 @@
         $applicationOptions = ($applications ?? collect())->map(function ($a) {
             $approvedItems = $a->items->where('is_checked', true)->values();
             $lineItems = ($approvedItems->isNotEmpty() ? $approvedItems : $a->items)
-                ->map(fn ($item) => trim($item->equipment_display_name.' x '.$item->quantity_with_unit))
-                ->filter()
+                ->map(fn ($item) => [
+                    'name' => (string) $item->equipment_display_name,
+                    'quantity' => (string) $item->quantity_with_unit,
+                    'line' => trim($item->equipment_display_name.' x '.$item->quantity_with_unit),
+                ])
+                ->filter(fn (array $item) => $item['line'] !== '')
                 ->values();
             return [
                 'id' => $a->id,
@@ -13,6 +17,28 @@
                 'equipment' => $lineItems->all(),
             ];
         })->values()->all();
+        $warehouseOptions = ($warehouseBalances ?? collect())
+            ->map(function ($w) {
+                $equipment = collect($w['equipment'] ?? [])->map(function ($item) {
+                    $name = (string) ($item['name'] ?? '');
+                    $quantity = (string) ($item['quantity'] ?? '');
+                    $line = trim((string) ($item['line'] ?? ''));
+
+                    return [
+                        'name' => $name,
+                        'quantity' => $quantity,
+                        'line' => $line,
+                    ];
+                })->filter(fn (array $item) => $item['line'] !== '')->values()->all();
+
+                return [
+                    'id' => (int) ($w['id'] ?? 0),
+                    'label' => (string) ($w['label'] ?? 'Склад'),
+                    'equipment' => $equipment,
+                ];
+            })
+            ->values()
+            ->all();
         $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
         if ($signatureSlotsCount <= 0) {
             $signatureSlotsCount = match ((string) ($schema['pdf_footer_preset'] ?? '')) {
@@ -121,9 +147,43 @@
                             <option value="">— Выберите оборудование —</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Вставить как</label>
+                        <select id="report-insert-format" class="app-select min-h-0">
+                            <option value="list">Список</option>
+                            <option value="table">Таблица</option>
+                        </select>
+                        <p class="text-[11px] text-stone-500 dark:text-stone-400 mt-1 leading-relaxed">
+                            В режиме «Таблица» в поле вставляется HTML-таблица — так она отображается в PDF. Режим «Список» вставляет обычный текст.
+                        </p>
+                    </div>
                     <div class="flex justify-end">
                         <button type="button" id="insert-equipment-to-focused-field" class="ui-btn ui-btn--secondary ui-btn--sm">
                             Вставить в активное поле
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-2 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
+                    <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Остатки по складам</p>
+                    <div>
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите склад</label>
+                        <select id="report-source-warehouse" class="app-select min-h-0">
+                            <option value="">— Выберите склад —</option>
+                            @foreach($warehouseOptions as $warehouse)
+                                <option value="{{ $warehouse['id'] }}">{{ $warehouse['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите позицию со склада</label>
+                        <select id="report-source-warehouse-equipment" class="app-select min-h-0">
+                            <option value="">— Выберите оборудование —</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="button" id="insert-warehouse-balance-to-focused-field" class="ui-btn ui-btn--secondary ui-btn--sm">
+                            Вставить остатки в активное поле
                         </button>
                     </div>
                 </div>
@@ -195,16 +255,67 @@
             const form = document.getElementById('fill-report-form');
             if (!form) return;
             const applications = @json($applicationOptions);
+            const warehouseBalances = @json($warehouseOptions);
             let activeTextField = null;
             const appSelect = document.getElementById('report-source-application');
             const equipmentSelect = document.getElementById('report-source-equipment');
+            const warehouseSelect = document.getElementById('report-source-warehouse');
+            const warehouseEquipmentSelect = document.getElementById('report-source-warehouse-equipment');
+            const warehouseInsertButton = document.getElementById('insert-warehouse-balance-to-focused-field');
+            const formatSelect = document.getElementById('report-insert-format');
             const insertButton = document.getElementById('insert-equipment-to-focused-field');
-            const textFields = Array.from(form.querySelectorAll('input[type="text"][name^="values["], textarea[name^="values["]'));
+            const textFields = Array.from(form.querySelectorAll(
+                'textarea[name^="values["], input[name^="values["]:not([type="hidden"])'
+            ));
             textFields.forEach((el) => {
                 el.addEventListener('focus', () => {
                     activeTextField = el;
                 });
             });
+            const escapeHtmlForPdf = (s) =>
+                String(s ?? '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;');
+            const normalizeEquipmentRow = (row) => {
+                if (!row || typeof row !== 'object') {
+                    return null;
+                }
+                const name = String(row.name || '').trim();
+                const quantity = String(row.quantity || '').trim();
+                const line = String(row.line || '').trim() || (name || quantity ? `${name} x ${quantity}`.trim() : '');
+                if (line === '') {
+                    return null;
+                }
+                return { name, quantity, line };
+            };
+            const buildEquipmentInsertion = (rows, mode) => {
+                const list = rows.map(normalizeEquipmentRow).filter(Boolean);
+                if (list.length === 0) {
+                    return '';
+                }
+                if (mode === 'table') {
+                    const bodyRows = list
+                        .map(
+                            (r) =>
+                                '<tr><td>' +
+                                escapeHtmlForPdf(r.name) +
+                                '</td><td>' +
+                                escapeHtmlForPdf(r.quantity) +
+                                '</td></tr>'
+                        )
+                        .join('');
+                    return (
+                        '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                        '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
+                        '<tbody>' +
+                        bodyRows +
+                        '</tbody></table>'
+                    );
+                }
+                return list.map((r) => '- ' + r.line).join('\n');
+            };
             const renderEquipmentOptions = () => {
                 if (!equipmentSelect || !appSelect) return;
                 const appId = Number(appSelect.value || 0);
@@ -213,15 +324,51 @@
                 if (!app || !Array.isArray(app.equipment)) {
                     return;
                 }
-                app.equipment.forEach((line) => {
+                const optAll = document.createElement('option');
+                optAll.value = '__ALL__';
+                optAll.textContent = 'Все позиции заявки';
+                equipmentSelect.appendChild(optAll);
+                app.equipment.forEach((row) => {
                     const option = document.createElement('option');
-                    option.value = String(line || '');
-                    option.textContent = String(line || '');
+                    const payload = {
+                        name: String(row?.name || ''),
+                        quantity: String(row?.quantity || ''),
+                        line: String(row?.line || ''),
+                    };
+                    option.value = JSON.stringify(payload);
+                    option.textContent = payload.line;
                     equipmentSelect.appendChild(option);
+                });
+            };
+            const renderWarehouseEquipmentOptions = () => {
+                if (!warehouseEquipmentSelect || !warehouseSelect) return;
+                const warehouseId = Number(warehouseSelect.value || 0);
+                const warehouse = warehouseBalances.find((x) => Number(x.id || 0) === warehouseId);
+                warehouseEquipmentSelect.innerHTML = '<option value="">— Выберите оборудование —</option>';
+                if (!warehouse || !Array.isArray(warehouse.equipment)) {
+                    return;
+                }
+                const optAll = document.createElement('option');
+                optAll.value = '__ALL__';
+                optAll.textContent = 'Все остатки склада';
+                warehouseEquipmentSelect.appendChild(optAll);
+                warehouse.equipment.forEach((row) => {
+                    const option = document.createElement('option');
+                    const payload = {
+                        name: String(row?.name || ''),
+                        quantity: String(row?.quantity || ''),
+                        line: String(row?.line || ''),
+                    };
+                    option.value = JSON.stringify(payload);
+                    option.textContent = payload.line;
+                    warehouseEquipmentSelect.appendChild(option);
                 });
             };
             if (appSelect) {
                 appSelect.addEventListener('change', renderEquipmentOptions);
+            }
+            if (warehouseSelect) {
+                warehouseSelect.addEventListener('change', renderWarehouseEquipmentOptions);
             }
             if (insertButton) {
                 insertButton.addEventListener('click', () => {
@@ -229,13 +376,89 @@
                         window.alert('Сначала кликните в поле текста, куда нужно вставить оборудование.');
                         return;
                     }
-                    const line = String(equipmentSelect?.value || '').trim();
-                    if (!line) {
+                    const raw = String(equipmentSelect?.value || '').trim();
+                    if (!raw) {
                         window.alert('Сначала выберите оборудование.');
                         return;
                     }
+                    const appId = Number(appSelect?.value || 0);
+                    const app = applications.find((x) => Number(x.id || 0) === appId);
+                    let rows = [];
+                    if (raw === '__ALL__') {
+                        rows = Array.isArray(app?.equipment) ? app.equipment : [];
+                        if (rows.length === 0) {
+                            window.alert('В этой заявке нет строк оборудования.');
+                            return;
+                        }
+                    } else {
+                        let selected = null;
+                        try {
+                            selected = JSON.parse(raw);
+                        } catch (_) {
+                            selected = null;
+                        }
+                        const one = normalizeEquipmentRow(selected);
+                        if (!one) {
+                            window.alert('Не удалось прочитать выбранную позицию.');
+                            return;
+                        }
+                        rows = [one];
+                    }
+                    const mode = String(formatSelect?.value || 'list') === 'table' ? 'table' : 'list';
+                    const insertedText = buildEquipmentInsertion(rows, mode);
+                    if (!insertedText) {
+                        window.alert('Не удалось сформировать текст для вставки.');
+                        return;
+                    }
                     const current = String(activeTextField.value || '');
-                    const suffix = current.trim() === '' ? line : '\n' + line;
+                    const suffix = current.trim() === '' ? insertedText : '\n' + insertedText;
+                    activeTextField.value = current + suffix;
+                    activeTextField.dispatchEvent(new Event('input', { bubbles: true }));
+                    activeTextField.focus();
+                });
+            }
+            if (warehouseInsertButton) {
+                warehouseInsertButton.addEventListener('click', () => {
+                    if (!activeTextField) {
+                        window.alert('Сначала кликните в поле текста, куда нужно вставить остатки.');
+                        return;
+                    }
+                    const raw = String(warehouseEquipmentSelect?.value || '').trim();
+                    if (!raw) {
+                        window.alert('Сначала выберите склад и оборудование.');
+                        return;
+                    }
+                    const warehouseId = Number(warehouseSelect?.value || 0);
+                    const warehouse = warehouseBalances.find((x) => Number(x.id || 0) === warehouseId);
+                    let rows = [];
+                    if (raw === '__ALL__') {
+                        rows = Array.isArray(warehouse?.equipment) ? warehouse.equipment : [];
+                        if (rows.length === 0) {
+                            window.alert('По этому складу нет остатков.');
+                            return;
+                        }
+                    } else {
+                        let selected = null;
+                        try {
+                            selected = JSON.parse(raw);
+                        } catch (_) {
+                            selected = null;
+                        }
+                        const one = normalizeEquipmentRow(selected);
+                        if (!one) {
+                            window.alert('Не удалось прочитать выбранную позицию.');
+                            return;
+                        }
+                        rows = [one];
+                    }
+                    const mode = String(formatSelect?.value || 'list') === 'table' ? 'table' : 'list';
+                    const insertedText = buildEquipmentInsertion(rows, mode);
+                    if (!insertedText) {
+                        window.alert('Не удалось сформировать текст для вставки.');
+                        return;
+                    }
+                    const current = String(activeTextField.value || '');
+                    const suffix = current.trim() === '' ? insertedText : '\n' + insertedText;
                     activeTextField.value = current + suffix;
                     activeTextField.dispatchEvent(new Event('input', { bubbles: true }));
                     activeTextField.focus();

@@ -9,8 +9,12 @@
     $applicationOptions = ($applications ?? collect())->map(function ($a) {
         $approvedItems = $a->items->where('is_checked', true)->values();
         $lineItems = ($approvedItems->isNotEmpty() ? $approvedItems : $a->items)
-            ->map(fn ($item) => trim($item->equipment_display_name.' x '.$item->quantity_with_unit))
-            ->filter()
+            ->map(fn ($item) => [
+                'name' => (string) $item->equipment_display_name,
+                'quantity' => (string) $item->quantity_with_unit,
+                'line' => trim($item->equipment_display_name.' x '.$item->quantity_with_unit),
+            ])
+            ->filter(fn (array $item) => $item['line'] !== '')
             ->values();
         return [
             'id' => $a->id,
@@ -75,9 +79,17 @@
                                 <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Оборудование из выбранной заявки</label>
                                 <select class="app-select" x-model="selectedApplicationEquipment">
                                     <option value="">— Выберите оборудование —</option>
-                                    <template x-for="eq in selectedApplicationEquipmentOptions()" :key="'eq_' + eq">
-                                        <option :value="eq" x-text="eq"></option>
+                                    <option value="__ALL__">Все позиции заявки</option>
+                                    <template x-for="(eq, idx) in selectedApplicationEquipmentOptions()" :key="'eq_' + idx + '_' + (eq.line || '')">
+                                        <option :value="JSON.stringify(eq)" x-text="eq.line"></option>
                                     </template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Вставить как</label>
+                                <select class="app-select" x-model="insertEquipmentFormat">
+                                    <option value="list">Список</option>
+                                    <option value="table">Таблица</option>
                                 </select>
                             </div>
                             <div class="flex justify-end">

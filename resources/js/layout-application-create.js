@@ -16,6 +16,7 @@ export function registerLayoutApplicationCreate(Alpine) {
         signatureRoleNames: {},
         selectedApplicationId: '',
         selectedApplicationEquipment: '',
+        insertEquipmentFormat: 'list',
         activeEditorFieldKey: '',
         fields: [],
         loading: false,
@@ -112,11 +113,79 @@ export function registerLayoutApplicationCreate(Alpine) {
         setActiveEditorField(fieldKey) {
             this.activeEditorFieldKey = String(fieldKey || '');
         },
+        normalizeEquipmentRow(row) {
+            if (!row || typeof row !== 'object') {
+                return null;
+            }
+            const name = String(row.name || '').trim();
+            const quantity = String(row.quantity || '').trim();
+            const line =
+                String(row.line || '').trim() ||
+                (name || quantity ? `${name} x ${quantity}`.trim() : '');
+            if (line === '') {
+                return null;
+            }
+            return { name, quantity, line };
+        },
+        escapeHtmlForPdfCell(s) {
+            return String(s ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;');
+        },
+        buildEquipmentInsertHtml(rows) {
+            const normalized = rows.map((r) => this.normalizeEquipmentRow(r)).filter(Boolean);
+            if (normalized.length === 0) {
+                return '';
+            }
+            if (this.insertEquipmentFormat === 'table') {
+                const bodyRows = normalized
+                    .map(
+                        (r) =>
+                            `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
+                    )
+                    .join('');
+                return (
+                    '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                    '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
+                    '<tbody>' +
+                    bodyRows +
+                    '</tbody></table><br>'
+                );
+            }
+            return (
+                normalized
+                    .map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`)
+                    .join('<br>') + '<br>'
+            );
+        },
         insertSelectedEquipmentIntoActiveField() {
-            const equipmentLine = String(this.selectedApplicationEquipment || '').trim();
-            if (!equipmentLine) {
+            const rawEquipment = String(this.selectedApplicationEquipment || '').trim();
+            if (!rawEquipment) {
                 window.alert('Сначала выберите оборудование из заявки.');
                 return;
+            }
+            let rows = [];
+            if (rawEquipment === '__ALL__') {
+                rows = this.selectedApplicationEquipmentOptions();
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    window.alert('В этой заявке нет строк оборудования.');
+                    return;
+                }
+            } else {
+                let equipmentRow = null;
+                try {
+                    equipmentRow = JSON.parse(rawEquipment);
+                } catch (e) {
+                    equipmentRow = null;
+                }
+                const one = this.normalizeEquipmentRow(equipmentRow);
+                if (!one) {
+                    window.alert('Не удалось прочитать выбранную позицию оборудования.');
+                    return;
+                }
+                rows = [one];
             }
             const key = String(this.activeEditorFieldKey || '').trim();
             if (!key) {
@@ -133,15 +202,16 @@ export function registerLayoutApplicationCreate(Alpine) {
             if (!el || !h) {
                 return;
             }
-            const escaped = equipmentLine
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;');
+            const insertionHtml = this.buildEquipmentInsertHtml(rows);
+            if (!insertionHtml) {
+                window.alert('Не удалось сформировать фрагмент для вставки.');
+                return;
+            }
             el.focus();
             try {
-                document.execCommand('insertHTML', false, `${escaped}<br>`);
+                document.execCommand('insertHTML', false, insertionHtml);
             } catch (e) {
-                el.innerHTML = `${el.innerHTML}${escaped}<br>`;
+                el.innerHTML = `${el.innerHTML}${insertionHtml}`;
             }
             h.value = el.innerHTML;
         },

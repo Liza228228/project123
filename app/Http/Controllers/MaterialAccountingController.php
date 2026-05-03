@@ -20,7 +20,10 @@ class MaterialAccountingController extends Controller
 {
     public function index(Request $request): View
     {
-        return $this->renderIndex($request, true);
+        $user = $request->user();
+        $canManage = $user?->hasAnyRoleId([1, 6, 2]) ?? false;
+
+        return $this->renderIndex($request, $canManage);
     }
 
     public function overview(Request $request): View
@@ -169,12 +172,26 @@ class MaterialAccountingController extends Controller
 
     public function storeMaterial(Request $request): RedirectResponse
     {
+        if (! $request->user()?->hasAnyRoleId([1, 6, 2])) {
+            abort(403, 'Добавление оборудования доступно только директору, техническому директору и начальнику отдела снабжения.');
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'value' => ['nullable', 'string', 'max:120'],
             'measurement_type' => ['required', Rule::in(UnitType::query()->pluck('code')->all())],
             'measurement_unit_id' => ['required', 'integer', 'exists:measurement_units,id'],
         ]);
+
+        if (
+            (string) $validated['measurement_type'] === 'length'
+            && filled($validated['value'] ?? null)
+            && preg_match('/\p{L}/u', (string) $validated['value'])
+        ) {
+            throw ValidationException::withMessages([
+                'value' => 'Для типа "Длина" в поле "Размер / маркировка" буквы не допускаются.',
+            ]);
+        }
 
         $unit = MeasurementUnit::query()->findOrFail((int) $validated['measurement_unit_id']);
         $unitTypeCode = (string) ($unit->unitType?->code ?? '');
@@ -207,12 +224,17 @@ class MaterialAccountingController extends Controller
 
     public function storeMovement(Request $request): RedirectResponse
     {
+        if (! $request->user()?->hasAnyRoleId([1, 6, 2])) {
+            abort(403, 'Операции по складу доступны только директору, техническому директору и начальнику отдела снабжения.');
+        }
+
         $validated = $request->validate([
             'equipment_id' => ['required', 'integer', 'exists:equipment,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'material_stock_movement_type_id' => ['required', 'integer', 'exists:material_stock_movement_types,id'],
             'quantity' => ['required', 'numeric'],
             'unit_price' => ['nullable', 'numeric', 'min:0'],
+            'counterparty' => ['nullable', 'string', 'max:255'],
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -263,7 +285,7 @@ class MaterialAccountingController extends Controller
                 'material_stock_movement_type_id' => (int) $validated['material_stock_movement_type_id'],
                 'quantity' => $quantity,
                 'unit_price' => $validated['unit_price'] ?? null,
-                'counterparty' => null,
+                'counterparty' => isset($validated['counterparty']) ? trim((string) $validated['counterparty']) : null,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
             ]);
         });

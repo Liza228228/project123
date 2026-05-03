@@ -22,7 +22,7 @@
                 </div>
             @endif
 
-            <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
+            <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/35 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
                 @if($layouts->isEmpty())
                     <div class="py-16 px-6 text-center text-stone-400 dark:text-stone-500 text-sm leading-relaxed">
                         Макетов шапок пока нет. Создайте первый — затем выберите его в макете заявки.
@@ -38,7 +38,7 @@
                             </thead>
                             <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/35">
                                 @foreach($layouts as $layout)
-                                    <tr class="bg-white hover:bg-orange-50/40 dark:bg-stone-950 dark:hover:bg-orange-950/25">
+                                    <tr class="bg-orange-50/20 hover:bg-orange-50/55 dark:bg-stone-950 dark:hover:bg-orange-950/25">
                                         <td class="px-6 py-4 font-medium text-stone-900 dark:text-stone-100">{{ $layout->title }}</td>
                                         <td class="px-6 py-4 text-right whitespace-nowrap space-x-2">
                                             <a href="{{ route('boiler-chief.document-header-layouts.edit', $layout) }}"

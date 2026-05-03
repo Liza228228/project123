@@ -8,6 +8,8 @@ use App\Http\Requests\UpdateBoilerChiefRequestLayoutRequest;
 use App\Models\Application;
 use App\Models\Department;
 use App\Models\DocumentHeaderLayout;
+use App\Models\MaterialStockMovement;
+use App\Models\MaterialStockMovementType;
 use App\Models\RequestLayout;
 use App\Models\Role;
 use App\Models\Subdivision;
@@ -105,6 +107,7 @@ class BoilerChiefRequestLayoutController extends Controller
             'layout' => $requestLayout,
             'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'applications' => $this->reportEquipmentApplications($request->user()),
+            'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
             'allowEditLayout' => true,
             'backRoute' => route('boiler-chief.request-layouts.index'),
             'backLabel' => 'К списку макетов заявок',
@@ -252,6 +255,7 @@ class BoilerChiefRequestLayoutController extends Controller
             'layout' => $requestLayout,
             'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'applications' => $this->reportEquipmentApplications($request->user()),
+            'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
             'allowEditLayout' => false,
             'backRoute' => route('applications.installation-act.layout-fill.index'),
             'backLabel' => 'К списку макетов заявок',
@@ -316,8 +320,8 @@ class BoilerChiefRequestLayoutController extends Controller
 
     private function assertSiteForeman(?User $user): void
     {
-        if (! $user || ! $user->hasAnyRoleId([1, 2, 4, 6, 7])) {
-            abort(403, 'Доступ разрешён только мастеру участка, начальнику котельной, директору, техническому директору или начальнику отдела снабжения.');
+        if (! $user || ! $user->hasAnyRoleId([1, 2, 3, 4, 6, 7])) {
+            abort(403, 'Доступ разрешён только мастеру участка, начальнику котельной, директору, техническому директору, начальнику отдела снабжения или бухгалтеру.');
         }
     }
 
@@ -340,11 +344,76 @@ class BoilerChiefRequestLayoutController extends Controller
         } elseif ($user->hasRoleId(7)) {
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $query->whereIn('subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(3)) {
+            // Бухгалтер может использовать оборудование из всех заявок.
         } else {
             $query->whereRaw('1 = 0');
         }
 
         return $query->get();
+    }
+
+    /**
+     * Остатки оборудования по складам для вставки в отчет.
+     *
+     * @return \Illuminate\Support\Collection<int, array{id: int, label: string, equipment: array<int, array{name: string, quantity: string, line: string}>}>
+     */
+    private function reportWarehouseBalances(?User $user)
+    {
+        if (! $user) {
+            return collect();
+        }
+
+        $rows = MaterialStockMovement::query()
+            ->join('warehouses', 'warehouses.id', '=', 'material_stock_movements.warehouse_id')
+            ->join('equipment', 'equipment.id', '=', 'material_stock_movements.equipment_id')
+            ->leftJoin('measurement_units', 'measurement_units.id', '=', 'equipment.measurement_unit_id')
+            ->join('material_stock_movement_types as msm_types', 'msm_types.id', '=', 'material_stock_movements.material_stock_movement_type_id')
+            ->selectRaw('warehouses.id as warehouse_id')
+            ->selectRaw('warehouses.name as warehouse_name')
+            ->selectRaw('warehouses.subdivision_id as subdivision_id')
+            ->selectRaw('equipment.name as equipment_name')
+            ->selectRaw("COALESCE(measurement_units.code, 'шт') as unit_code")
+            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) as balance', [MaterialStockMovementType::NAME_ISSUE])
+            ->groupBy('warehouses.id', 'warehouses.name', 'warehouses.subdivision_id', 'equipment.name', 'measurement_units.code')
+            ->havingRaw('SUM(CASE WHEN msm_types.name = ? THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) > 0.0005', [MaterialStockMovementType::NAME_ISSUE])
+            ->orderBy('warehouses.name')
+            ->orderBy('equipment.name');
+
+        if ($user->hasRoleId(4)) {
+            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
+            $rows->whereIn('warehouses.subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(7)) {
+            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
+            $rows->whereIn('warehouses.subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(3)) {
+            // Бухгалтер видит все склады и остатки.
+        } else {
+            return collect();
+        }
+
+        return $rows->get()
+            ->groupBy('warehouse_id')
+            ->map(function ($group) {
+                $first = $group->first();
+                $equipment = $group->map(function ($row) {
+                    $quantity = number_format((float) ($row->balance ?? 0), 3, '.', ' ');
+                    $line = trim(((string) ($row->equipment_name ?? '')).' x '.$quantity.' '.((string) ($row->unit_code ?? 'шт')));
+
+                    return [
+                        'name' => (string) ($row->equipment_name ?? ''),
+                        'quantity' => trim($quantity.' '.((string) ($row->unit_code ?? 'шт'))),
+                        'line' => $line,
+                    ];
+                })->values()->all();
+
+                return [
+                    'id' => (int) ($first->warehouse_id ?? 0),
+                    'label' => (string) ($first->warehouse_name ?? 'Склад'),
+                    'equipment' => $equipment,
+                ];
+            })
+            ->values();
     }
 
     /**

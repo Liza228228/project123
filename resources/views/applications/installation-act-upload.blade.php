@@ -19,7 +19,7 @@
                     @endif
                 </div>
 
-                @if(Auth::user()->hasAnyRoleId([1, 2, 4, 6, 7]))
+                @if(Auth::user()->hasAnyRoleId([1, 2, 3, 4, 6, 7]))
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ route('applications.installation-act.layout-fill.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
                             Заполнить макет заявки (только поля)

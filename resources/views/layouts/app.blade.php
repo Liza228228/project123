@@ -30,7 +30,7 @@
             @endisset
 
             <!-- Page Content -->
-            <main class="flex-1 overflow-x-hidden bg-orange-50 dark:bg-orange-950/80 py-4 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <main class="flex-1 overflow-x-hidden bg-white dark:bg-orange-950/80 py-4 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 {{ $slot }}
             </main>
 

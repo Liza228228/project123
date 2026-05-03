@@ -292,7 +292,7 @@
                             <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Название</label>
                             <input type="text" class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
                                    :name="'fields['+index+'][key]'" x-model="field.key" required maxlength="64" />
-                            <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">В тексте заявки вставляйте поле тем же именем в фигурных скобках. Допустимы буквы, цифры, пробелы и «_»; название начинается с буквы или «_».</p>
+                            <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">В тексте заявки вставляйте поле тем же именем в двойных фигурных скобках. Допустимы буквы, цифры, пробелы и «_»; ключ может начинаться с буквы, цифры или «_».</p>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Тип</label>

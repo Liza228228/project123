@@ -34,7 +34,6 @@ class ApplicationController extends Controller
 
     private const ACCOUNTANT_ROLE_ID = 3;
 
-
     public function index(Request $request): View
     {
         $user = $request->user();
@@ -74,7 +73,7 @@ class ApplicationController extends Controller
             $applicationsQuery->withCount('installationActPhotos');
         }
 
-        if ($user?->hasAnyRoleId([1, 2, 6, 3])) {
+        if ($user?->hasAnyRoleId($this->managementEditorRoleIds())) {
             $applicationsQuery->where(function ($outer) {
                 $outer->whereDoesntHave('user', function ($q) {
                     $q->where('role_id', 4);
@@ -932,7 +931,7 @@ class ApplicationController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($rows, $application, $mainWarehouse, $request, $validated): void {
+        DB::transaction(function () use ($rows, $application, $mainWarehouse, $validated): void {
             foreach ($rows as $row) {
                 $item = $application->items->firstWhere('id', $row['item_id']);
                 if (! $item) {
@@ -1012,7 +1011,7 @@ class ApplicationController extends Controller
                 ? redirect()->route('applications.installation-act.upload', ['application_id' => $application->id])
                     ->withErrors(['delivered_stock' => 'Заявка в архиве выполненных — списание недоступно.'])
                 : redirect()->route('applications.show', $application)
-                ->withErrors(['delivered_stock' => 'Заявка в архиве выполненных — списание недоступно.']);
+                    ->withErrors(['delivered_stock' => 'Заявка в архиве выполненных — списание недоступно.']);
         }
 
         $validated = $request->validate([
@@ -1684,7 +1683,7 @@ class ApplicationController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, $application, $item, $deliveryWarehouseId) {
+        DB::transaction(function () use ($application, $item, $deliveryWarehouseId) {
             $item->refresh();
 
             if (! $item->canMarkDeliveryDeliveredByBoilerChief()) {
@@ -1872,21 +1871,6 @@ class ApplicationController extends Controller
             $query->whereIn('subdivision_id', $chiefSubIds);
         }
 
-        if ($user->hasAnyRoleId([1, 2, 6, 3])) {
-            $query->where(function ($outer) {
-                $outer->whereDoesntHave('user', function ($q) {
-                    $q->where('role_id', 4);
-                })->orWhere(function ($q) {
-                    $q->whereHas('items')
-                        ->whereDoesntHave('items', function ($itemQuery) {
-                            $itemQuery
-                                ->where('is_checked', false)
-                                ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                        });
-                });
-            });
-        }
-
         return $query->with(['items', 'installationActPhotos'])
             ->limit(500)
             ->get()
@@ -1931,7 +1915,7 @@ class ApplicationController extends Controller
     private function safeUploadedOriginalName(UploadedFile $file, string $fallbackPrefix): string
     {
         $original = trim((string) $file->getClientOriginalName());
-        $original = str_replace(["\\", '/'], '-', $original);
+        $original = str_replace(['\\', '/'], '-', $original);
         $original = preg_replace('/[\x00-\x1F\x7F:*?"<>|]+/u', '', $original) ?? '';
         $original = trim($original, ". \t\n\r\0\x0B");
 
@@ -1941,6 +1925,7 @@ class ApplicationController extends Controller
 
         if ($original === '') {
             $stamp = now()->format('Ymd-His');
+
             return $extension !== '' ? "{$fallbackPrefix}-{$stamp}.{$extension}" : "{$fallbackPrefix}-{$stamp}";
         }
 
@@ -2006,11 +1991,15 @@ class ApplicationController extends Controller
             return;
         }
 
-        if ($user->hasAnyRoleId([1, 2, 6, 3])) {
+        if ($user->hasAnyRoleId($this->managementEditorRoleIds())) {
             if ($this->isForemanCreatedApplication($application) && $application->needsBoilerChiefReviewBeforeManagement()) {
                 abort(403, 'Заявка пока недоступна: сначала её согласует начальник котельной по подразделению.');
             }
 
+            return;
+        }
+
+        if ($user->hasRoleId(self::ACCOUNTANT_ROLE_ID)) {
             return;
         }
 

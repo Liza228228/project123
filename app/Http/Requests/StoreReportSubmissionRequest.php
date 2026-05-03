@@ -88,6 +88,7 @@ class StoreReportSubmissionRequest extends FormRequest
 
                 if ($selectedUserId <= 0) {
                     $validator->errors()->add('signer_'.$slot.'_user_id', 'Выберите подписанта №'.$slot.'.');
+
                     continue;
                 }
                 if ($expectedRoleId <= 0) {
@@ -108,8 +109,9 @@ class StoreReportSubmissionRequest extends FormRequest
     {
         $allowed = [];
         foreach ($layout->schema['fields'] ?? [] as $field) {
-            if (! empty($field['key'])) {
-                $allowed[(string) $field['key']] = true;
+            $fk = isset($field['key']) ? trim((string) $field['key']) : '';
+            if ($fk !== '') {
+                $allowed[$fk] = true;
             }
         }
 

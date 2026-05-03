@@ -10,8 +10,8 @@
 
     <div class="py-2 sm:py-8 md:py-12">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
-            <div class="overflow-hidden rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-sm">
-                <div class="border-b border-stone-200 dark:border-stone-800 bg-gradient-to-r from-stone-50 via-stone-50/80 to-white dark:from-stone-900/40 dark:via-stone-950 dark:to-stone-950 px-4 py-4 sm:px-8 sm:py-5">
+            <div class="overflow-hidden rounded-2xl border border-orange-200/85 dark:border-stone-800 bg-orange-50/35 dark:bg-stone-950 shadow-sm ring-1 ring-orange-100/70">
+                <div class="border-b border-orange-200/75 dark:border-stone-800 bg-gradient-to-r from-orange-50/80 via-orange-50/35 to-amber-50/25 dark:from-stone-900/40 dark:via-stone-950 dark:to-stone-950 px-4 py-4 sm:px-8 sm:py-5">
                     <h3 class="text-lg font-semibold text-black dark:text-white">Создание учётной записи</h3>
                     <p class="mt-1.5 text-sm text-black/70 dark:text-white/70 max-w-2xl">
                         Заполните ФИО, укажите почту и роль. Пароль нужен для первого входа в систему.
@@ -60,16 +60,29 @@
                             </div>
                             <div class="sm:col-span-2">
                                 <x-input-label for="role_id" value="Роль в системе" />
-                                <select
-                                    id="role_id"
-                                    name="role_id"
-                                    class="mt-1.5 block w-full rounded-lg border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950/50 py-2.5 px-3 text-sm text-black dark:text-white shadow-sm focus:border-stone-500 focus:ring-2 focus:ring-stone-500 dark:focus:border-stone-400 dark:focus:ring-stone-400"
-                                    required
-                                >
-                                    @foreach($roles as $role)
-                                        <option value="{{ $role->id }}" @selected((string) old('role_id') === (string) $role->id)>{{ $role->name }}</option>
-                                    @endforeach
-                                </select>
+                                <div class="mt-1.5 rounded-2xl border border-orange-200/75 dark:border-stone-700 bg-gradient-to-br from-orange-50/85 via-white/80 to-amber-50/40 dark:bg-stone-900/35 px-4 py-4 shadow-sm space-y-4">
+                                    <div class="flex flex-col gap-1">
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-orange-900/70 dark:text-orange-200/75">Выбор роли</p>
+                                        <p class="text-sm text-stone-700 dark:text-stone-300">Роль определяет, какие разделы и действия будут доступны новому пользователю.</p>
+                                    </div>
+                                    <select
+                                        id="role_id"
+                                        name="role_id"
+                                        class="block w-full rounded-xl border-orange-200 dark:border-stone-800 bg-white/95 dark:bg-stone-950/50 py-2.5 px-3 text-sm text-black dark:text-white shadow-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-400/30 dark:focus:border-orange-500"
+                                        required
+                                    >
+                                        @foreach($roles as $role)
+                                            <option value="{{ $role->id }}" @selected((string) old('role_id') === (string) $role->id)>{{ $role->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach($roles as $role)
+                                            <span class="inline-flex items-center rounded-full border border-orange-200/80 bg-white/85 px-3 py-1 text-xs font-medium text-stone-700 dark:border-stone-700 dark:bg-stone-900/45 dark:text-stone-200">
+                                                {{ $role->name }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
                                 <x-input-error :messages="$errors->get('role_id')" class="mt-2" />
                             </div>
                         </div>

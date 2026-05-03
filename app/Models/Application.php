@@ -345,7 +345,10 @@ class Application extends Model
             'fully_approved' => $applications
                 ->whereHas('items')
                 ->whereDoesntHave('items', fn ($q) => $q->where('is_checked', false)),
-            'on_approval' => $applications->where('application_status_id', $pendingId),
+            'on_approval' => $applications->where(function ($q) use ($pendingId) {
+                $q->where('application_status_id', $pendingId)
+                    ->orWhereNull('application_status_id');
+            }),
             'needs_custom_equipment_order' => $applications->whereHas('items', function ($q) {
                 $q->whereNull('equipment_id')
                     ->where('is_checked', true)
