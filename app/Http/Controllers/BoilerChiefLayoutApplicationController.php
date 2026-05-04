@@ -9,8 +9,8 @@ use App\Models\RequestSubmission;
 use App\Models\User;
 use App\Support\RequestLayoutDocumentBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -40,17 +40,47 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->orderBy('name')
             ->limit(500)
             ->get();
-        $applications = Application::query()
-            ->with(['subdivision:id,name', 'items'])
-            ->orderByDesc('id')
-            ->limit(300)
-            ->get();
+        $applications = $this->applicationsForLayoutInsertion($request->user());
+        $layoutSchemasById = $layouts->mapWithKeys(
+            fn (RequestLayout $layout): array => [$layout->id => $layout->clientFillPayload()]
+        )->all();
 
         return view('boiler-chief.layout-applications.create', [
             'layouts' => $layouts,
             'users' => $users,
             'applications' => $applications,
+            'layoutSchemasById' => $layoutSchemasById,
         ]);
+    }
+
+    /**
+     * Та же логика подстановки заявок, что в {@see BoilerChiefRequestLayoutController::reportEquipmentApplications}.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, Application>
+     */
+    private function applicationsForLayoutInsertion(?User $user)
+    {
+        if (! $user) {
+            return collect();
+        }
+        $query = Application::query()
+            ->with(['subdivision:id,name', 'items'])
+            ->orderByDesc('id')
+            ->limit(300);
+
+        if ($user->hasRoleId(4)) {
+            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
+            $query->whereIn('subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(7)) {
+            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
+            $query->whereIn('subdivision_id', $subdivisionIds);
+        } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
+            // бухгалтер, директор, ТД, снабжение — все заявки
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query->get();
     }
 
     public function store(
@@ -173,7 +203,7 @@ class BoilerChiefLayoutApplicationController extends Controller
         if (! $submission->requestLayout) {
             abort(404);
         }
-        if (! $user->hasRoleId(7)) {
+        if (! $user->hasAnyRoleId(User::LAYOUT_APPLICATION_REPORT_ROLE_IDS)) {
             abort(403);
         }
     }

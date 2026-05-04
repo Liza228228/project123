@@ -101,18 +101,26 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function fill(Request $request, RequestLayout $requestLayout): View
     {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertLayoutReportPdfFill($request->user());
+        $user = $request->user();
+        $isBoilerChief = $user instanceof User && $user->hasRoleId(7);
 
         return view('boiler-chief.request-layouts.fill', [
             'layout' => $requestLayout,
             'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'applications' => $this->reportEquipmentApplications($request->user()),
             'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
-            'allowEditLayout' => true,
-            'backRoute' => route('boiler-chief.request-layouts.index'),
-            'backLabel' => 'К списку макетов заявок',
-            'closeRoute' => route('boiler-chief.request-layouts.index'),
-            'cancelRoute' => route('boiler-chief.request-layouts.index'),
+            'allowEditLayout' => $isBoilerChief,
+            'backRoute' => $isBoilerChief
+                ? route('boiler-chief.request-layouts.index')
+                : route('boiler-chief.layout-applications.index'),
+            'backLabel' => $isBoilerChief ? 'К списку макетов заявок' : 'Заявки по макетам',
+            'closeRoute' => $isBoilerChief
+                ? route('boiler-chief.request-layouts.index')
+                : route('boiler-chief.layout-applications.index'),
+            'cancelRoute' => $isBoilerChief
+                ? route('boiler-chief.request-layouts.index')
+                : route('boiler-chief.layout-applications.index'),
             'formAction' => route('boiler-chief.request-layouts.filled-pdf', $requestLayout),
         ]);
     }
@@ -125,7 +133,7 @@ class BoilerChiefRequestLayoutController extends Controller
         RequestLayout $requestLayout,
         RequestLayoutDocumentBuilder $builder
     ): Response {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertLayoutReportPdfFill($request->user());
         $values = $request->fieldValues($requestLayout);
         if ($request->boolean('use_current_date')) {
             $values['_document_date'] = now()->format('d.m.Y');
@@ -179,72 +187,39 @@ class BoilerChiefRequestLayoutController extends Controller
     public function layoutSchemaJson(Request $request, RequestLayout $requestLayout): JsonResponse
     {
         $this->assertOwner($requestLayout, $request->user());
-        $schema = is_array($requestLayout->schema) ? $requestLayout->schema : [];
 
-        $fields = [];
-        foreach ($schema['fields'] ?? [] as $row) {
-            if (! is_array($row) || empty($row['key'])) {
-                continue;
-            }
-            $fields[] = [
-                'key' => (string) $row['key'],
-                'label' => (string) ($row['label'] ?? $row['key']),
-                'type' => (string) ($row['type'] ?? 'text'),
-                'choices' => isset($row['choices']) && is_array($row['choices']) ? array_values($row['choices']) : [],
-            ];
-        }
+        return response()->json($requestLayout->clientFillPayload());
+    }
 
-        $preset = isset($schema['pdf_footer_preset']) ? trim((string) $schema['pdf_footer_preset']) : '';
-        $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
-        if ($signatureSlotsCount <= 0) {
-            $signatureSlotsCount = match ($preset) {
-                'three_signers' => 3,
-                'two_signers' => 2,
-                default => 1,
-            };
-        }
-        $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
-        $signatureRoles = [];
-        $rawSignatureRoles = $schema['signature_roles'] ?? [];
-        if (is_array($rawSignatureRoles)) {
-            for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {
-                $roleId = (int) ($rawSignatureRoles[$slot] ?? $rawSignatureRoles[(string) $slot] ?? 0);
-                if ($roleId > 0) {
-                    $signatureRoles[$slot] = $roleId;
-                }
-            }
-        }
-        $signatureRoleNames = [];
-        if ($signatureRoles !== []) {
-            $roles = Role::query()
-                ->whereIn('id', array_values($signatureRoles))
-                ->pluck('name', 'id');
-            foreach ($signatureRoles as $slot => $roleId) {
-                $signatureRoleNames[$slot] = (string) ($roles[$roleId] ?? '');
-            }
-        }
+    /**
+     * JSON схемы для формы «Заявки по макетам» / заполнения отчёта: те же роли, что для заполнения макета по акту.
+     */
+    public function layoutSchemaJsonForReportFillers(Request $request, RequestLayout $requestLayout): JsonResponse
+    {
+        $this->assertSiteForeman($request->user());
 
-        return response()->json([
-            'id' => $requestLayout->id,
-            'title' => $requestLayout->title,
-            'fields' => $fields,
-            'pdf_footer_preset' => $preset !== '' ? $preset : 'one_signer_author',
-            'signature_slots_count' => $signatureSlotsCount,
-            'signature_roles' => $signatureRoles,
-            'signature_role_names' => $signatureRoleNames,
-        ]);
+        return response()->json($requestLayout->clientFillPayload());
     }
 
     public function foremanFillIndex(Request $request): View
     {
-        $this->assertSiteForeman($request->user());
+        $user = $request->user();
+        $this->assertSiteForeman($user);
 
         $layouts = RequestLayout::query()
             ->with(['approver:id,surname,name,patronymic'])
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('applications.installation-act-layout-fill-index', compact('layouts'));
+        $parent = $user instanceof User
+            ? $this->installationActParentLink($user)
+            : ['href' => route('dashboard'), 'label' => 'Главная'];
+
+        return view('applications.installation-act-layout-fill-index', [
+            'layouts' => $layouts,
+            'layoutFillParentHref' => $parent['href'],
+            'layoutFillParentLabel' => $parent['label'],
+        ]);
     }
 
     public function foremanFill(Request $request, RequestLayout $requestLayout): View
@@ -318,11 +293,46 @@ class BoilerChiefRequestLayoutController extends Controller
         }
     }
 
+    /** PDF «Новая заявка» по макету: начальник котельной и бухгалтер (как в middleware layout_application_reports). */
+    private function assertLayoutReportPdfFill(?User $user): void
+    {
+        if (! $user || ! $user->hasAnyRoleId(User::LAYOUT_APPLICATION_REPORT_ROLE_IDS)) {
+            abort(403, 'Заполнение этой формы доступно только начальнику котельной и бухгалтеру.');
+        }
+    }
+
     private function assertSiteForeman(?User $user): void
     {
         if (! $user || ! $user->hasAnyRoleId([1, 2, 3, 4, 6, 7])) {
             abort(403, 'Доступ разрешён только мастеру участка, начальнику котельной, директору, техническому директору, начальнику отдела снабжения или бухгалтеру.');
         }
+    }
+
+    /**
+     * Куда вести «назад» из списка макетов для заполнения: бухгалтер не имеет доступа к загрузке акта, только к просмотру актов.
+     *
+     * @return array{href: string, label: string}
+     */
+    private function installationActParentLink(User $user): array
+    {
+        if ($user->hasRoleId(3)) {
+            return [
+                'href' => route('applications.installation-act.browse'),
+                'label' => 'Акты по заявкам',
+            ];
+        }
+
+        if ($user->hasAnyRoleId([1, 6, 2, 4, 7])) {
+            return [
+                'href' => route('applications.installation-act.upload'),
+                'label' => 'Акт установки',
+            ];
+        }
+
+        return [
+            'href' => route('dashboard'),
+            'label' => 'Главная',
+        ];
     }
 
     /**
@@ -344,8 +354,8 @@ class BoilerChiefRequestLayoutController extends Controller
         } elseif ($user->hasRoleId(7)) {
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $query->whereIn('subdivision_id', $subdivisionIds);
-        } elseif ($user->hasRoleId(3)) {
-            // Бухгалтер может использовать оборудование из всех заявок.
+        } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
+            // Бухгалтер, директор, ТД и снабжение — все заявки для подстановки в PDF (без сохранения заявки в БД).
         } else {
             $query->whereRaw('1 = 0');
         }
@@ -386,8 +396,8 @@ class BoilerChiefRequestLayoutController extends Controller
         } elseif ($user->hasRoleId(7)) {
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $rows->whereIn('warehouses.subdivision_id', $subdivisionIds);
-        } elseif ($user->hasRoleId(3)) {
-            // Бухгалтер видит все склады и остатки.
+        } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
+            // Бухгалтер, директор, ТД и снабжение — остатки по всем складам.
         } else {
             return collect();
         }

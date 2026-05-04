@@ -20,6 +20,9 @@ class User extends Authenticatable
     /** Директор и начальник снабжения — заказ нестандартного («своего») оборудования и приход на основной склад по нему. */
     public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = [1, 2];
 
+    /** Начальник котельной и бухгалтер — раздел «Заявки по макетам» (PDF) и JSON схемы для формы. */
+    public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = [7, 3];
+
     /** Списание со склада «Администрация» по согласованным позициям из справочника. */
     public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = [1, 2, 6];
 

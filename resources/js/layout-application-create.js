@@ -6,7 +6,10 @@ export function registerLayoutApplicationCreate(Alpine) {
         layouts: cfg.layouts || [],
         users: cfg.users || [],
         applications: cfg.applications || [],
-        schemaBase: cfg.schemaBase,
+        /** Серверные схемы по id макета — без отдельного fetch (надёжно для бухгалтера и без пересборки Vite). */
+        layoutSchemasById: cfg.layoutSchemasById && typeof cfg.layoutSchemasById === 'object' ? cfg.layoutSchemasById : {},
+        /** Базовый URL без id: …/applications/installation-act/layout-schema */
+        schemaJsonBase: cfg.schemaJsonBase || cfg.schemaBase || '',
         storeUrl: cfg.storeUrl,
         token: cfg.token,
         layoutId: null,
@@ -14,7 +17,8 @@ export function registerLayoutApplicationCreate(Alpine) {
         signatureSlotsCount: 1,
         signatureRoles: {},
         signatureRoleNames: {},
-        selectedApplicationId: '',
+        /** @type {number[]} */
+        selectedApplicationIds: [],
         selectedApplicationEquipment: '',
         insertEquipmentFormat: 'list',
         activeEditorFieldKey: '',
@@ -35,39 +39,86 @@ export function registerLayoutApplicationCreate(Alpine) {
                 this.layoutId = cfg.preselectLayoutId;
                 this.$nextTick(() => this.loadFields());
             }
+            this.$watch('selectedApplicationIds', () => {
+                this.selectedApplicationEquipment = '';
+            });
         },
-        async loadFields() {
-            if (!this.layoutId) {
-                this.fields = [];
-                this.footerPreset = 'one_signer_author';
-                this.signatureSlotsCount = 1;
-                this.signatureRoles = {};
-                this.signatureRoleNames = {};
-                return;
+        selectAllApplications() {
+            this.selectedApplicationIds = (this.applications || []).map((a) => Number(a.id)).filter((id) => id > 0);
+        },
+        clearApplicationSelection() {
+            this.selectedApplicationIds = [];
+        },
+        get allApplicationsSelected() {
+            const apps = this.applications || [];
+            const ids = this.selectedApplicationIds || [];
+            return apps.length > 0 && ids.length === apps.length;
+        },
+        toggleSelectAllApplications() {
+            if (this.allApplicationsSelected) {
+                this.clearApplicationSelection();
+            } else {
+                this.selectAllApplications();
             }
-            this.loading = true;
+        },
+        resetLayoutSchemaState() {
             this.fields = [];
             this.footerPreset = 'one_signer_author';
             this.signatureSlotsCount = 1;
             this.signatureRoles = {};
             this.signatureRoleNames = {};
+        },
+        getEmbeddedLayoutSchema() {
+            const id = this.layoutId;
+            const map = this.layoutSchemasById;
+            if (!id || !map || typeof map !== 'object') {
+                return null;
+            }
+            const raw = map[id] ?? map[String(id)];
+            return raw && typeof raw === 'object' ? raw : null;
+        },
+        applyLayoutSchemaData(d) {
+            if (!d || typeof d !== 'object') {
+                return;
+            }
+            this.footerPreset = d.pdf_footer_preset || 'one_signer_author';
+            const rawSlots = d.signature_slots_count;
+            const n = Number(rawSlots);
+            this.signatureSlotsCount = Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : 1;
+            this.signatureRoles = d.signature_roles && typeof d.signature_roles === 'object' ? d.signature_roles : {};
+            this.signatureRoleNames =
+                d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
+            const raw = Array.isArray(d.fields) ? d.fields : [];
+            this.fields = raw.map((f, idx) => ({
+                key: f.key,
+                label: f.label || f.key,
+                type: f.type === 'number' ? 'number' : f.type === 'textarea' ? 'textarea' : 'text',
+                slug: `f${idx}_${this.slugify(String(f.key))}`,
+            }));
+        },
+        async loadFields() {
+            if (!this.layoutId) {
+                this.resetLayoutSchemaState();
+                return;
+            }
+            this.loading = true;
+            this.resetLayoutSchemaState();
             try {
-                const r = await fetch(`${this.schemaBase}/${this.layoutId}/schema-json`, {
-                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                });
-                const d = await r.json();
-                this.footerPreset = d.pdf_footer_preset || 'one_signer_author';
-                this.signatureSlotsCount = Number(d.signature_slots_count || 1);
-                this.signatureRoles = d.signature_roles && typeof d.signature_roles === 'object' ? d.signature_roles : {};
-                this.signatureRoleNames = d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
-                const raw = Array.isArray(d.fields) ? d.fields : [];
-                this.fields = raw.map((f, idx) => ({
-                    key: f.key,
-                    label: f.label || f.key,
-                    type: f.type === 'number' ? 'number' : f.type === 'textarea' ? 'textarea' : 'text',
-                    slug: `f${idx}_${this.slugify(String(f.key))}`,
-                }));
+                const embedded = this.getEmbeddedLayoutSchema();
+                if (embedded) {
+                    this.applyLayoutSchemaData(embedded);
+                } else {
+                    const base = (this.schemaJsonBase || '').replace(/\/$/, '');
+                    const r = await fetch(`${base}/${this.layoutId}`, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    });
+                    if (!r.ok) {
+                        throw new Error(`HTTP ${r.status}`);
+                    }
+                    const d = await r.json();
+                    this.applyLayoutSchemaData(d);
+                }
                 await this.$nextTick();
                 this.fields
                     .filter((f) => f.type !== 'number')
@@ -79,18 +130,17 @@ export function registerLayoutApplicationCreate(Alpine) {
                         }
                     });
             } catch (e) {
-                this.fields = [];
-                this.footerPreset = 'one_signer_author';
-                this.signatureSlotsCount = 1;
-                this.signatureRoles = {};
-                this.signatureRoleNames = {};
+                this.resetLayoutSchemaState();
+                if (typeof window !== 'undefined' && window.console?.warn) {
+                    console.warn('layoutApplicationCreate.loadFields', e);
+                }
             }
             this.loading = false;
         },
         get signerSlotCount() {
-            const configured = Number(this.signatureSlotsCount || 0);
-            if (configured >= 1) {
-                return Math.max(1, Math.min(3, configured));
+            const configured = Number(this.signatureSlotsCount);
+            if (Number.isFinite(configured) && configured >= 0) {
+                return Math.max(0, Math.min(3, configured));
             }
             const p = this.footerPreset;
             return p === 'three_signers' ? 3 : p === 'two_signers' ? 2 : 1;
@@ -99,16 +149,43 @@ export function registerLayoutApplicationCreate(Alpine) {
             const n = this.signerSlotCount;
             return Array.from({ length: n }, (_, i) => i + 1);
         },
+        cleanEquipmentPayloadRow(r) {
+            if (!r || typeof r !== 'object') {
+                return r;
+            }
+            const { __sourceAppId, __optionLabel, ...rest } = r;
+
+            return rest;
+        },
         selectedApplicationEquipmentOptions() {
-            const appId = Number(this.selectedApplicationId || 0);
-            if (!appId) {
+            const ids = Array.isArray(this.selectedApplicationIds)
+                ? this.selectedApplicationIds.map((x) => Number(x)).filter((id) => id > 0)
+                : [];
+            if (ids.length === 0) {
                 return [];
             }
-            const app = this.applications.find((a) => Number(a.id || 0) === appId);
-            if (!app || !Array.isArray(app.equipment)) {
-                return [];
+            const multi = ids.length > 1;
+            const rows = [];
+            for (const id of ids) {
+                const app = this.applications.find((a) => Number(a.id || 0) === id);
+                if (!app || !Array.isArray(app.equipment)) {
+                    continue;
+                }
+                for (const eq of app.equipment) {
+                    const line = String(eq?.line || '').trim();
+                    if (line === '') {
+                        continue;
+                    }
+                    rows.push({
+                        name: String(eq?.name || ''),
+                        quantity: String(eq?.quantity || ''),
+                        line,
+                        ...(multi ? { __sourceAppId: id, __optionLabel: `#${id} ${line}` } : {}),
+                    });
+                }
             }
-            return app.equipment;
+
+            return rows;
         },
         setActiveEditorField(fieldKey) {
             this.activeEditorFieldKey = String(fieldKey || '');
@@ -134,31 +211,83 @@ export function registerLayoutApplicationCreate(Alpine) {
                 .replaceAll('>', '&gt;')
                 .replaceAll('"', '&quot;');
         },
-        buildEquipmentInsertHtml(rows) {
-            const normalized = rows.map((r) => this.normalizeEquipmentRow(r)).filter(Boolean);
-            if (normalized.length === 0) {
+        buildEquipmentInsertHtml(rawRows) {
+            if (!Array.isArray(rawRows) || rawRows.length === 0) {
                 return '';
             }
-            if (this.insertEquipmentFormat === 'table') {
-                const bodyRows = normalized
-                    .map(
-                        (r) =>
-                            `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
-                    )
-                    .join('');
-                return (
-                    '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
-                    '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
-                    '<tbody>' +
-                    bodyRows +
-                    '</tbody></table><br>'
-                );
+            const hasAppBreak = rawRows.some((r) => r && r.__sourceAppId != null);
+            if (!hasAppBreak) {
+                const flat = rawRows
+                    .map((r) => this.normalizeEquipmentRow(this.cleanEquipmentPayloadRow(r)))
+                    .filter(Boolean);
+                if (flat.length === 0) {
+                    return '';
+                }
+                if (this.insertEquipmentFormat === 'table') {
+                    const bodyRows = flat
+                        .map(
+                            (r) =>
+                                `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
+                        )
+                        .join('');
+                    return (
+                        '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                        '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
+                        '<tbody>' +
+                        bodyRows +
+                        '</tbody></table><br>'
+                    );
+                }
+                return flat.map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`).join('<br>') + '<br>';
             }
-            return (
-                normalized
-                    .map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`)
-                    .join('<br>') + '<br>'
-            );
+            const groups = [];
+            let curId = null;
+            let bucket = [];
+            const flush = () => {
+                if (bucket.length === 0) {
+                    return;
+                }
+                groups.push({ appId: curId, rows: bucket.slice() });
+                bucket = [];
+            };
+            for (const r of rawRows) {
+                const id = r.__sourceAppId;
+                const n = this.normalizeEquipmentRow(this.cleanEquipmentPayloadRow(r));
+                if (!n) {
+                    continue;
+                }
+                if (id !== curId) {
+                    flush();
+                    curId = id;
+                }
+                bucket.push(n);
+            }
+            flush();
+            if (groups.length === 0) {
+                return '';
+            }
+            const parts = [];
+            for (const grp of groups) {
+                const header = `<p style="margin:0.4em 0 0.2em 0;"><strong>Заявка №${this.escapeHtmlForPdfCell(String(grp.appId))}</strong></p>`;
+                if (this.insertEquipmentFormat === 'table') {
+                    const bodyRows = grp.rows
+                        .map(
+                            (r) =>
+                                `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
+                        )
+                        .join('');
+                    parts.push(
+                        header +
+                            '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                            '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead><tbody>' +
+                            bodyRows +
+                            '</tbody></table>'
+                    );
+                } else {
+                    parts.push(header + grp.rows.map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`).join('<br>'));
+                }
+            }
+            return parts.join('<br>') + '<br>';
         },
         insertSelectedEquipmentIntoActiveField() {
             const rawEquipment = String(this.selectedApplicationEquipment || '').trim();
@@ -168,9 +297,13 @@ export function registerLayoutApplicationCreate(Alpine) {
             }
             let rows = [];
             if (rawEquipment === '__ALL__') {
+                if (!Array.isArray(this.selectedApplicationIds) || this.selectedApplicationIds.length === 0) {
+                    window.alert('Отметьте одну или несколько заявок (или нажмите «Все заявки»).');
+                    return;
+                }
                 rows = this.selectedApplicationEquipmentOptions();
                 if (!Array.isArray(rows) || rows.length === 0) {
-                    window.alert('В этой заявке нет строк оборудования.');
+                    window.alert('В выбранных заявках нет строк оборудования.');
                     return;
                 }
             } else {

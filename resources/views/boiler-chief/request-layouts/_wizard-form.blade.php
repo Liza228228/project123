@@ -37,22 +37,16 @@
     $initialHeading = old('heading_template', $schema['heading_template'] ?? '');
     $initialHeader = old('header_template', $schema['header_template'] ?? '');
     $pdfBodyAlign = old('pdf_body_align', $schema['pdf_body_align'] ?? 'center');
-    $initialPreset = old('pdf_footer_preset', $schema['pdf_footer_preset'] ?? 'one_signer_author');
     $initialFooterStamp = old('footer_stamp', ($schema['footer_stamp'] ?? true) ? '1' : '0');
     $initialFooterStampBool = filter_var($initialFooterStamp, FILTER_VALIDATE_BOOLEAN);
     $initialPresHeadingPt = (int) old('presentation_heading_size_pt', $schema['presentation_heading_size_pt'] ?? 18);
     $initialPresSubtitlePt = (int) old('presentation_subtitle_size_pt', $schema['presentation_subtitle_size_pt'] ?? 12);
     $needsStatementHeader = old('needs_statement_header', ($schema['needs_statement_header'] ?? false) || ($layout?->document_header_layout_id ? true : false));
     $needsStatementHeader = filter_var($needsStatementHeader, FILTER_VALIDATE_BOOLEAN);
-    $signatureSlotsCount = (int) old('signature_slots_count', $schema['signature_slots_count'] ?? 0);
-    if ($signatureSlotsCount <= 0) {
-        $signatureSlotsCount = match ((string) ($schema['pdf_footer_preset'] ?? $initialPreset)) {
-            'three_signers' => 3,
-            'two_signers' => 2,
-            default => 1,
-        };
+    $signatureSlotsCount = \App\Models\RequestLayout::resolvedSignatureSlotsCount($schema);
+    if (old('signature_slots_count') !== null && old('signature_slots_count') !== '') {
+        $signatureSlotsCount = max(0, min(3, (int) old('signature_slots_count')));
     }
-    $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
     $rawSignatureRoles = old('signature_roles', $schema['signature_roles'] ?? []);
     $initialSignatureRoles = [];
     foreach ([1, 2, 3] as $slot) {
@@ -76,14 +70,14 @@
         documentHeaderLayoutId: @js((string) (old('document_header_layout_id', $layout?->document_header_layout_id ?? '') ?: '')),
         presentationHeadingSizePt: {{ $initialPresHeadingPt }},
         presentationSubtitleSizePt: {{ $initialPresSubtitlePt }},
-        pdfFooterPreset: @js($initialPreset),
         signatureSlotsCount: {{ $signatureSlotsCount }},
         signatureRoles: {{ Js::from($initialSignatureRoles) }},
         footerStamp: @js($initialFooterStampBool),
         pdfBodyAlign: @js($pdfBodyAlign),
         signatureSlotIndices() {
-            const n = Number(this.signatureSlotsCount || 1);
-            return Array.from({ length: Math.max(1, Math.min(3, n)) }, (_, i) => i + 1);
+            const n = Number(this.signatureSlotsCount ?? 0);
+            const c = Math.max(0, Math.min(3, Number.isFinite(n) ? n : 0));
+            return Array.from({ length: c }, (_, i) => i + 1);
         },
         ensureSelectedTokenField() {
             if (this.fields.length === 0) { this.selectedTokenField = ''; return; }
@@ -125,6 +119,7 @@
         <input type="hidden" name="body_template" x-bind:value="bodyTemplate"/>
         <input type="hidden" name="needs_statement_header" :value="needsStatementHeader ? 1 : 0"/>
         <input type="hidden" name="footer_stamp" :value="footerStamp ? 1 : 0"/>
+        <input type="hidden" name="pdf_footer_preset" value="{{ old('pdf_footer_preset', (string) ($schema['pdf_footer_preset'] ?? 'one_signer_author')) }}"/>
 
         @if ($errors->any())
             <div class="mx-5 mt-5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-900 dark:text-rose-100" role="alert">
@@ -189,27 +184,18 @@
                         </select>
                     </div>
                 </div>
-                <div>
-                    <label for="pdf_footer_preset" class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Подвал в PDF</label>
-                    <select id="pdf_footer_preset" name="pdf_footer_preset" x-model="pdfFooterPreset"
-                            class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm">
-                        <option value="one_signer_author">Один подписант (автор заявки)</option>
-                        <option value="two_signers">Два подписанта (строки слева)</option>
-                        <option value="three_signers">Три подписанта (строки слева)</option>
-                        <option value="classic_split">Классика: ФИО и текст слева, подпись справа</option>
-                    </select>
-                </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="signature_slots_count" class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Сколько подписей в отчете</label>
                         <select id="signature_slots_count" name="signature_slots_count" x-model.number="signatureSlotsCount"
                                 class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm">
+                            <option value="0">Без подписей</option>
                             <option value="1">1 подпись</option>
                             <option value="2">2 подписи</option>
                             <option value="3">3 подписи</option>
                         </select>
                     </div>
-                    <div class="sm:col-span-1">
+                    <div class="sm:col-span-1" x-show="signatureSlotsCount > 0" x-cloak>
                         <p class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Роли подписантов</p>
                         <div class="space-y-2 rounded-lg border border-stone-200 dark:border-stone-700 p-2.5">
                             <template x-for="slot in signatureSlotIndices()" :key="'slot_role_' + slot">
@@ -232,7 +218,7 @@
                     <span>Резерв места под печать (М.П.)</span>
                 </label>
                 <p class="text-[11px] text-stone-500 dark:text-stone-400 leading-relaxed">
-                    Подписи в подвале формируются из выбранного шаблона; системные подстановки (например coordinator_name) подставляются при генерации PDF.
+                    Количество подписей и роли задаются ниже; при генерации PDF подставляются выбранные ФИО и системные поля макета.
                 </p>
             </div>
 

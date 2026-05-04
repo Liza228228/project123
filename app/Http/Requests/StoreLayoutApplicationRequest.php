@@ -44,16 +44,10 @@ class StoreLayoutApplicationRequest extends FormRequest
             }
 
             $schema = is_array($layout->schema) ? $layout->schema : [];
-            $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
-            if ($signatureSlotsCount <= 0) {
-                $preset = trim((string) ($schema['pdf_footer_preset'] ?? ''));
-                $signatureSlotsCount = match ($preset) {
-                    'three_signers' => 3,
-                    'two_signers' => 2,
-                    default => 1,
-                };
+            $signatureSlotsCount = RequestLayout::resolvedSignatureSlotsCount($schema);
+            if ($signatureSlotsCount === 0) {
+                return;
             }
-            $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
             $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
 
             for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {

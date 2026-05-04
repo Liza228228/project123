@@ -131,7 +131,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'presentation_heading_size_pt' => ['nullable', 'integer', 'min:8', 'max:36'],
             'presentation_subtitle_size_pt' => ['nullable', 'integer', 'min:8', 'max:28'],
             'pdf_footer_preset' => ['nullable', 'string', 'in:one_signer_author,two_signers,three_signers,classic_split'],
-            'signature_slots_count' => ['nullable', 'integer', 'min:1', 'max:3'],
+            'signature_slots_count' => ['nullable', 'integer', 'min:0', 'max:3'],
             'signature_roles' => ['nullable', 'array'],
             'signature_roles.*' => ['nullable', 'integer', 'exists:roles,id'],
             'footer_stamp' => ['sometimes', 'boolean'],
@@ -233,11 +233,19 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                 }
                 $keys[$k] = true;
             }
-            $slotCount = (int) ($this->input('signature_slots_count') ?? 0);
-            $slotCount = max(1, min(3, $slotCount));
+            $slotCount = (int) ($this->input('signature_slots_count', -1));
+            if ($slotCount < 0) {
+                $slotCount = $this->defaultSignatureSlotsCount(
+                    (string) $this->input('pdf_footer_preset', 'one_signer_author')
+                );
+            }
+            $slotCount = max(0, min(3, $slotCount));
             $signatureRoles = $this->input('signature_roles', []);
             if (! is_array($signatureRoles)) {
                 $signatureRoles = [];
+            }
+            if ($slotCount === 0) {
+                return;
             }
             for ($slot = 1; $slot <= $slotCount; $slot++) {
                 $roleId = (int) ($signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? 0);
@@ -296,10 +304,14 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
 
         $preset = isset($validated['pdf_footer_preset']) ? trim((string) $validated['pdf_footer_preset']) : '';
         $footerStamp = $this->boolean('footer_stamp');
-        $signatureSlotsCount = max(1, min(3, (int) ($validated['signature_slots_count'] ?? $this->defaultSignatureSlotsCount($preset))));
+        if (array_key_exists('signature_slots_count', $validated)) {
+            $signatureSlotsCount = max(0, min(3, (int) $validated['signature_slots_count']));
+        } else {
+            $signatureSlotsCount = max(1, min(3, $this->defaultSignatureSlotsCount($preset)));
+        }
         $signatureRoles = [];
         $rolesInput = $validated['signature_roles'] ?? [];
-        if (is_array($rolesInput)) {
+        if (is_array($rolesInput) && $signatureSlotsCount > 0) {
             for ($slot = 1; $slot <= $signatureSlotsCount; $slot++) {
                 $roleId = (int) ($rolesInput[$slot] ?? $rolesInput[(string) $slot] ?? 0);
                 if ($roleId > 0) {
@@ -307,7 +319,10 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                 }
             }
         }
-        if ($preset !== '') {
+        if ($signatureSlotsCount === 0) {
+            $footerLeft = '';
+            $signature = '';
+        } elseif ($preset !== '') {
             [$footerLeft, $signature] = $this->footerTemplatesFromPreset($preset, $footerStamp);
         } else {
             $footerLeft = (string) ($validated['footer_left_template'] ?? '');

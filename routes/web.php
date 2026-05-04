@@ -61,6 +61,7 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/installation-act/layout-fill', [BoilerChiefRequestLayoutController::class, 'foremanFillIndex'])->name('installation-act.layout-fill.index');
     Route::get('/installation-act/layout-fill/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'foremanFill'])->name('installation-act.layout-fill.fill');
     Route::post('/installation-act/layout-fill/{requestLayout}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanDownloadFilledPdf'])->name('installation-act.layout-fill.pdf');
+    Route::get('/installation-act/layout-schema/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJsonForReportFillers'])->name('installation-act.layout-schema');
     Route::get('/custom-equipment-to-order', [ApplicationController::class, 'customEquipmentToOrder'])->name('custom-equipment-to-order');
     Route::get('/{application}/custom-equipment-order', [ApplicationController::class, 'customEquipmentOrderForm'])->name('custom-equipment-order');
     Route::post('/{application}/custom-equipment-order/ordered', [ApplicationController::class, 'markCustomEquipmentOrderedBulk'])->name('custom-equipment-order.ordered');
@@ -103,7 +104,12 @@ Route::middleware('auth')->prefix('boiler-chief-subdivisions')->name('boiler-chi
     Route::put('/{chief}', [BoilerChiefSubdivisionAssignmentController::class, 'update'])->name('update');
 });
 
-Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/layout-applications')->name('boiler-chief.layout-applications.')->group(function () {
+Route::middleware(['auth', 'layout_application_reports'])->prefix('boiler-chief/request-layouts')->name('boiler-chief.request-layouts.')->group(function () {
+    Route::get('/{requestLayout}/fill', [BoilerChiefRequestLayoutController::class, 'fill'])->name('fill');
+    Route::post('/{requestLayout}/filled-pdf', [BoilerChiefRequestLayoutController::class, 'downloadFilledPdf'])->name('filled-pdf');
+});
+
+Route::middleware(['auth', 'layout_application_reports'])->prefix('boiler-chief/layout-applications')->name('boiler-chief.layout-applications.')->group(function () {
     Route::get('/', [BoilerChiefLayoutApplicationController::class, 'index'])->name('index');
     Route::get('/create', [BoilerChiefLayoutApplicationController::class, 'create'])->name('create');
     Route::post('/', [BoilerChiefLayoutApplicationController::class, 'store'])->name('store');
@@ -125,9 +131,7 @@ Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/request-layout
     Route::get('/create', [BoilerChiefRequestLayoutController::class, 'create'])->name('create');
     Route::get('/{requestLayout}/schema-json', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJson'])->name('schema-json');
     Route::post('/', [BoilerChiefRequestLayoutController::class, 'store'])->name('store');
-    Route::post('/{requestLayout}/filled-pdf', [BoilerChiefRequestLayoutController::class, 'downloadFilledPdf'])->name('filled-pdf');
     Route::get('/{requestLayout}/edit', [BoilerChiefRequestLayoutController::class, 'edit'])->name('edit');
-    Route::get('/{requestLayout}/fill', [BoilerChiefRequestLayoutController::class, 'fill'])->name('fill');
     Route::put('/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'update'])->name('update');
     Route::delete('/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'destroy'])->name('destroy');
 });

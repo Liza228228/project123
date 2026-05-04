@@ -17,8 +17,14 @@
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8 space-y-8 sm:space-y-10">
                 <p class="rounded-xl border border-stone-200/80 bg-stone-50/60 px-4 py-3 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-800/35 dark:text-stone-100">
-                    Выберите заявку. 
+                    Выберите заявку.
                 </p>
+
+                <div class="flex flex-wrap gap-2">
+                    <a href="{{ route('applications.installation-act.layout-fill.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
+                        Заполнить макет заявки (только поля)
+                    </a>
+                </div>
 
                 <form method="get" action="{{ route('applications.installation-act.browse') }}" class="space-y-4">
                     <section class="space-y-4" aria-labelledby="browse-act-select">

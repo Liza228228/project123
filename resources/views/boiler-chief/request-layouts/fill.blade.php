@@ -39,15 +39,7 @@
             })
             ->values()
             ->all();
-        $signatureSlotsCount = (int) ($schema['signature_slots_count'] ?? 0);
-        if ($signatureSlotsCount <= 0) {
-            $signatureSlotsCount = match ((string) ($schema['pdf_footer_preset'] ?? '')) {
-                'three_signers' => 3,
-                'two_signers' => 2,
-                default => 1,
-            };
-        }
-        $signatureSlotsCount = max(1, min(3, $signatureSlotsCount));
+        $signatureSlotsCount = \App\Models\RequestLayout::resolvedSignatureSlotsCount($schema);
         $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
     @endphp
     <x-slot name="header">
@@ -133,17 +125,29 @@
                 <div class="space-y-2 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
                     <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
                     <div>
-                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите заявку</label>
-                        <select id="report-source-application" class="app-select min-h-0">
-                            <option value="">— Выберите заявку —</option>
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <span class="block text-xs text-stone-500 dark:text-stone-400">Заявки (можно несколько или все)</span>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="report-select-all-apps" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90">Все заявки</button>
+                                <button type="button" id="report-clear-apps" class="text-xs font-medium text-stone-600 hover:underline dark:text-stone-400">Снять</button>
+                            </div>
+                        </div>
+                        <div id="report-source-applications" class="max-h-48 overflow-y-auto rounded-lg border border-orange-200/80 bg-white px-3 py-2 space-y-1.5 dark:border-orange-900/50 dark:bg-stone-900/40">
+                            <label class="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-200 cursor-pointer border-b border-stone-100 pb-1.5 mb-0.5 dark:border-stone-700">
+                                <input type="checkbox" id="report-source-application-all" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"/>
+                                <span>Выбрать все заявки</span>
+                            </label>
                             @foreach($applicationOptions as $app)
-                                <option value="{{ $app['id'] }}">{{ $app['label'] }}</option>
+                                <label class="flex items-center gap-2 text-sm text-stone-800 dark:text-stone-100 cursor-pointer">
+                                    <input type="checkbox" class="report-app-cb rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" value="{{ $app['id'] }}"/>
+                                    <span class="truncate">{{ $app['label'] }}</span>
+                                </label>
                             @endforeach
-                        </select>
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Выберите оборудование из заявки</label>
-                        <select id="report-source-equipment" class="app-select min-h-0">
+                        <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Оборудование из выбранных заявок</label>
+                        <select id="report-source-equipment" class="app-select min-h-0" disabled>
                             <option value="">— Выберите оборудование —</option>
                         </select>
                     </div>
@@ -257,7 +261,7 @@
             const applications = @json($applicationOptions);
             const warehouseBalances = @json($warehouseOptions);
             let activeTextField = null;
-            const appSelect = document.getElementById('report-source-application');
+            const appContainer = document.getElementById('report-source-applications');
             const equipmentSelect = document.getElementById('report-source-equipment');
             const warehouseSelect = document.getElementById('report-source-warehouse');
             const warehouseEquipmentSelect = document.getElementById('report-source-warehouse-equipment');
@@ -278,6 +282,14 @@
                     .replaceAll('<', '&lt;')
                     .replaceAll('>', '&gt;')
                     .replaceAll('"', '&quot;');
+            const stripEquipmentMeta = (row) => {
+                if (!row || typeof row !== 'object') {
+                    return row;
+                }
+                const { __sourceAppId, __optionLabel, ...rest } = row;
+
+                return rest;
+            };
             const normalizeEquipmentRow = (row) => {
                 if (!row || typeof row !== 'object') {
                     return null;
@@ -290,55 +302,142 @@
                 }
                 return { name, quantity, line };
             };
+            const getSelectedApplicationIds = () =>
+                Array.from(document.querySelectorAll('.report-app-cb:checked'))
+                    .map((cb) => Number(cb.value))
+                    .filter((id) => id > 0);
+            const syncApplicationMasterCheckbox = () => {
+                const master = document.getElementById('report-source-application-all');
+                if (!master) {
+                    return;
+                }
+                const cbs = document.querySelectorAll('.report-app-cb');
+                const n = cbs.length;
+                const checked = Array.from(cbs).filter((cb) => cb.checked).length;
+                master.checked = n > 0 && checked === n;
+            };
             const buildEquipmentInsertion = (rows, mode) => {
-                const list = rows.map(normalizeEquipmentRow).filter(Boolean);
-                if (list.length === 0) {
+                const hasBreak = Array.isArray(rows) && rows.some((r) => r && r.__sourceAppId != null);
+                if (!hasBreak) {
+                    const list = rows.map(stripEquipmentMeta).map(normalizeEquipmentRow).filter(Boolean);
+                    if (list.length === 0) {
+                        return '';
+                    }
+                    if (mode === 'table') {
+                        const bodyRows = list
+                            .map(
+                                (r) =>
+                                    '<tr><td>' +
+                                    escapeHtmlForPdf(r.name) +
+                                    '</td><td>' +
+                                    escapeHtmlForPdf(r.quantity) +
+                                    '</td></tr>'
+                            )
+                            .join('');
+                        return (
+                            '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                            '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
+                            '<tbody>' +
+                            bodyRows +
+                            '</tbody></table>'
+                        );
+                    }
+                    return list.map((r) => '- ' + r.line).join('\n');
+                }
+                const groups = [];
+                let curId = null;
+                let bucket = [];
+                const flush = () => {
+                    if (bucket.length === 0) {
+                        return;
+                    }
+                    groups.push({ appId: curId, rows: bucket.slice() });
+                    bucket = [];
+                };
+                for (const r of rows) {
+                    const id = r.__sourceAppId;
+                    const n = normalizeEquipmentRow(stripEquipmentMeta(r));
+                    if (!n) {
+                        continue;
+                    }
+                    if (id !== curId) {
+                        flush();
+                        curId = id;
+                    }
+                    bucket.push(n);
+                }
+                flush();
+                if (groups.length === 0) {
                     return '';
                 }
                 if (mode === 'table') {
-                    const bodyRows = list
-                        .map(
-                            (r) =>
-                                '<tr><td>' +
-                                escapeHtmlForPdf(r.name) +
-                                '</td><td>' +
-                                escapeHtmlForPdf(r.quantity) +
-                                '</td></tr>'
-                        )
-                        .join('');
-                    return (
-                        '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
-                        '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead>' +
-                        '<tbody>' +
-                        bodyRows +
-                        '</tbody></table>'
-                    );
+                    return groups
+                        .map((g) => {
+                            const head = 'Заявка №' + String(g.appId) + '\n';
+                            const bodyRows = g.rows
+                                .map(
+                                    (r) =>
+                                        '<tr><td>' +
+                                        escapeHtmlForPdf(r.name) +
+                                        '</td><td>' +
+                                        escapeHtmlForPdf(r.quantity) +
+                                        '</td></tr>'
+                                )
+                                .join('');
+                            return (
+                                head +
+                                '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                                '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead><tbody>' +
+                                bodyRows +
+                                '</tbody></table>'
+                            );
+                        })
+                        .join('\n\n');
                 }
-                return list.map((r) => '- ' + r.line).join('\n');
+                return groups
+                    .map((g) => 'Заявка №' + String(g.appId) + '\n' + g.rows.map((r) => '- ' + r.line).join('\n'))
+                    .join('\n\n');
             };
             const renderEquipmentOptions = () => {
-                if (!equipmentSelect || !appSelect) return;
-                const appId = Number(appSelect.value || 0);
-                const app = applications.find((x) => Number(x.id || 0) === appId);
-                equipmentSelect.innerHTML = '<option value="">— Выберите оборудование —</option>';
-                if (!app || !Array.isArray(app.equipment)) {
+                if (!equipmentSelect) {
                     return;
                 }
+                const ids = getSelectedApplicationIds();
+                equipmentSelect.innerHTML = '<option value="">— Выберите оборудование —</option>';
+                equipmentSelect.disabled = ids.length === 0;
+                if (ids.length === 0) {
+                    return;
+                }
+                const multi = ids.length > 1;
                 const optAll = document.createElement('option');
                 optAll.value = '__ALL__';
-                optAll.textContent = 'Все позиции заявки';
+                optAll.textContent = multi ? 'Все позиции выбранных заявок' : 'Все позиции заявки';
                 equipmentSelect.appendChild(optAll);
-                app.equipment.forEach((row) => {
-                    const option = document.createElement('option');
-                    const payload = {
-                        name: String(row?.name || ''),
-                        quantity: String(row?.quantity || ''),
-                        line: String(row?.line || ''),
-                    };
-                    option.value = JSON.stringify(payload);
-                    option.textContent = payload.line;
-                    equipmentSelect.appendChild(option);
-                });
+                for (const appId of ids) {
+                    const app = applications.find((x) => Number(x.id || 0) === appId);
+                    if (!app || !Array.isArray(app.equipment)) {
+                        continue;
+                    }
+                    app.equipment.forEach((row) => {
+                        const line = String(row?.line || '').trim();
+                        if (line === '') {
+                            return;
+                        }
+                        const payload = {
+                            name: String(row?.name || ''),
+                            quantity: String(row?.quantity || ''),
+                            line,
+                        };
+                        if (multi) {
+                            payload.__sourceAppId = appId;
+                            payload.__optionLabel = '#' + String(appId) + ' ' + line;
+                        }
+                        const option = document.createElement('option');
+                        option.value = JSON.stringify(payload);
+                        option.textContent = multi ? payload.__optionLabel : line;
+                        equipmentSelect.appendChild(option);
+                    });
+                }
             };
             const renderWarehouseEquipmentOptions = () => {
                 if (!warehouseEquipmentSelect || !warehouseSelect) return;
@@ -364,9 +463,34 @@
                     warehouseEquipmentSelect.appendChild(option);
                 });
             };
-            if (appSelect) {
-                appSelect.addEventListener('change', renderEquipmentOptions);
+            if (appContainer) {
+                appContainer.addEventListener('change', (e) => {
+                    const t = e.target;
+                    if (t && t.id === 'report-source-application-all') {
+                        const on = Boolean(t.checked);
+                        appContainer.querySelectorAll('.report-app-cb').forEach((cb) => {
+                            cb.checked = on;
+                        });
+                    } else if (t && t.classList && t.classList.contains('report-app-cb')) {
+                        syncApplicationMasterCheckbox();
+                    }
+                    renderEquipmentOptions();
+                });
             }
+            document.getElementById('report-select-all-apps')?.addEventListener('click', () => {
+                appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
+                    cb.checked = true;
+                });
+                syncApplicationMasterCheckbox();
+                renderEquipmentOptions();
+            });
+            document.getElementById('report-clear-apps')?.addEventListener('click', () => {
+                appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
+                    cb.checked = false;
+                });
+                syncApplicationMasterCheckbox();
+                renderEquipmentOptions();
+            });
             if (warehouseSelect) {
                 warehouseSelect.addEventListener('change', renderWarehouseEquipmentOptions);
             }
@@ -381,13 +505,37 @@
                         window.alert('Сначала выберите оборудование.');
                         return;
                     }
-                    const appId = Number(appSelect?.value || 0);
-                    const app = applications.find((x) => Number(x.id || 0) === appId);
+                    const selectedIds = getSelectedApplicationIds();
                     let rows = [];
                     if (raw === '__ALL__') {
-                        rows = Array.isArray(app?.equipment) ? app.equipment : [];
+                        if (selectedIds.length === 0) {
+                            window.alert('Отметьте одну или несколько заявок (или «Все заявки»).');
+                            return;
+                        }
+                        const multi = selectedIds.length > 1;
+                        for (const appId of selectedIds) {
+                            const app = applications.find((x) => Number(x.id || 0) === appId);
+                            if (!app || !Array.isArray(app.equipment)) {
+                                continue;
+                            }
+                            for (const row of app.equipment) {
+                                const line = String(row?.line || '').trim();
+                                if (line === '') {
+                                    continue;
+                                }
+                                const payload = {
+                                    name: String(row?.name || ''),
+                                    quantity: String(row?.quantity || ''),
+                                    line,
+                                };
+                                if (multi) {
+                                    payload.__sourceAppId = appId;
+                                }
+                                rows.push(payload);
+                            }
+                        }
                         if (rows.length === 0) {
-                            window.alert('В этой заявке нет строк оборудования.');
+                            window.alert('В выбранных заявках нет строк оборудования.');
                             return;
                         }
                     } else {
@@ -397,12 +545,12 @@
                         } catch (_) {
                             selected = null;
                         }
-                        const one = normalizeEquipmentRow(selected);
+                        const one = normalizeEquipmentRow(stripEquipmentMeta(selected));
                         if (!one) {
                             window.alert('Не удалось прочитать выбранную позицию.');
                             return;
                         }
-                        rows = [one];
+                        rows = [selected];
                     }
                     const mode = String(formatSelect?.value || 'list') === 'table' ? 'table' : 'list';
                     const insertedText = buildEquipmentInsertion(rows, mode);

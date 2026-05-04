@@ -5,7 +5,9 @@
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS);
         $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
         $canUseReportGenerator = $user->hasRoleId(7);
-        $canFillReport = $user->hasAnyRoleId([1, 2, 3, 4, 6, 7]);
+        $canLayoutApplicationsOnly = $user->hasRoleId(3);
+        // Бухгалтер: без «Отчет» — макеты в «Заявки по макетам».
+        $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6, 7]);
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
@@ -91,6 +93,12 @@
                                 <x-dropdown-link :href="route('boiler-chief.layout-applications.index')">Заявки по макетам</x-dropdown-link>
                             </x-slot>
                         </x-dropdown>
+                    @elseif ($canLayoutApplicationsOnly)
+                        <a href="{{ route('boiler-chief.layout-applications.index') }}"
+                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
+                            Заявки по макетам
+                        </a>
                     @endif
 
                     @if ($canManageMaterials || $canViewWarehouseBalances)
@@ -247,6 +255,10 @@
                 <x-responsive-nav-link :href="route('boiler-chief.request-layouts.index')" :active="request()->routeIs('boiler-chief.request-layouts.*')">
                     Макеты заявок (PDF)
                 </x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
+                    Заявки по макетам
+                </x-responsive-nav-link>
+            @elseif ($canLayoutApplicationsOnly)
                 <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
                     Заявки по макетам
                 </x-responsive-nav-link>

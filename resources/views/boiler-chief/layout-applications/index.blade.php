@@ -1,7 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('boiler-chief.request-layouts.index')">Макеты заявок (PDF)</x-page-header-nav>
+            <x-page-header-nav :href="Auth::user()->hasRoleId(7) ? route('boiler-chief.request-layouts.index') : route('boiler-chief.layout-applications.index')">
+                {{ Auth::user()->hasRoleId(7) ? 'Макеты заявок (PDF)' : 'Заявки по макетам' }}
+            </x-page-header-nav>
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
                 <h2 class="font-semibold text-xl text-stone-900 dark:text-white leading-tight min-w-0 break-words">
                     Заявки по макетам

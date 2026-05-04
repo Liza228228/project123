@@ -4,7 +4,10 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "k6:applications": "load-tests\\run-k6.cmd run --env BASE_URL=http://127.0.0.1:8000 load-tests/applications-load-test.js",
+        "k6:applications:strict": "load-tests\\run-k6.cmd run --env K6_STRICT=1 --env BASE_URL=http://127.0.0.1:8000 load-tests/applications-load-test.js",
+        "k6:applications:smoke": "load-tests\\run-k6.cmd run --env K6_QUICK=1 --env BASE_URL=http://127.0.0.1:8000 load-tests/applications-load-test.js"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",

@@ -37,7 +37,8 @@
             layouts: {{ \Illuminate\Support\Js::from($layoutOptions) }},
             users: {{ \Illuminate\Support\Js::from($userOptions) }},
             applications: {{ \Illuminate\Support\Js::from($applicationOptions) }},
-            schemaBase: @js(url('/boiler-chief/request-layouts')),
+            layoutSchemasById: {{ \Illuminate\Support\Js::from($layoutSchemasById ?? []) }},
+            schemaJsonBase: @js(url('/applications/installation-act/layout-schema')),
             storeUrl: @js(route('boiler-chief.layout-applications.store')),
             token: @js(csrf_token()),
             preselectLayoutId: @js((int) request('layout', 0)),
@@ -67,21 +68,41 @@
                         <div class="space-y-2 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
                             <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
                             <div>
-                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Выберите заявку</label>
-                                <select class="app-select" x-model.number="selectedApplicationId">
-                                    <option value="">— Выберите заявку —</option>
-                                    <template x-for="app in applications" :key="'app_' + app.id">
-                                        <option :value="app.id" x-text="app.label"></option>
+                                <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                    <label class="block text-xs text-stone-600 dark:text-stone-300">Заявки (можно несколько или все)</label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90" @click="selectAllApplications()">Все заявки</button>
+                                        <button type="button" class="text-xs font-medium text-stone-600 hover:underline dark:text-stone-400" @click="clearApplicationSelection()">Снять</button>
+                                    </div>
+                                </div>
+                                <template x-if="!applications || applications.length === 0">
+                                    <p class="text-xs text-stone-500 dark:text-stone-400">Нет заявок для подстановки.</p>
+                                </template>
+                                <div x-show="applications && applications.length > 0" class="max-h-48 overflow-y-auto rounded-lg border border-orange-200/80 bg-white px-3 py-2 space-y-1.5 dark:border-orange-900/50 dark:bg-stone-900/40">
+                                    <label class="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-200 cursor-pointer border-b border-stone-100 pb-1.5 mb-0.5 dark:border-stone-700">
+                                        <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"
+                                               :checked="allApplicationsSelected"
+                                               @change="toggleSelectAllApplications()"/>
+                                        <span>Выбрать все заявки</span>
+                                    </label>
+                                    <template x-for="app in applications" :key="'app_cb_' + app.id">
+                                        <label class="flex items-center gap-2 text-sm text-stone-800 dark:text-stone-100 cursor-pointer">
+                                            <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"
+                                                   :value="app.id"
+                                                   x-model="selectedApplicationIds"/>
+                                            <span class="truncate" x-text="app.label"></span>
+                                        </label>
                                     </template>
-                                </select>
+                                </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Оборудование из выбранной заявки</label>
-                                <select class="app-select" x-model="selectedApplicationEquipment">
+                                <label class="block text-xs text-stone-600 dark:text-stone-300 mb-1">Оборудование из выбранных заявок</label>
+                                <select class="app-select" x-model="selectedApplicationEquipment" :disabled="!selectedApplicationIds || selectedApplicationIds.length === 0">
                                     <option value="">— Выберите оборудование —</option>
-                                    <option value="__ALL__">Все позиции заявки</option>
-                                    <template x-for="(eq, idx) in selectedApplicationEquipmentOptions()" :key="'eq_' + idx + '_' + (eq.line || '')">
-                                        <option :value="JSON.stringify(eq)" x-text="eq.line"></option>
+                                    <option value="__ALL__" x-show="selectedApplicationIds && selectedApplicationIds.length > 0"
+                                            x-text="selectedApplicationIds && selectedApplicationIds.length > 1 ? 'Все позиции выбранных заявок' : 'Все позиции заявки'"></option>
+                                    <template x-for="(eq, idx) in selectedApplicationEquipmentOptions()" :key="'eq_' + idx + '_' + (eq.line || '') + '_' + (eq.__sourceAppId || '')">
+                                        <option :value="JSON.stringify(eq)" x-text="eq.__optionLabel || eq.line"></option>
                                     </template>
                                 </select>
                             </div>
