@@ -71,7 +71,7 @@
                             <p class="text-sm text-stone-600 dark:text-stone-400">
                                 <span class="font-mono text-xs">{{ $actBasename }}</span>
                             </p>
-                            <div class="flex flex-wrap gap-2">
+                            <div class="app-actions-row">
                                 <a
                                     href="{{ route('applications.installation-act.view', $selectedApplication) }}"
                                     target="_blank"

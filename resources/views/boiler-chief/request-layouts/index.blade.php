@@ -7,7 +7,7 @@
     <x-slot name="header">
         <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 w-full min-w-0">
             <h2 class="font-semibold text-xl text-stone-900 dark:text-white leading-tight min-w-0 break-words">
-                Макеты заявок (PDF)
+                Макеты отчетов (PDF)
             </h2>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:justify-end shrink-0">
                 <a href="{{ route('boiler-chief.document-header-layouts.index') }}"
@@ -154,24 +154,24 @@
             </div>
         </div>
 
-        <div class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/50 px-3 py-10"
+        <div class="fixed inset-0 z-[70] flex items-stretch justify-center overflow-y-auto bg-black/50 sm:items-start sm:px-3 sm:py-10"
              x-show="reportOpen"
              x-cloak
              x-transition.opacity
              @keydown.escape.window="reportOpen = false">
             <div class="absolute inset-0" @click="reportOpen = false"></div>
-            <div class="relative w-full max-w-lg overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/40 shadow-2xl ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:ring-orange-950/35"
+            <div class="relative flex w-full flex-col overflow-hidden border border-orange-200/85 bg-orange-50/40 shadow-2xl ring-1 ring-orange-100/90 max-h-[100dvh] max-sm:rounded-none sm:max-h-none sm:max-w-lg sm:rounded-2xl dark:border-orange-900/50 dark:bg-stone-950 dark:ring-orange-950/35"
                  @click.stop>
                 <div class="flex items-center justify-between border-b border-orange-100/90 px-5 py-4 dark:border-orange-900/40">
-                    <h3 class="text-base font-semibold text-stone-900 dark:text-white">Новая заявка</h3>
+                    <h3 class="text-base font-semibold text-stone-900 dark:text-white">Новый отчет</h3>
                     <button type="button" class="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200" @click="reportOpen = false" title="Закрыть">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <form x-ref="reportForm" class="space-y-4 px-5 pb-6" @submit="submitReport($event)">
+                <form x-ref="reportForm" class="space-y-4 overflow-y-auto px-5 pb-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]" @submit="submitReport($event)">
                     @csrf
                     <div>
-                        <label class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет заявки</label>
+                        <label class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет отчета</label>
                         <select x-model="layoutId" @change="loadFields()"
                                 class="app-select">
                             <template x-for="l in layouts" :key="l.id">
@@ -193,7 +193,11 @@
                                 <input :name="'values[' + field.key + ']'" type="number" step="any"
                                        class="app-input min-h-0"/>
                             </template>
-                            <template x-if="field.type !== 'textarea' && field.type !== 'number'">
+                            <template x-if="field.type === 'date'">
+                                <input :name="'values[' + field.key + ']'" type="date"
+                                       class="app-input min-h-0"/>
+                            </template>
+                            <template x-if="field.type !== 'textarea' && field.type !== 'number' && field.type !== 'date'">
                                 <input :name="'values[' + field.key + ']'" type="text" maxlength="20000"
                                        class="app-input min-h-0"/>
                             </template>

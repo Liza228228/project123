@@ -14,7 +14,8 @@ class DatabaseSeeder extends Seeder
             SubdivisionSeeder::class,
             DepartmentSeeder::class,
             ForemanSubdivisionSeeder::class,
-            WarehouseDataFrom1CsvSeeder::class,
+            BoilerChiefSubdivisionSeeder::class,
+            WarehouseSeeder::class,
             SubdivisionWarehouseSeeder::class,
             AdministrationPrimaryWarehouseSeeder::class,
             MeasurementUnitSeeder::class,
@@ -24,6 +25,7 @@ class DatabaseSeeder extends Seeder
             CustomEquipmentSupplyStatusSeeder::class,
             DeliveryStatusSeeder::class,
             ApplicationSeeder::class,
+            KozlovApplicationsSeeder::class,
         ]);
     }
 }

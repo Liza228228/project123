@@ -23,7 +23,7 @@
 
             <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
-                    <form method="get" action="{{ route('users.index') }}" class="flex flex-col gap-4">
+                    <form method="get" action="{{ route('users.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
                         <div class="app-filter-panel">
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-end">
                             <div class="min-w-0 lg:col-span-2">
@@ -70,7 +70,7 @@
                             <div class="min-w-0 lg:col-span-3">
                                 <p class="app-form-label">Сортировка</p>
                                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                    <div class="grid grid-cols-2 gap-2">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <select name="sort_primary_field"
                                             class="app-select">
                                             <option value="surname" @selected(($sortState['primary_field'] ?? '') === 'surname')>Фамилия</option>
@@ -87,7 +87,7 @@
                                             <option value="desc" @selected(($sortState['primary_direction'] ?? '') === 'desc')>По убыванию</option>
                                         </select>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-2">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <select name="sort_secondary_field"
                                             class="app-select">
                                             <option value="" @selected(empty($sortState['secondary_field']))>Без второго поля</option>
@@ -110,9 +110,6 @@
                         </div>
                         </div>
                         <div class="flex flex-col sm:flex-row flex-wrap gap-2 pt-1 sm:justify-end">
-                            <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[44px] py-3 sm:min-h-0 sm:w-auto sm:py-2 whitespace-nowrap shrink-0 [touch-action:manipulation]">
-                                Применить
-                            </button>
                             @if(
                                 $search !== ''
                                 || $selectedRoleId !== null

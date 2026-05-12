@@ -2,18 +2,17 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureUserIsBoilerChief
 {
-    private const BOILER_CHIEF_ROLE_ID = 7;
-
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $request->user() || ! $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
-            abort(403, 'Раздел доступен только начальнику котельной.');
+        if (! $request->user() || ! $request->user()->hasAnyRoleId(User::REPORT_GENERATOR_ROLE_IDS)) {
+            abort(403, 'Раздел доступен только начальнику котельной и администратору.');
         }
 
         return $next($request);

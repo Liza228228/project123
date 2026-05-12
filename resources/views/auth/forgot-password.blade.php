@@ -14,10 +14,10 @@
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>
 
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button type="submit" class="ui-btn ui-btn--primary w-full justify-center sm:w-auto">
                 Отправить ссылку для сброса пароля
-            </x-primary-button>
+            </button>
         </div>
     </form>
 </x-guest-layout>

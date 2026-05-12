@@ -28,6 +28,16 @@
                         <p class="text-xs text-stone-500 dark:text-stone-400 -mt-1 max-w-2xl">
                             Отметьте подразделения, за которые отвечает мастер, и сохраните назначение.
                         </p>
+                        @if($foremanAssignmentRestrictedToChiefSubdivisions ?? false)
+                            <p class="text-xs text-amber-900/90 dark:text-amber-100/85 rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2 dark:border-amber-900/45 dark:bg-amber-950/30">
+                                Вы назначаете мастера только по <strong>своим</strong> подразделениям. Назначения на другие подразделения не меняются и задаются директором, техническим директором, начальником отдела снабжения или администратором.
+                            </p>
+                        @endif
+                        @if(($foremanAssignmentRestrictedToChiefSubdivisions ?? false) && $subdivisions->isEmpty())
+                            <p class="text-sm text-stone-600 dark:text-stone-400">
+                                У вас не закреплено ни одного подразделения как за начальника котельной — сначала их нужно назначить в разделе «Назначения котельной».
+                            </p>
+                        @endif
 
                         <div class="rounded-xl border border-stone-200/80 bg-white px-4 py-3 dark:border-stone-600/80 dark:bg-stone-900/30 sm:px-5 sm:py-4">
                             <p class="text-xs font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400 mb-2">Сейчас назначено</p>

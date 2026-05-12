@@ -67,7 +67,7 @@ class StoreDocumentHeaderLayoutRequest extends FormRequest
             $blocks[] = [
                 'align' => $block['align'],
                 'bold' => ! empty($block['bold']),
-                'font_family' => $block['font_family'],
+                'font_family' => 'times_new_roman',
                 'font_size_pt' => (int) $block['font_size_pt'],
                 'lines' => $lines,
             ];

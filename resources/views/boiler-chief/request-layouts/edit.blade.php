@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('boiler-chief.request-layouts.index')">К списку макетов заявок</x-page-header-nav>
+            <x-page-header-nav :href="route('boiler-chief.request-layouts.index')">К списку макетов отчетов</x-page-header-nav>
             <h2 class="font-semibold text-xl text-stone-900 dark:text-white">Редактирование макета</h2>
         </div>
     </x-slot>

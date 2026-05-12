@@ -19,6 +19,25 @@ export function registerLayoutApplicationCreate(Alpine) {
         signatureRoleNames: {},
         /** @type {number[]} */
         selectedApplicationIds: [],
+        /** Для селектов подписантов (значения — строки id или ''). */
+        signerSelections: { 1: '', 2: '', 3: '' },
+        layoutViewerContext: (() => {
+            const c = cfg.layoutViewerContext && typeof cfg.layoutViewerContext === 'object' ? cfg.layoutViewerContext : {};
+            return {
+                isBoilerChief: Boolean(c.isBoilerChief),
+                foremanRoleId: Number(c.foremanRoleId) || 4,
+                chiefSubdivisionIds: Array.isArray(c.chiefSubdivisionIds)
+                    ? c.chiefSubdivisionIds.map((id) => Number(id)).filter((id) => id > 0)
+                    : [],
+            };
+        })(),
+        layoutLocked: Boolean(cfg.layoutLocked),
+        initialSubmissionPayload:
+            cfg.initialSubmissionPayload && typeof cfg.initialSubmissionPayload === 'object'
+                ? cfg.initialSubmissionPayload
+                : {},
+        submissionHydrated: false,
+        applicationSearch: '',
         selectedApplicationEquipment: '',
         insertEquipmentFormat: 'list',
         activeEditorFieldKey: '',
@@ -41,6 +60,7 @@ export function registerLayoutApplicationCreate(Alpine) {
             }
             this.$watch('selectedApplicationIds', () => {
                 this.selectedApplicationEquipment = '';
+                this.$nextTick(() => this.applyDefaultForemanForSelectedApplications());
             });
         },
         selectAllApplications() {
@@ -67,6 +87,7 @@ export function registerLayoutApplicationCreate(Alpine) {
             this.signatureSlotsCount = 1;
             this.signatureRoles = {};
             this.signatureRoleNames = {};
+            this.signerSelections = { 1: '', 2: '', 3: '' };
         },
         getEmbeddedLayoutSchema() {
             const id = this.layoutId;
@@ -89,19 +110,27 @@ export function registerLayoutApplicationCreate(Alpine) {
             this.signatureRoleNames =
                 d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
             const raw = Array.isArray(d.fields) ? d.fields : [];
-            this.fields = raw.map((f, idx) => ({
-                key: f.key,
-                label: f.label || f.key,
-                type: f.type === 'number' ? 'number' : f.type === 'textarea' ? 'textarea' : 'text',
-                slug: `f${idx}_${this.slugify(String(f.key))}`,
-            }));
+            const allowedTypes = new Set(['text', 'number', 'textarea', 'date']);
+            this.fields = raw.map((f, idx) => {
+                const t = String(f.type || 'text');
+                const type = allowedTypes.has(t) ? t : 'text';
+
+                return {
+                    key: f.key,
+                    label: f.label || f.key,
+                    type,
+                    slug: `f${idx}_${this.slugify(String(f.key))}`,
+                };
+            });
         },
         async loadFields() {
             if (!this.layoutId) {
                 this.resetLayoutSchemaState();
+                this.submissionHydrated = false;
                 return;
             }
             this.loading = true;
+            this.submissionHydrated = false;
             this.resetLayoutSchemaState();
             try {
                 const embedded = this.getEmbeddedLayoutSchema();
@@ -121,7 +150,7 @@ export function registerLayoutApplicationCreate(Alpine) {
                 }
                 await this.$nextTick();
                 this.fields
-                    .filter((f) => f.type !== 'number')
+                    .filter((f) => f.type === 'text' || f.type === 'textarea')
                     .forEach((f) => {
                         const el = document.getElementById(`editor-${f.slug}`);
                         const h = document.getElementById(`hidden-${f.slug}`);
@@ -129,8 +158,11 @@ export function registerLayoutApplicationCreate(Alpine) {
                             h.value = el.innerHTML;
                         }
                     });
+                this.applyDefaultForemanForSelectedApplications();
+                this.hydrateSubmissionIfNeeded();
             } catch (e) {
                 this.resetLayoutSchemaState();
+                this.submissionHydrated = false;
                 if (typeof window !== 'undefined' && window.console?.warn) {
                     console.warn('layoutApplicationCreate.loadFields', e);
                 }
@@ -266,26 +298,29 @@ export function registerLayoutApplicationCreate(Alpine) {
             if (groups.length === 0) {
                 return '';
             }
+            if (this.insertEquipmentFormat === 'table') {
+                const bodyChunks = [];
+                for (const grp of groups) {
+                    bodyChunks.push(
+                        `<tr><td colspan="2" style="background-color:#f3f4f6;font-weight:700;padding:6px 8px;border:1px solid #111;text-align:left;">Заявка №${this.escapeHtmlForPdfCell(String(grp.appId))}</td></tr>`
+                    );
+                    for (const r of grp.rows) {
+                        bodyChunks.push(
+                            `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
+                        );
+                    }
+                }
+                return (
+                    '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+                    '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead><tbody>' +
+                    bodyChunks.join('') +
+                    '</tbody></table><br>'
+                );
+            }
             const parts = [];
             for (const grp of groups) {
                 const header = `<p style="margin:0.4em 0 0.2em 0;"><strong>Заявка №${this.escapeHtmlForPdfCell(String(grp.appId))}</strong></p>`;
-                if (this.insertEquipmentFormat === 'table') {
-                    const bodyRows = grp.rows
-                        .map(
-                            (r) =>
-                                `<tr><td>${this.escapeHtmlForPdfCell(r.name)}</td><td>${this.escapeHtmlForPdfCell(r.quantity)}</td></tr>`
-                        )
-                        .join('');
-                    parts.push(
-                        header +
-                            '<table border="1" cellpadding="5" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
-                            '<thead><tr><th>Наименование</th><th>Количество</th></tr></thead><tbody>' +
-                            bodyRows +
-                            '</tbody></table>'
-                    );
-                } else {
-                    parts.push(header + grp.rows.map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`).join('<br>'));
-                }
+                parts.push(header + grp.rows.map((r) => `- ${this.escapeHtmlForPdfCell(r.line)}`).join('<br>'));
             }
             return parts.join('<br>') + '<br>';
         },
@@ -326,7 +361,7 @@ export function registerLayoutApplicationCreate(Alpine) {
                 return;
             }
             const f = this.fields.find((x) => x.key === key);
-            if (!f || f.type === 'number') {
+            if (!f || (f.type !== 'text' && f.type !== 'textarea')) {
                 window.alert('Выберите текстовое поле для вставки.');
                 return;
             }
@@ -358,14 +393,100 @@ export function registerLayoutApplicationCreate(Alpine) {
                 return `Подпись ${slot}`;
             }
             const roleName = this.signatureRoleNames?.[slot] || this.signatureRoleNames?.[String(slot)] || '';
-            return roleName ? `Подпись ${slot} (роль: ${roleName})` : `Подпись ${slot}`;
+            return roleName ? `Подпись ${slot} (сотрудник: ${roleName})` : `Подпись ${slot}`;
         },
         usersForSignerSlot(slot) {
             const roleId = this.signerRoleId(slot);
-            if (!roleId) {
-                return this.users;
+            let list = !roleId ? this.users : this.users.filter((u) => Number(u.role_id || 0) === roleId);
+            const ctx = this.layoutViewerContext;
+            const foremanId = ctx.foremanRoleId || 4;
+            if (ctx.isBoilerChief && roleId === foremanId) {
+                const chiefSet = new Set(ctx.chiefSubdivisionIds || []);
+                if (chiefSet.size === 0) {
+                    list = [];
+                } else {
+                    list = list.filter((u) => {
+                        const subs = Array.isArray(u.subdivision_ids) ? u.subdivision_ids : [];
+                        return subs.some((sid) => chiefSet.has(Number(sid)));
+                    });
+                }
             }
-            return this.users.filter((u) => Number(u.role_id || 0) === roleId);
+            return list;
+        },
+        applyDefaultForemanForSelectedApplications() {
+            const ctx = this.layoutViewerContext;
+            const foremanId = ctx.foremanRoleId || 4;
+            const ids = Array.isArray(this.selectedApplicationIds)
+                ? this.selectedApplicationIds.map((x) => Number(x)).filter((id) => id > 0)
+                : [];
+            if (ids.length !== 1 || !ctx.isBoilerChief) {
+                return;
+            }
+            const appId = ids[0];
+            const app = (this.applications || []).find((a) => Number(a.id || 0) === appId);
+            const foremanUserId = app ? Number(app.foreman_user_id || 0) : 0;
+            if (foremanUserId <= 0) {
+                return;
+            }
+            for (const n of this.signerIndices()) {
+                if (this.signerRoleId(n) !== foremanId) {
+                    continue;
+                }
+                const cur = String(this.signerSelections[n] ?? '').trim();
+                if (cur !== '') {
+                    continue;
+                }
+                const allowed = this.usersForSignerSlot(n).some((u) => Number(u.id) === foremanUserId);
+                if (allowed) {
+                    this.signerSelections[n] = String(foremanUserId);
+                }
+            }
+        },
+        hydrateSubmissionIfNeeded() {
+            if (!this.layoutLocked || this.submissionHydrated) {
+                return;
+            }
+            const data = this.initialSubmissionPayload;
+            if (!data || typeof data !== 'object') {
+                this.submissionHydrated = true;
+                return;
+            }
+            for (let i = 1; i <= 3; i += 1) {
+                const k = `signer_${i}_user_id`;
+                const uid = Number(data[k] ?? 0);
+                if (uid > 0) {
+                    this.signerSelections[i] = String(uid);
+                }
+            }
+            for (const f of this.fields) {
+                const key = f.key != null ? String(f.key) : '';
+                if (key === '' || !Object.prototype.hasOwnProperty.call(data, key)) {
+                    continue;
+                }
+                const raw = data[key];
+                const val = raw !== null && raw !== undefined && typeof raw !== 'object' ? String(raw) : '';
+                if (f.type === 'text' || f.type === 'textarea') {
+                    const el = document.getElementById(`editor-${f.slug}`);
+                    const h = document.getElementById(`hidden-${f.slug}`);
+                    if (el) {
+                        el.innerHTML = val;
+                    }
+                    if (h) {
+                        h.value = val;
+                    }
+                } else {
+                    const nameAttr = `values[${key}]`;
+                    const root = this.$root && this.$root.querySelectorAll ? this.$root : document;
+                    const nodes = root.querySelectorAll('input, textarea');
+                    for (const node of nodes) {
+                        if (node.getAttribute('name') === nameAttr && 'value' in node) {
+                            node.value = val;
+                            break;
+                        }
+                    }
+                }
+            }
+            this.submissionHydrated = true;
         },
         syncRich(key, el) {
             const f = this.fields.find((x) => x.key === key);
@@ -434,7 +555,7 @@ export function registerLayoutApplicationCreate(Alpine) {
         },
         async submit(ev) {
             this.fields
-                .filter((f) => f.type !== 'number')
+                .filter((f) => f.type === 'text' || f.type === 'textarea')
                 .forEach((f) => {
                     const el = document.getElementById(`editor-${f.slug}`);
                     const h = document.getElementById(`hidden-${f.slug}`);

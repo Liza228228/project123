@@ -15,6 +15,7 @@ use App\Models\TransportOption;
 use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -56,7 +57,7 @@ class ApplicationController extends Controller
             ->where('role_id', 4)
             ->orderBy('surname')
             ->orderBy('name')
-            ->get(['id', 'surname', 'name', 'patronymic']);
+            ->get(['id', 'surname', 'name', 'patronymic', 'is_blocked']);
         $selectedForemanId = null;
         if (! $isSiteForeman && ! $isBoilerChief) {
             $candidateForemanId = (int) $request->integer('foreman_user_id');
@@ -406,6 +407,7 @@ class ApplicationController extends Controller
         $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
         $users = User::query()
             ->where('role_id', 4)
+            ->where('is_blocked', false)
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
@@ -479,13 +481,13 @@ class ApplicationController extends Controller
 
         $validated = $request->validate([
             'application_id' => ['required', 'integer', 'exists:applications,id'],
-            'installation_act' => ['required', 'file', 'mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png', 'max:10240'],
+            'installation_act' => ['required', 'file', 'mimes:pdf', 'max:10240'],
             'issue_item_ids' => ['nullable', 'array'],
             'issue_item_ids.*' => ['integer'],
         ], [
             'application_id.required' => 'Выберите заявку.',
             'installation_act.required' => 'Загрузите файл акта установки.',
-            'installation_act.mimes' => 'Акт установки: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG.',
+            'installation_act.mimes' => 'Акт установки: только PDF.',
             'installation_act.max' => 'Максимальный размер файла акта: 10 МБ.',
             'issue_item_ids.array' => 'Выбор оборудования для списания передан некорректно.',
         ]);
@@ -650,6 +652,7 @@ class ApplicationController extends Controller
         $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
         $users = User::query()
             ->where('role_id', 4)
+            ->where('is_blocked', false)
             ->orderBy('surname')
             ->orderBy('name')
             ->get();
@@ -689,7 +692,7 @@ class ApplicationController extends Controller
             'source_application_id' => ['nullable', 'exists:applications,id'],
             'responsible_user_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role_id', 4),
+                Rule::exists('users', 'id')->where('role_id', 4)->where('is_blocked', false),
             ],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
@@ -812,22 +815,6 @@ class ApplicationController extends Controller
     {
         $this->authorizeViewApplication($request, $application);
 
-        // Автодоводка "выполненных" заявок: списываем доставленные позиции (если еще не списаны)
-        // и сразу пытаемся перенести заявку в архив.
-        if ($application->archived_at === null) {
-            $application->loadMissing(['subdivision', 'items.equipment.measurementUnit.unitType', 'items.manualDetail', 'installationActPhotos']);
-            $this->writeOffDeliveredItemsOnRecipientWarehouses(
-                $application,
-                $request->user(),
-                'Автосписание при проверке завершения заявки.'
-            );
-            if ($application->archiveIfEligible()) {
-                return redirect()
-                    ->route('applications.show', $application)
-                    ->with('status', 'Заявка автоматически перенесена в архив выполненных.');
-            }
-        }
-
         $application->load([
             'subdivision.warehouses',
             'responsibleUser',
@@ -879,6 +866,8 @@ class ApplicationController extends Controller
         $transportOptions = $this->transportMethodOptionsForForms();
         $companyDeliveryVehicles = $this->transportOptionsWithPlateForDatalist();
 
+        $canChangeApplicationResponsible = $this->canOfferApplicationResponsibleChange($request, $application);
+
         return view('applications.show', compact(
             'application',
             'mainWarehouse',
@@ -887,8 +876,80 @@ class ApplicationController extends Controller
             'boilerChiefDeliverySubdivisions',
             'deliveredWarehouseIssueCandidates',
             'transportOptions',
-            'companyDeliveryVehicles'
+            'companyDeliveryVehicles',
+            'canChangeApplicationResponsible'
         ));
+    }
+
+    public function editResponsible(Request $request, Application $application): View
+    {
+        $this->authorizeCanChangeApplicationResponsible($request);
+        $this->authorizeViewApplication($request, $application);
+
+        if ($application->archived_at !== null) {
+            abort(404);
+        }
+
+        if ($this->applicationItemsLockedForResponsibleChange($application)) {
+            abort(403, 'Смена ответственного недоступна: по заявке уже есть оборудование «В пути» или «Доставлено».');
+        }
+
+        $application->loadMissing('responsibleUser:id,surname,name,patronymic,role_id,is_blocked', 'subdivision:id,name');
+        $responsible = $application->responsibleUser;
+        if (! $responsible || ! $responsible->hasRoleId(4)) {
+            abort(404);
+        }
+
+        $replacementForemen = $this->activeForemenForSubdivisionQuery((int) $application->subdivision_id)
+            ->where('users.id', '!=', (int) $responsible->id)
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->get(['id', 'surname', 'name', 'patronymic']);
+
+        return view('applications.responsible-edit', compact('application', 'responsible', 'replacementForemen'));
+    }
+
+    public function updateResponsible(Request $request, Application $application): RedirectResponse
+    {
+        $this->authorizeCanChangeApplicationResponsible($request);
+        $this->authorizeViewApplication($request, $application);
+
+        if ($application->archived_at !== null) {
+            abort(404);
+        }
+
+        if ($this->applicationItemsLockedForResponsibleChange($application)) {
+            abort(403, 'Смена ответственного недоступна: по заявке уже есть оборудование «В пути» или «Доставлено».');
+        }
+
+        $application->loadMissing('responsibleUser:id,role_id,is_blocked');
+        $responsible = $application->responsibleUser;
+        if (! $responsible || ! $responsible->hasRoleId(4)) {
+            abort(404);
+        }
+
+        $existsActiveForemanRule = Rule::exists('users', 'id')->where('role_id', 4)->where('is_blocked', false);
+
+        $validated = $request->validate([
+            'responsible_user_id' => [
+                'required',
+                'integer',
+                Rule::notIn([(int) $responsible->id]),
+                $existsActiveForemanRule,
+            ],
+        ], [
+            'responsible_user_id.required' => 'Выберите мастера участка.',
+            'responsible_user_id.not_in' => 'Нужно выбрать другого мастера, не текущего ответственного.',
+        ]);
+
+        $newId = (int) $validated['responsible_user_id'];
+        $this->validateSubdivisionAllowedForResponsibleUser((int) $application->subdivision_id, $newId);
+
+        $application->update(['responsible_user_id' => $newId]);
+
+        return redirect()
+            ->route('applications.show', $application)
+            ->with('status', 'Ответственный по заявке обновлён.');
     }
 
     public function issueStock(Request $request, Application $application): RedirectResponse
@@ -1147,13 +1208,10 @@ class ApplicationController extends Controller
                 ->withErrors(['edit' => 'Заявка в архиве выполненных — редактирование недоступно. Для новой поставки создайте повторную заявку.']);
         }
 
-        $subdivisions = Subdivision::orderBy('name')->get();
+        $subdivisions = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
+            ? Subdivision::query()->orderBy('name')->get()
+            : $this->availableSubdivisionsForCreate($request);
         $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
-        $users = User::query()
-            ->where('role_id', 4)
-            ->orderBy('surname')
-            ->orderBy('name')
-            ->get();
 
         $transportOptions = $this->transportMethodOptionsForForms();
 
@@ -1163,7 +1221,15 @@ class ApplicationController extends Controller
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
         $measurementMeta = $this->measurementMetaForUi();
 
-        return view('applications.edit', compact('application', 'subdivisions', 'equipment', 'users', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman', 'measurementMeta'));
+        return view('applications.edit', compact(
+            'application',
+            'subdivisions',
+            'equipment',
+            'transportOptions',
+            'warehousesBySubdivision',
+            'subdivisionIdsByForeman',
+            'measurementMeta',
+        ));
     }
 
     public function update(Request $request, Application $application): RedirectResponse
@@ -1184,15 +1250,12 @@ class ApplicationController extends Controller
         }
 
         $isSiteForeman = $request->user()->hasRoleId(4);
+        $isBoilerChiefUser = $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
 
-        $validated = $request->validate([
+        $rules = [
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
-            'responsible_user_id' => [
-                'nullable',
-                Rule::exists('users', 'id')->where('role_id', 4),
-            ],
             'management_change_reason' => ['nullable', 'string', 'max:500'],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
@@ -1208,7 +1271,9 @@ class ApplicationController extends Controller
             'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
-        ], [
+        ];
+
+        $validated = $request->validate($rules, [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
@@ -1225,10 +1290,21 @@ class ApplicationController extends Controller
             ]);
         }
 
-        $this->validateSubdivisionAllowedForResponsibleUser(
-            (int) $validated['subdivision_id'],
-            isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
-        );
+        if ($isBoilerChiefUser) {
+            $chiefSubs = $request->user()->boilerChiefSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id);
+            if (! $chiefSubs->contains((int) $validated['subdivision_id'])) {
+                throw ValidationException::withMessages([
+                    'subdivision_id' => 'Вы не можете перевести заявку на подразделение вне вашей зоны ответственности.',
+                ]);
+            }
+        }
+
+        if ($isSiteForeman) {
+            $this->validateSubdivisionAllowedForResponsibleUser(
+                (int) $validated['subdivision_id'],
+                (int) $request->user()->id
+            );
+        }
 
         $this->validateMeasurementPairs($validated['items']);
         if ($isSiteForeman) {
@@ -1307,14 +1383,25 @@ class ApplicationController extends Controller
 
         $previousSubdivisionId = (int) $application->subdivision_id;
 
-        DB::transaction(function () use ($application, $validated, $toCreate, $request, $isSiteForeman, $submittedItemIds, $previousSubdivisionId) {
-            $responsibleUserId = $validated['responsible_user_id'] ?? null;
+        DB::transaction(function () use (
+            $application,
+            $validated,
+            $toCreate,
+            $request,
+            $isSiteForeman,
+            $submittedItemIds,
+            $previousSubdivisionId,
+        ) {
+            $nextUserId = (int) $application->user_id;
+
+            $responsibleUserId = $application->responsible_user_id;
             if ($isSiteForeman) {
                 $responsibleUserId = $request->user()->id;
             }
             $existingApprovedByUserId = $application->approved_by_user_id;
 
             $application->update([
+                'user_id' => $nextUserId,
                 'subdivision_id' => $validated['subdivision_id'],
                 'responsible_user_id' => $responsibleUserId,
                 'transport_option_id' => $application->transport_option_id,
@@ -1656,15 +1743,7 @@ class ApplicationController extends Controller
             'delivery_warehouse_id.required' => 'Выберите склад поступления.',
         ]);
 
-        $allowedSubdivisionIds = $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID)
-            ? $request->user()
-                ->boilerChiefSubdivisions()
-                ->pluck('subdivisions.id')
-                ->map(fn ($id) => (int) $id)
-            : $request->user()
-                ->assignedSubdivisions()
-                ->pluck('subdivisions.id')
-                ->map(fn ($id) => (int) $id);
+        $allowedSubdivisionIds = $this->allowedDeliverySubdivisionIdsForUser($request->user());
 
         $deliveryWarehouseId = (int) $validated['delivery_warehouse_id'];
 
@@ -1684,46 +1763,7 @@ class ApplicationController extends Controller
         }
 
         DB::transaction(function () use ($application, $item, $deliveryWarehouseId) {
-            $item->refresh();
-
-            if (! $item->canMarkDeliveryDeliveredByBoilerChief()) {
-                throw ValidationException::withMessages([
-                    'delivery' => 'Позиция уже обработана или не находится в статусе «В пути».',
-                ]);
-            }
-
-            if (! $item->equipment_id) {
-                throw ValidationException::withMessages([
-                    'delivery' => 'Для отметки «Доставлено» позиция должна быть привязана к оборудованию из справочника.',
-                ]);
-            }
-
-            $docRef = $this->deliveryReceiptDocumentRef($application->id, (int) $item->id, $deliveryWarehouseId);
-            $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
-            $alreadyReceived = MaterialStockMovement::query()
-                ->where('material_stock_movement_type_id', $receiptTypeId)
-                ->whereCorrelationKey($docRef)
-                ->exists();
-
-            if (! $alreadyReceived) {
-                MaterialStockMovement::query()->create([
-                    'equipment_id' => (int) $item->equipment_id,
-                    'warehouse_id' => $deliveryWarehouseId,
-                    'material_stock_movement_type_id' => $receiptTypeId,
-                    'quantity' => (float) $item->quantity,
-                    'unit_price' => null,
-                    'counterparty' => 'Доставка по заявке №'.$application->id,
-                    'comment' => MaterialStockMovement::packCommentWithCorrelation(
-                        $docRef,
-                        'Поступление на склад получателя по отметке «Доставлено».'
-                    ),
-                ]);
-            }
-
-            $item->update([
-                'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
-                'delivery_warehouse_id' => $deliveryWarehouseId,
-            ]);
+            $this->markDeliveredWithReceipt($application, $item, $deliveryWarehouseId);
         });
 
         $application->refresh();
@@ -1731,6 +1771,89 @@ class ApplicationController extends Controller
         $archiveHint = $this->archiveCompletedApplicationIfReady($application);
 
         $status = 'Позиция отмечена как доставленная и оприходована на склад получателя. Остаток на этом складе сохраняется до отдельного списания (по акту установки или иной операции списания со склада поступления).';
+        if ($archiveHint !== null) {
+            $status .= ' '.$archiveHint;
+        }
+
+        return redirect()->route('applications.show', $application)
+            ->with('status', $status);
+    }
+
+    public function markItemsDeliveryDeliveredBulk(Request $request, Application $application): RedirectResponse
+    {
+        if (! $request->user()->hasAnyRoleId([self::BOILER_CHIEF_ROLE_ID, 4])) {
+            abort(403, 'Отметка «Доставлено» доступна только начальнику котельной и мастеру участка.');
+        }
+
+        $this->authorizeViewApplication($request, $application);
+        $validated = $request->validate([
+            'delivery_bulk_warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'item_ids' => ['required', 'array', 'min:1'],
+            'item_ids.*' => ['integer', 'distinct'],
+        ], [
+            'delivery_bulk_warehouse_id.required' => 'Выберите склад поступления для групповой отметки.',
+            'item_ids.required' => 'Выберите позиции для групповой отметки «Доставлено».',
+        ]);
+
+        $itemIds = collect($validated['item_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $items = ApplicationItem::query()
+            ->where('application_id', (int) $application->id)
+            ->whereIn('id', $itemIds)
+            ->get();
+
+        if ($items->count() !== $itemIds->count()) {
+            throw ValidationException::withMessages([
+                'delivery' => 'Часть выбранных позиций недоступна для этой заявки.',
+            ]);
+        }
+
+        $expectedSubdivisionIds = $items
+            ->map(fn (ApplicationItem $deliveryItem) => $deliveryItem->resolvedDeliveryTargetSubdivisionId())
+            ->filter(fn ($id) => $id !== null)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($expectedSubdivisionIds->count() !== 1) {
+            throw ValidationException::withMessages([
+                'delivery' => 'Групповая отметка возможна только для позиций одного подразделения.',
+            ]);
+        }
+
+        $expectedSubdivisionId = (int) $expectedSubdivisionIds->first();
+        $deliveryWarehouseId = (int) $validated['delivery_bulk_warehouse_id'];
+        $warehouse = Warehouse::query()->findOrFail($deliveryWarehouseId);
+        $warehouseSubdivisionId = (int) ($warehouse->subdivision_id ?? 0);
+
+        if ($warehouseSubdivisionId !== $expectedSubdivisionId) {
+            throw ValidationException::withMessages([
+                'delivery_bulk_warehouse_id' => 'Склад должен относиться к подразделению, указанному в выбранных позициях.',
+            ]);
+        }
+
+        $allowedSubdivisionIds = $this->allowedDeliverySubdivisionIdsForUser($request->user());
+        if (! $allowedSubdivisionIds->contains($warehouseSubdivisionId)) {
+            throw ValidationException::withMessages([
+                'delivery_bulk_warehouse_id' => 'Вы можете отметить доставку только на склады подразделений, закреплённых за вами.',
+            ]);
+        }
+
+        DB::transaction(function () use ($application, $items, $deliveryWarehouseId) {
+            foreach ($items as $deliveryItem) {
+                $this->markDeliveredWithReceipt($application, $deliveryItem, $deliveryWarehouseId);
+            }
+        });
+
+        $application->refresh();
+        $application->load(['subdivision', 'items', 'installationActPhotos']);
+        $archiveHint = $this->archiveCompletedApplicationIfReady($application);
+
+        $status = 'Выбранные позиции отмечены как доставленные и оприходованы на склад получателя.';
         if ($archiveHint !== null) {
             $status .= ' '.$archiveHint;
         }
@@ -1964,6 +2087,49 @@ class ApplicationController extends Controller
             ->orderByDesc('id')
             ->limit(500)
             ->get();
+    }
+
+    private function authorizeCanChangeApplicationResponsible(Request $request): void
+    {
+        if (! $request->user()?->hasAnyRoleId([1, 6, 2, self::BOILER_CHIEF_ROLE_ID])) {
+            abort(403, 'Смена ответственного по заявке доступна директору, техническому директору, начальнику отдела снабжения и начальнику котельной.');
+        }
+    }
+
+    private function applicationItemsLockedForResponsibleChange(Application $application): bool
+    {
+        $application->loadMissing('items');
+
+        return $application->items->contains(
+            fn (ApplicationItem $i) => in_array(
+                $i->resolvedDeliveryStatus(),
+                [ApplicationItem::DELIVERY_IN_TRANSIT, ApplicationItem::DELIVERY_DELIVERED],
+                true
+            )
+        );
+    }
+
+    private function canOfferApplicationResponsibleChange(Request $request, Application $application): bool
+    {
+        if (! $request->user()?->hasAnyRoleId([1, 6, 2, self::BOILER_CHIEF_ROLE_ID])) {
+            return false;
+        }
+        if ($application->archived_at !== null) {
+            return false;
+        }
+        $application->loadMissing('responsibleUser:id,role_id,is_blocked', 'items');
+        if ($this->applicationItemsLockedForResponsibleChange($application)) {
+            return false;
+        }
+        $ru = $application->responsibleUser;
+        if (! $ru || ! $ru->hasRoleId(4)) {
+            return false;
+        }
+
+        return Application::query()
+            ->whereNull('archived_at')
+            ->where('responsible_user_id', $ru->id)
+            ->exists();
     }
 
     private function authorizeViewApplication(Request $request, Application $application): void
@@ -2311,6 +2477,22 @@ class ApplicationController extends Controller
         }
     }
 
+    /**
+     * Активные мастера участка, закреплённые за указанным подразделением (в т.ч. переназначение с заблокированного мастера
+     * на другого в том же подразделении, что и заявка).
+     *
+     * @return Builder<User>
+     */
+    private function activeForemenForSubdivisionQuery(int $subdivisionId): Builder
+    {
+        return User::query()
+            ->where('role_id', 4)
+            ->where('is_blocked', false)
+            ->whereHas('assignedSubdivisions', function ($q) use ($subdivisionId): void {
+                $q->where('subdivisions.id', $subdivisionId);
+            });
+    }
+
     private function resolveMainWarehouseForAccounting(): ?Warehouse
     {
         return Warehouse::query()
@@ -2442,6 +2624,65 @@ class ApplicationController extends Controller
     private function customReceiptDocumentRef(int $applicationId, int $itemId): string
     {
         return 'APP:'.$applicationId.':ITEM:'.$itemId.':CUSTOM-RCPT';
+    }
+
+    private function allowedDeliverySubdivisionIdsForUser(?User $user): Collection
+    {
+        if (! $user) {
+            return collect();
+        }
+
+        return $user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)
+            ? $user->boilerChiefSubdivisions()
+                ->pluck('subdivisions.id')
+                ->map(fn ($id) => (int) $id)
+            : $user->assignedSubdivisions()
+                ->pluck('subdivisions.id')
+                ->map(fn ($id) => (int) $id);
+    }
+
+    private function markDeliveredWithReceipt(Application $application, ApplicationItem $item, int $deliveryWarehouseId): void
+    {
+        $item->refresh();
+
+        if (! $item->canMarkDeliveryDeliveredByBoilerChief()) {
+            throw ValidationException::withMessages([
+                'delivery' => 'Позиция уже обработана или не находится в статусе «В пути».',
+            ]);
+        }
+
+        if (! $item->equipment_id) {
+            throw ValidationException::withMessages([
+                'delivery' => 'Для отметки «Доставлено» позиция должна быть привязана к оборудованию из справочника.',
+            ]);
+        }
+
+        $docRef = $this->deliveryReceiptDocumentRef($application->id, (int) $item->id, $deliveryWarehouseId);
+        $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+        $alreadyReceived = MaterialStockMovement::query()
+            ->where('material_stock_movement_type_id', $receiptTypeId)
+            ->whereCorrelationKey($docRef)
+            ->exists();
+
+        if (! $alreadyReceived) {
+            MaterialStockMovement::query()->create([
+                'equipment_id' => (int) $item->equipment_id,
+                'warehouse_id' => $deliveryWarehouseId,
+                'material_stock_movement_type_id' => $receiptTypeId,
+                'quantity' => (float) $item->quantity,
+                'unit_price' => null,
+                'counterparty' => 'Доставка по заявке №'.$application->id,
+                'comment' => MaterialStockMovement::packCommentWithCorrelation(
+                    $docRef,
+                    'Поступление на склад получателя по отметке «Доставлено».'
+                ),
+            ]);
+        }
+
+        $item->update([
+            'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+            'delivery_warehouse_id' => $deliveryWarehouseId,
+        ]);
     }
 
     private function deliveryReceiptDocumentRef(int $applicationId, int $itemId, int $warehouseId): string

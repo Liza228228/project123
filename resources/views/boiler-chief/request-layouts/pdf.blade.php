@@ -89,7 +89,9 @@
             <div class="header-block" style="text-align: {{ $pdfHeaderAlign ?? 'right' }};">{!! $headerHtml !!}</div>
         @endif
     @endif
-    <h1 class="doc-title" style="font-size: {{ $presentationTitleSizePt ?? 15 }}pt;">{{ $documentTitle }}</h1>
+    @if(trim((string) ($documentTitle ?? '')) !== '')
+        <h1 class="doc-title" style="font-size: {{ $presentationTitleSizePt ?? 15 }}pt;">{{ $documentTitle }}</h1>
+    @endif
     @if(! empty($showHeading))
         <div class="doc-heading" style="font-size: {{ $presentationSubtitleSizePt ?? 12 }}pt;">{!! $headingHtml ?? '' !!}</div>
     @endif

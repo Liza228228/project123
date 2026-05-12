@@ -60,9 +60,6 @@ final class RequestLayoutDocumentBuilder
         $layout->loadMissing(['documentHeaderLayout', 'approver', 'divisionAssigner']);
         $schema = is_array($layout->schema) ? $layout->schema : [];
         $title = trim((string) ($schema['document_title'] ?? ''));
-        if ($title === '') {
-            $title = 'ЗАЯВКА';
-        }
 
         $heading = (string) ($schema['heading_template'] ?? '');
         $body = (string) ($schema['body_template'] ?? '');
@@ -315,6 +312,11 @@ final class RequestLayoutDocumentBuilder
             }
         }
 
+        // Старые макеты с плейсхолдером {{фио}} без поля в схеме/форме — не выводим сырой токен в PDF.
+        if (mb_strtolower($key, 'UTF-8') === 'фио') {
+            return '';
+        }
+
         return null;
     }
 
@@ -323,7 +325,10 @@ final class RequestLayoutDocumentBuilder
      */
     private function normalizePlaceholderKey(string $key): string
     {
-        return preg_replace('/\s+/u', '', $key);
+        $normalized = str_replace('&nbsp;', '', $key);
+        $normalized = preg_replace('/[\x{200B}\x{200C}\x{200D}\x{FEFF}]/u', '', $normalized) ?? $normalized;
+
+        return preg_replace('/[\h\p{Z}\x{00A0}\x{202F}]+/u', '', $normalized) ?? $normalized;
     }
 
     /**

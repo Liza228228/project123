@@ -21,14 +21,12 @@
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 
-        <div class="flex items-center justify-end mt-4">
+        <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
             @if (Route::has('password.request'))
-                <a class="underline text-sm text-black dark:text-white hover:text-black dark:hover:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-500 dark:focus:ring-offset-stone-800" href="{{ route('password.request') }}">
-                    Забыли пароль?
-                </a>
+              
             @endif
 
-            <button type="submit" class="ui-btn ui-btn--primary ms-3">
+            <button type="submit" class="ui-btn ui-btn--primary w-full justify-center sm:ms-3 sm:w-auto">
                 Войти
             </button>
         </div>

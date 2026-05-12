@@ -22,10 +22,10 @@
             <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
         </div>
 
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button type="submit" class="ui-btn ui-btn--primary w-full justify-center sm:w-auto">
                 Сбросить пароль
-            </x-primary-button>
+            </button>
         </div>
     </form>
 </x-guest-layout>

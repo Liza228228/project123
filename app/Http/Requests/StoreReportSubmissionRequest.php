@@ -91,6 +91,17 @@ class StoreReportSubmissionRequest extends FormRequest
                 $selectedUser = User::query()->find($selectedUserId);
                 if (! $selectedUser || (int) $selectedUser->role_id !== $expectedRoleId) {
                     $validator->errors()->add('signer_'.$slot.'_user_id', 'Подписант №'.$slot.' должен соответствовать выбранной роли.');
+
+                    continue;
+                }
+                $auth = $this->user();
+                if ($auth instanceof User
+                    && $expectedRoleId === 4
+                    && ! User::boilerChiefMaySelectForemanAsSigner($auth, $selectedUser)) {
+                    $validator->errors()->add(
+                        'signer_'.$slot.'_user_id',
+                        'Для начальника котельной доступны только мастера участка из его подразделений.'
+                    );
                 }
             }
         });

@@ -16,6 +16,12 @@
     } else {
         $initialBlocks = [$defaultBlock];
     }
+    foreach ($initialBlocks as $i => $block) {
+        if (! is_array($block)) {
+            continue;
+        }
+        $initialBlocks[$i]['font_family'] = 'times_new_roman';
+    }
 @endphp
 
 <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35"
@@ -23,6 +29,16 @@
         maxBlocks: 3,
         blocks: {{ Js::from($initialBlocks) }},
         fontSizes: [8,9,10,11,12,13,14,16,18,20,22,24],
+        fontFamilyCss(key) {
+            const k = String(key || '').toLowerCase();
+            if (k === 'arial' || k === 'dejavu_sans') return 'DejaVu Sans, Arial, sans-serif';
+            if (k === 'georgia' || k === 'dejavu_serif' || k === 'times_new_roman') return 'DejaVu Serif, serif';
+            return 'DejaVu Serif, serif';
+        },
+        previewText(text) {
+            const t = String(text || '').trim();
+            return t === '' ? '—' : t;
+        },
         remainingSlots() { return Math.max(0, this.maxBlocks - this.blocks.length); },
         addBlock() {
             if (this.blocks.length >= this.maxBlocks) return;
@@ -97,14 +113,9 @@
                     </label>
                     <div class="min-w-[160px] flex-1">
                         <label class="block text-[10px] font-semibold uppercase tracking-wide text-orange-900/90 dark:text-orange-200/85 mb-1">Шрифт блока</label>
-                        <select class="app-select text-sm min-h-0 sm:min-h-0 py-2"
-                                x-model="block.font_family">
-                            <option value="times_new_roman">Times New Roman</option>
-                            <option value="arial">Arial</option>
-                            <option value="dejavu_sans">DejaVu Sans</option>
-                            <option value="dejavu_serif">DejaVu Serif</option>
-                            <option value="georgia">Georgia</option>
-                        </select>
+                        <p class="rounded-xl border border-stone-200/80 bg-stone-50/90 px-3 py-2 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-900/50 dark:text-stone-100">
+                            Times New Roman
+                        </p>
                     </div>
                     <div class="w-24">
                         <label class="block text-[10px] font-semibold uppercase tracking-wide text-orange-900/90 dark:text-orange-200/85 mb-1">Размер (pt)</label>
@@ -134,7 +145,18 @@
                             @click="addLine(bi)">+ Строка</button>
                 </div>
 
-                
+                <div class="rounded-lg border border-orange-200/80 dark:border-orange-900/40 bg-white/80 dark:bg-stone-900/60 p-3">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-orange-900/90 dark:text-orange-200/85 mb-2">
+                        Предпросмотр блока
+                    </p>
+                    <div class="rounded-md border border-stone-200/80 dark:border-stone-700/70 bg-white dark:bg-stone-950 p-3">
+                        <template x-for="(line, li) in block.lines" :key="'preview_' + bi + '_' + li">
+                            <div class="leading-6"
+                                 :style="'text-align:' + (block.align || 'center') + ';font-family:' + fontFamilyCss(block.font_family) + ';font-weight:' + (block.bold ? 700 : 400) + ';font-size:' + (Number(block.font_size_pt || 11)) + 'pt;'"
+                                 x-text="previewText(line.text)"></div>
+                        </template>
+                    </div>
+                </div>
             </div>
         </template>
 
@@ -146,9 +168,7 @@
                 <span>+ Добавить блок шапки</span>
                 <span class="ms-1 opacity-80" x-text="'(ещё ' + remainingSlots() + ' из ' + maxBlocks + ')'"></span>
             </button>
-            <p class="text-xs text-stone-500 dark:text-stone-400 max-w-xl mx-auto">
-                Обычно достаточно одного блока; дополнительные блоки удобны, если нужно отдельно оформить подразделение, учреждение или наименование документа.
-            </p>
+            
         </div>
 
         <div class="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-4 border-t border-orange-100/90 dark:border-orange-900/40">

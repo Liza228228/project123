@@ -16,6 +16,12 @@
                         Выберите готовый макет и заполните только поля. Создание и редактирование шапки/конструктора недоступно.
                     </p>
                 @endunless
+                <div class="flex flex-wrap gap-2">
+                    <span class="ui-btn ui-btn--primary ui-btn--sm">Заполнение макета</span>
+                    <a href="{{ route('applications.installation-act.layout-fill.submissions') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
+                        Просмотр созданных отчетов
+                    </a>
+                </div>
 
                 @if($layouts->isEmpty())
                     <p class="text-sm text-stone-600 dark:text-stone-400">Доступных макетов пока нет.</p>
@@ -25,7 +31,7 @@
                             <li class="bg-white px-4 py-3 dark:bg-stone-900/40">
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div class="min-w-0">
-                                        <p class="text-sm font-medium text-black dark:text-white truncate">{{ $layout->title }}</p>
+                                        <p class="text-sm font-medium text-black dark:text-white break-words">{{ $layout->title }}</p>
                                         @if($layout->approver)
                                             <p class="text-xs text-stone-500 dark:text-stone-400">
                                                 Согласующий:
@@ -35,7 +41,7 @@
                                         @endif
                                     </div>
                                     <a href="{{ route($layoutFillRouteName ?? 'applications.installation-act.layout-fill.fill', $layout) }}"
-                                       class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
+                                       class="ui-btn ui-btn--primary ui-btn--sm w-full justify-center whitespace-nowrap sm:w-auto">
                                         Заполнить поля
                                     </a>
                                 </div>

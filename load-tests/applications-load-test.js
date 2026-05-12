@@ -29,7 +29,6 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Counter } from 'k6/metrics';
 
-/** Собственные метрики по шагам — всегда попадают в handleSummary (в отличие от подвыборок по тегам). */
 const stepLoginGetVisits = new Counter('step_login_get_visits');
 const stepLoginGetDur = new Trend('step_login_get_duration');
 const stepLoginPostVisits = new Counter('step_login_post_visits');
@@ -49,19 +48,17 @@ function recordStep(visitsMetric, durMetric, res) {
 }
 
 const BASE_URL = (__ENV.BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-/** Учётные записи из UserSeeder с доступом к разделу заявок (роли 1–4, 6–7). Разные пользователи снимают блокировку RateLimiter при параллельной нагрузке. */
 const USER_POOL = [
   { email: 'Ivanov@mail.ru', password: '11111111' },
   { email: 'Petrov@mail.ru', password: '11111111' },
   { email: 'Sidorova@mail.ru', password: '11111111' },
   { email: 'Kozlov@mail.ru', password: '11111111' },
   { email: 'Volkov@mail.ru', password: '11111111' },
-  { email: 'Vasiliev@mail.ru', password: '11111111' },
+  { email: 'AntonovSV@mail.ru', password: '11111111' },
 ];
 const QUICK = __ENV.K6_QUICK === '1';
 const STRICT = __ENV.K6_STRICT === '1';
 
-/** Полный сценарий: до 50 одновременных VU (разгон 2 мин, плато 15 мин). */
 const fullScenarioOptions = {
   scenarios: {
     applications_load: {
@@ -107,8 +104,8 @@ const REPORT_ROWS = [
   {
     visitsKey: 'step_login_get_visits',
     durKey: 'step_login_get_duration',
-    visits: 'Запросов страницы входа (GET /login)',
-    perf: 'Страница входа (GET /login)',
+    visits: 'Запросов страницы входа ',
+    perf: 'Страница входа ',
   },
   {
     visitsKey: 'step_login_post_visits',
@@ -119,20 +116,20 @@ const REPORT_ROWS = [
   {
     visitsKey: 'step_dashboard_visits',
     durKey: 'step_dashboard_duration',
-    visits: 'Просмотров дашборда',
-    perf: 'Дашборд (/dashboard)',
+    visits: 'Просмотров главной страницы',
+    perf: 'Главная страница ',
   },
   {
     visitsKey: 'step_applications_visits',
     durKey: 'step_applications_duration',
     visits: 'Просмотров списка заявок',
-    perf: 'Список заявок (/applications)',
+    perf: 'Список заявок',
   },
   {
     visitsKey: 'step_application_show_visits',
     durKey: 'step_application_show_duration',
     visits: 'Просмотров карточки заявки',
-    perf: 'Карточка заявки (/applications/{id})',
+    perf: 'Карточка заявки',
   },
 ];
 

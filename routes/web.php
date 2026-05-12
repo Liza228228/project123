@@ -59,8 +59,10 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/installation-act/upload', [ApplicationController::class, 'storeInstallationActUpload'])->name('installation-act.upload.store');
     Route::get('/installation-act/browse', [ApplicationController::class, 'browseInstallationActs'])->name('installation-act.browse');
     Route::get('/installation-act/layout-fill', [BoilerChiefRequestLayoutController::class, 'foremanFillIndex'])->name('installation-act.layout-fill.index');
+    Route::get('/installation-act/layout-fill/submissions', [BoilerChiefRequestLayoutController::class, 'foremanSubmissionsIndex'])->name('installation-act.layout-fill.submissions');
     Route::get('/installation-act/layout-fill/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'foremanFill'])->name('installation-act.layout-fill.fill');
     Route::post('/installation-act/layout-fill/{requestLayout}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanDownloadFilledPdf'])->name('installation-act.layout-fill.pdf');
+    Route::get('/installation-act/layout-fill/submissions/{submission}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanSubmissionPdf'])->name('installation-act.layout-fill.submission-pdf');
     Route::get('/installation-act/layout-schema/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJsonForReportFillers'])->name('installation-act.layout-schema');
     Route::get('/custom-equipment-to-order', [ApplicationController::class, 'customEquipmentToOrder'])->name('custom-equipment-to-order');
     Route::get('/{application}/custom-equipment-order', [ApplicationController::class, 'customEquipmentOrderForm'])->name('custom-equipment-order');
@@ -78,12 +80,15 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
     Route::post('/{application}/boiler-chief-approval', [ApplicationController::class, 'saveBoilerChiefApproval'])->name('boiler-chief-approval');
     Route::post('/{application}/delivery-in-transit', [ApplicationController::class, 'markApplicationDeliveryInTransit'])->name('delivery-in-transit');
+    Route::post('/{application}/items/delivery-delivered/bulk', [ApplicationController::class, 'markItemsDeliveryDeliveredBulk'])->name('delivery-delivered.bulk');
     Route::post('/{application}/items/{item}/delivery-delivered', [ApplicationController::class, 'markItemDeliveryDelivered'])->name('delivery-delivered');
     Route::post('/{application}/items/{item}/custom-supply-ordered', [ApplicationController::class, 'markCustomEquipmentOrdered'])->name('custom-supply-ordered');
     Route::post('/{application}/items/{item}/custom-supply-in-transit', [ApplicationController::class, 'markCustomEquipmentSupplyInTransit'])->name('custom-supply-in-transit');
     Route::post('/{application}/items/{item}/custom-supply-on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouse'])->name('custom-supply-on-warehouse');
     Route::post('/{application}/issue-stock', [ApplicationController::class, 'issueStock'])->name('issue-stock');
     Route::post('/{application}/issue-delivered-warehouse-stock', [ApplicationController::class, 'issueDeliveredWarehouseStock'])->name('issue-delivered-warehouse-stock');
+    Route::get('/{application}/responsible', [ApplicationController::class, 'editResponsible'])->name('responsible.edit');
+    Route::patch('/{application}/responsible', [ApplicationController::class, 'updateResponsible'])->name('responsible.update');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');
@@ -113,6 +118,8 @@ Route::middleware(['auth', 'layout_application_reports'])->prefix('boiler-chief/
     Route::get('/', [BoilerChiefLayoutApplicationController::class, 'index'])->name('index');
     Route::get('/create', [BoilerChiefLayoutApplicationController::class, 'create'])->name('create');
     Route::post('/', [BoilerChiefLayoutApplicationController::class, 'store'])->name('store');
+    Route::get('/submissions/{submission}/edit', [BoilerChiefLayoutApplicationController::class, 'edit'])->name('edit');
+    Route::put('/submissions/{submission}', [BoilerChiefLayoutApplicationController::class, 'update'])->name('update');
     Route::get('/submissions/{submission}/pdf', [BoilerChiefLayoutApplicationController::class, 'pdf'])->name('pdf');
     Route::delete('/submissions/{submission}', [BoilerChiefLayoutApplicationController::class, 'destroy'])->name('destroy');
 });
@@ -144,6 +151,7 @@ Route::middleware(['auth', 'supply_head'])->prefix('materials')->name('materials
 
 Route::middleware(['auth', 'applications'])->prefix('materials')->name('materials.')->group(function () {
     Route::get('/overview', [MaterialAccountingController::class, 'overview'])->name('overview');
+    Route::get('/movements', [MaterialAccountingController::class, 'movementsJournal'])->name('movements');
 });
 
 require __DIR__.'/auth.php';

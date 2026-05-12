@@ -1,7 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('boiler-chief.request-layouts.index')">Макеты заявок (PDF)</x-page-header-nav>
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
                 <h2 class="font-semibold text-xl text-stone-900 dark:text-white leading-tight min-w-0 break-words">
                     Макеты шапок документов
@@ -25,7 +24,7 @@
             <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/35 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
                 @if($layouts->isEmpty())
                     <div class="py-16 px-6 text-center text-stone-400 dark:text-stone-500 text-sm leading-relaxed">
-                        Макетов шапок пока нет. Создайте первый — затем выберите его в макете заявки.
+                        Макетов шапок пока нет. Создайте первый — затем выберите его в макете отчета.
                     </div>
                 @else
                     <div class="hidden md:block overflow-x-auto">

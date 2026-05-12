@@ -129,7 +129,7 @@
                                     <option value="without">Только без складов</option>
                                 </select>
                             </div>
-                            <form method="GET" action="{{ route('foreman-subdivisions.index') }}" class="w-full sm:w-auto sm:ml-auto">
+                            <form method="GET" action="{{ route('foreman-subdivisions.index') }}" class="w-full sm:w-auto sm:ml-auto" data-auto-submit="filter">
                                 <label for="subdivisions-per-page" class="block text-xs font-medium text-black dark:text-white mb-1">На странице</label>
                                 <div class="flex items-center gap-2">
                                     <select
@@ -137,14 +137,11 @@
                                         name="per_page"
                                         class="block w-full sm:w-32 rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                     >
-                                        @foreach([10, 25, 50] as $size)
-                                            <option value="{{ $size }}" @selected(($perPage ?? 10) === $size)>{{ $size }}</option>
+                                        @foreach(($allowedPerPage ?? [10, 25, 50]) as $size)
+                                            <option value="{{ $size }}" @selected(($perPage ?? ($defaultPerPage ?? 10)) === $size)>{{ $size }}</option>
                                         @endforeach
                                     </select>
-                                    <button type="submit" class="ui-btn ui-btn--primary whitespace-nowrap">
-                                        Применить
-                                    </button>
-                                    @if(($perPage ?? 10) !== 10)
+                                    @if(($perPage ?? ($defaultPerPage ?? 10)) !== ($defaultPerPage ?? 10))
                                         <a
                                             href="{{ route('foreman-subdivisions.index') }}"
                                             class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap"
@@ -174,7 +171,7 @@
                                 @forelse($subdivisions as $subdivision)
                                     @php
                                         $warehouseSearchBlob = $subdivision->warehouses
-                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name.' '.($warehouse->address ?? ''))))
+                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name.' '.$warehouse->formatted_address)))
                                             ->implode(' ');
                                     @endphp
                                     <tr
@@ -198,8 +195,8 @@
                                                             <span class="font-mono text-xs opacity-80">{{ $warehouse->code }}</span>
                                                             <span class="opacity-70">—</span>
                                                             {{ $warehouse->name }}
-                                                            @if(!empty($warehouse->address))
-                                                                <div class="mt-1 text-xs opacity-75">{{ $warehouse->address }}</div>
+                                                            @if($warehouse->formatted_address !== '')
+                                                                <div class="mt-1 text-xs opacity-75">{{ $warehouse->formatted_address }}</div>
                                                             @endif
                                                         </li>
                                                     @endforeach

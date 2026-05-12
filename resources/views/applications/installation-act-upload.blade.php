@@ -11,18 +11,12 @@
     <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8 space-y-8 sm:space-y-10">
-                <div class="rounded-xl border border-stone-200/80 bg-stone-50/60 px-4 py-3 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-800/35 dark:text-stone-100">
-                    В списке только заявки, по которым всё согласовано и всё согласованное оборудование уже доставлено на склады подразделений-получателей (по каждой позиции — «Доставлено»).
-                    Выберите заявку, отметьте оборудование для списания со склада получателя, затем загрузите файл акта и не менее одного фото (можно несколько). При сохранении выбранные позиции будут списаны, а акт и фото — загружены.
-                    @if(Auth::user()->hasRoleId(4))
-                        <span class="block mt-2 text-stone-700 dark:text-stone-200">Выполненные и заявки в архиве в списке помечены — акт и фото к ним тоже можно прикрепить или заменить, если условия выше выполнены.</span>
-                    @endif
-                </div>
+              
 
                 @if(Auth::user()->hasAnyRoleId([1, 2, 3, 4, 6, 7]))
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ route('applications.installation-act.layout-fill.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
-                            Заполнить макет заявки (только поля)
+                            Заполнить макет отчета 
                         </a>
                     </div>
                 @endif
@@ -35,6 +29,13 @@
                         <div class="space-y-4">
                             <div>
                                 <label for="application_id" class="app-form-label">Заявка</label>
+                                <input
+                                    id="application_search"
+                                    type="text"
+                                    class="app-input mb-2 min-h-0"
+                                    placeholder="Поиск по номеру, подразделению или дате"
+                                    autocomplete="off"
+                                />
                                 <select
                                     id="application_id"
                                     name="application_id"
@@ -77,8 +78,54 @@
                                         </div>
                                     @enderror
 
-                                    <div class="mt-3 overflow-x-auto rounded-lg border border-orange-200/80 dark:border-orange-800/40">
-                                        <table class="min-w-full text-xs sm:text-sm">
+                                    <div class="mt-3 md:hidden app-card-list">
+                                        @foreach($selectedApplication->items->where('is_checked', true) as $item)
+                                            @php
+                                                $canIssueHere = $deliveredWarehouseIssueCandidates->contains(fn ($candidate) => (int) $candidate->id === (int) $item->id);
+                                                $checkedIssue = collect(old('issue_item_ids', []))->contains((string) $item->id) || collect(old('issue_item_ids', []))->contains((int) $item->id);
+                                            @endphp
+                                            <article class="app-card-list__item">
+                                                <div class="flex items-start gap-3">
+                                                    @if($canIssueHere)
+                                                        <label class="inline-flex items-start gap-2 text-sm">
+                                                            <input
+                                                                type="checkbox"
+                                                                name="issue_item_ids[]"
+                                                                value="{{ $item->id }}"
+                                                                class="mt-0.5 h-5 w-5 shrink-0 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                                                                @checked($checkedIssue)
+                                                            >
+                                                            <span class="text-xs text-black dark:text-white">Списать</span>
+                                                        </label>
+                                                    @elseif($item->resolvedDeliveryStatus() === \App\Models\ApplicationItem::DELIVERY_DELIVERED)
+                                                        <span class="inline-flex items-center rounded-full border border-emerald-300/80 bg-emerald-50/90 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                                                            Уже списано
+                                                        </span>
+                                                    @else
+                                                        <span class="text-xs text-stone-500 dark:text-stone-400">Не доступно к списанию</span>
+                                                    @endif
+                                                </div>
+                                                <p class="text-sm font-medium text-black dark:text-white app-equipment-line">{{ $item->equipment_display_name }}</p>
+                                                <div class="grid grid-cols-1 gap-1 text-xs">
+                                                    <div>
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/55">Склад получателя</p>
+                                                        <p class="text-black dark:text-white app-equipment-line">
+                                                            {{ $item->deliveryWarehouse?->name ?? '—' }}
+                                                            @if($item->deliveryWarehouse?->subdivision)
+                                                                <span class="text-stone-500 dark:text-stone-400">({{ $item->deliveryWarehouse->subdivision->name }})</span>
+                                                            @endif
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/55">Кол-во в заявке</p>
+                                                        <p class="text-black dark:text-white">{{ $item->quantity_with_unit }}</p>
+                                                    </div>
+                                                </div>
+                                            </article>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-3 hidden md:block app-table-shell">
+                                        <table class="text-xs sm:text-sm">
                                             <thead class="bg-orange-100/70 dark:bg-orange-900/35">
                                                 <tr>
                                                     <th class="px-3 py-2 text-left font-semibold">Списать</th>
@@ -146,11 +193,11 @@
                                     type="file"
                                     name="installation_act"
                                     required
-                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                                    accept="application/pdf,.pdf"
                                     class="block w-full text-sm text-stone-600 file:mr-4 file:rounded-xl file:border-0 file:bg-orange-100 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-stone-800 hover:file:bg-orange-200/90 dark:text-stone-300 dark:file:bg-orange-950/50 dark:file:text-orange-100 dark:hover:file:bg-orange-900/60"
                                 />
                                 <p class="mt-1.5 text-xs text-stone-500 dark:text-stone-400">
-                                    PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — до 10 МБ.
+                                    Только PDF — до 10 МБ.
                                 </p>
                                 <x-input-error :messages="$errors->get('installation_act')" class="mt-1.5" />
                             </div>
@@ -195,4 +242,50 @@
             </div>
         </div>
     </div>
+    <script>
+        (function () {
+            const searchInput = document.getElementById('application_search');
+            const select = document.getElementById('application_id');
+            if (!searchInput || !select) {
+                return;
+            }
+
+            const initialOptions = Array.from(select.options).map((option) => ({
+                value: option.value,
+                text: option.textContent || '',
+                selected: option.selected,
+            }));
+            const placeholder = initialOptions[0] ?? { value: '', text: '— Выберите заявку —', selected: true };
+
+            const rebuildOptions = (query) => {
+                const q = String(query || '').trim().toLowerCase();
+                const currentValue = select.value;
+                const matched = initialOptions
+                    .slice(1)
+                    .filter((opt) => q === '' || opt.text.toLowerCase().includes(q));
+
+                select.innerHTML = '';
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = placeholder.value;
+                placeholderOption.textContent = placeholder.text;
+                select.appendChild(placeholderOption);
+
+                matched.forEach((opt) => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.text;
+                    if (opt.value === currentValue) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+
+                if (currentValue !== '' && !matched.some((opt) => opt.value === currentValue)) {
+                    select.value = '';
+                }
+            };
+
+            searchInput.addEventListener('input', () => rebuildOptions(searchInput.value));
+        })();
+    </script>
 </x-app-layout>

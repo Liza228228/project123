@@ -56,17 +56,17 @@
                                 </div>
                                 <ul class="divide-y divide-stone-200 rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600 overflow-hidden">
                                     @foreach($toOrder as $item)
-                                        <li class="flex flex-wrap items-center gap-3 bg-white dark:bg-stone-950/60 px-3 py-2">
-                                            <input type="checkbox" name="item_ids[]" value="{{ $item->id }}" class="co-cb-order rounded border-stone-300 dark:border-stone-600" />
-                                            <span class="text-sm text-black dark:text-white flex-1 min-w-0">
+                                        <li class="flex flex-wrap items-start gap-3 bg-white dark:bg-stone-950/60 px-3 py-2">
+                                            <input type="checkbox" name="item_ids[]" value="{{ $item->id }}" class="co-cb-order mt-0.5 h-5 w-5 shrink-0 rounded border-stone-300 dark:border-stone-600" />
+                                            <span class="text-sm text-black dark:text-white flex-1 min-w-0 app-equipment-line">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                             @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
                                         </li>
                                     @endforeach
                                 </ul>
-                                <div class="flex justify-end">
-                                    <button type="submit" class="ui-btn ui-btn--primary">Заказано</button>
+                                <div class="flex sm:justify-end">
+                                    <button type="submit" class="ui-btn ui-btn--primary w-full sm:w-auto">Заказано</button>
                                 </div>
                             </form>
                             <script>
@@ -97,17 +97,17 @@
                                 </div>
                                 <ul class="divide-y divide-stone-200 rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600 overflow-hidden">
                                     @foreach($toWarehouse as $item)
-                                        <li class="flex flex-wrap items-center gap-3 bg-white dark:bg-stone-950/60 px-3 py-2">
-                                            <input type="checkbox" name="item_ids[]" value="{{ $item->id }}" class="co-cb-wh rounded border-stone-300 dark:border-stone-600" />
-                                            <span class="text-sm text-black dark:text-white flex-1 min-w-0">
+                                        <li class="flex flex-wrap items-start gap-3 bg-white dark:bg-stone-950/60 px-3 py-2">
+                                            <input type="checkbox" name="item_ids[]" value="{{ $item->id }}" class="co-cb-wh mt-0.5 h-5 w-5 shrink-0 rounded border-stone-300 dark:border-stone-600" />
+                                            <span class="text-sm text-black dark:text-white flex-1 min-w-0 app-equipment-line">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                             @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
                                         </li>
                                     @endforeach
                                 </ul>
-                                <div class="flex justify-end">
-                                    <button type="submit" class="ui-btn ui-btn--primary">На складе</button>
+                                <div class="flex sm:justify-end">
+                                    <button type="submit" class="ui-btn ui-btn--primary w-full sm:w-auto">На складе</button>
                                 </div>
                             </form>
                             <script>

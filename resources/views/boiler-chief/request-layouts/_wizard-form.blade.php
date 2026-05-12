@@ -12,7 +12,7 @@
             return [
                 'uid' => 'old_'.$i,
                 'key' => (string) ($row['key'] ?? ''),
-                'type' => in_array($t, ['text', 'number', 'textarea'], true) ? $t : 'text',
+                'type' => in_array($t, ['text', 'number', 'textarea', 'date'], true) ? $t : 'text',
             ];
         })->all();
     } elseif ($layout) {
@@ -23,7 +23,7 @@
             return [
                 'uid' => 'db_'.$i,
                 'key' => (string) ($row['key'] ?? ''),
-                'type' => in_array($t, ['text', 'number', 'textarea'], true) ? $t : 'text',
+                'type' => in_array($t, ['text', 'number', 'textarea', 'date'], true) ? $t : 'text',
             ];
         })->all();
     } else {
@@ -32,8 +32,8 @@
         ];
     }
 
-    $initialBody = old('body_template', $schema['body_template'] ?? "На плановую/внеплановую проверку было представлено:\n\n");
-    $initialDocTitle = old('document_title', $schema['document_title'] ?? 'ЗАЯВКА');
+    $initialBody = old('body_template', $schema['body_template'] ?? "");
+    $initialDocTitle = old('document_title', $schema['document_title'] ?? '');
     $initialHeading = old('heading_template', $schema['heading_template'] ?? '');
     $initialHeader = old('header_template', $schema['header_template'] ?? '');
     $pdfBodyAlign = old('pdf_body_align', $schema['pdf_body_align'] ?? 'center');
@@ -51,6 +51,10 @@
     $initialSignatureRoles = [];
     foreach ([1, 2, 3] as $slot) {
         $initialSignatureRoles[$slot] = (string) ($rawSignatureRoles[$slot] ?? $rawSignatureRoles[(string) $slot] ?? '');
+    }
+    $roleNamesByIdForPreview = [];
+    foreach (($roles ?? collect()) as $role) {
+        $roleNamesByIdForPreview[(string) $role->id] = (string) $role->name;
     }
 @endphp
 
@@ -74,6 +78,67 @@
         signatureRoles: {{ Js::from($initialSignatureRoles) }},
         footerStamp: @js($initialFooterStampBool),
         pdfBodyAlign: @js($pdfBodyAlign),
+        headerLayoutPreviewHtmlById: {{ Js::from($documentHeaderLayoutPreviewHtmlById ?? []) }},
+        roleNamesById: {{ Js::from($roleNamesByIdForPreview) }},
+        escapePreviewHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;');
+        },
+        tokenLabelByKey(key) {
+            const needle = String(key || '').trim();
+            if (!needle) return '';
+            const hit = this.fields.find((f) => String(f.key || '').trim() === needle);
+            if (!hit) return needle;
+            const label = String(hit.key || '').trim();
+            return label || needle;
+        },
+        templateToPreviewHtml(template) {
+            const raw = String(template ?? '');
+            if (raw.trim() === '') {
+                return '<span class=\'text-stone-400\'>(пусто)</span>';
+            }
+            const escaped = this.escapePreviewHtml(raw);
+            const withTokens = escaped.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, key) => {
+                const token = this.escapePreviewHtml(this.tokenLabelByKey(key));
+                return '<span class=\'inline-flex items-center rounded-md border border-orange-300/90 bg-orange-100/90 px-1.5 py-0.5 text-[11px] font-medium text-orange-900 dark:border-orange-800/80 dark:bg-orange-900/35 dark:text-orange-100\'>' + '{' + '{' + token + '}' + '}' + '</span>';
+            });
+            return withTokens.replace(/\r\n|\r|\n/g, '<br>');
+        },
+        previewBodyAlignClass() {
+            const align = String(this.pdfBodyAlign || 'center');
+            if (align === 'left') return 'text-left';
+            if (align === 'right') return 'text-right';
+            if (align === 'justify') return 'text-justify';
+            return 'text-center';
+        },
+        headerPreviewBlockHtml() {
+            const id = String(this.documentHeaderLayoutId || '').trim();
+            if (!this.needsStatementHeader || !id) {
+                return '';
+            }
+            const map = this.headerLayoutPreviewHtmlById || {};
+            const html = map[id] ?? '';
+            return typeof html === 'string' ? html : '';
+        },
+        signatureRoleLabel(slot) {
+            const s = Number(slot);
+            const rid = String(this.signatureRoles?.[s] ?? this.signatureRoles?.[String(s)] ?? '').trim();
+            if (!rid || !this.roleNamesById) {
+                return '— роль не выбрана';
+            }
+            const map = this.roleNamesById;
+
+            return map[rid] ?? map[String(Number(rid))] ?? '—';
+        },
+        signaturePreviewLine(slot) {
+            const label = this.signatureRoleLabel(slot);
+            const dash = '__________';
+            const nb = '\u00A0\u00A0\u00A0';
+
+            return dash + nb + label;
+        },
         signatureSlotIndices() {
             const n = Number(this.signatureSlotsCount ?? 0);
             const c = Math.max(0, Math.min(3, Number.isFinite(n) ? n : 0));
@@ -94,6 +159,13 @@
             this.ensureSelectedTokenField();
         },
         execCmd(cmd, arg = null) {
+            if (cmd === 'justifyLeft') {
+                this.pdfBodyAlign = 'left';
+            } else if (cmd === 'justifyCenter') {
+                this.pdfBodyAlign = 'center';
+            } else if (cmd === 'justifyRight') {
+                this.pdfBodyAlign = 'right';
+            }
             const el = this.$refs.bodyEditor;
             if (el) { el.focus(); }
             try { document.execCommand(cmd, false, arg); } catch (e) {}
@@ -147,8 +219,28 @@
             <label class="inline-flex items-start gap-3 cursor-pointer text-sm text-stone-800 dark:text-stone-100">
                 <input type="checkbox" class="mt-1 rounded border-stone-300 text-orange-600 focus:ring-orange-500/40"
                        x-model="needsStatementHeader" @checked($needsStatementHeader)/>
-                <span>Нужна шапка заявления (выберите макет шапки в форме ниже)</span>
+                <span>Нужна шапка заявления </span>
             </label>
+
+            <div class="space-y-3 rounded-2xl border border-orange-200/80 bg-orange-50/40 p-4 dark:border-orange-900/40 dark:bg-orange-950/25" x-show="needsStatementHeader" x-cloak>
+                <h3 class="text-sm font-semibold text-stone-900 dark:text-white">Шапка отчета</h3>
+                
+                <div>
+                    <label for="document_header_layout_id" class="block text-xs font-medium text-stone-700 dark:text-stone-200 mb-1">Макет шапки</label>
+                    <select id="document_header_layout_id" name="document_header_layout_id" x-model="documentHeaderLayoutId"
+                            class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm">
+                        <option value="">— Не выбрано —</option>
+                        @foreach(($documentHeaderLayouts ?? collect()) as $h)
+                            <option value="{{ $h->id }}">{{ $h->title }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <a href="{{ route('boiler-chief.document-header-layouts.create') }}" target="_blank" rel="noopener noreferrer"
+                   class="text-sm font-medium text-orange-800 hover:underline dark:text-orange-200/90">Создать новый макет шапки </a>
+                @error('document_header_layout_id')
+                    <p class="text-sm text-rose-600">{{ $message }}</p>
+                @enderror
+            </div>
 
             <div class="space-y-4 rounded-2xl border border-orange-100/90 bg-orange-50/25 p-4 sm:p-5 dark:border-orange-900/35 dark:bg-orange-950/15">
                 <p class="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">Оформление документа</p>
@@ -196,14 +288,14 @@
                         </select>
                     </div>
                     <div class="sm:col-span-1" x-show="signatureSlotsCount > 0" x-cloak>
-                        <p class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Роли подписантов</p>
+                        <p class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Сотрудники для подписи</p>
                         <div class="space-y-2 rounded-lg border border-stone-200 dark:border-stone-700 p-2.5">
                             <template x-for="slot in signatureSlotIndices()" :key="'slot_role_' + slot">
                                 <div>
-                                    <label class="block text-[11px] text-stone-600 dark:text-stone-300 mb-1" x-text="'Подпись ' + slot + ' — роль'"></label>
+                                    <label class="block text-[11px] text-stone-600 dark:text-stone-300 mb-1" x-text="'Подпись ' + slot + ' — сотрудник'"></label>
                                     <select class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
                                             :name="'signature_roles[' + slot + ']'" x-model="signatureRoles[slot]">
-                                        <option value="">— выберите роль —</option>
+                                        <option value="">— выберите сотрудника —</option>
                                         @foreach(($roles ?? collect()) as $role)
                                             <option value="{{ $role->id }}">{{ $role->name }}</option>
                                         @endforeach
@@ -217,33 +309,9 @@
                     <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40" x-model="footerStamp"/>
                     <span>Резерв места под печать (М.П.)</span>
                 </label>
-                <p class="text-[11px] text-stone-500 dark:text-stone-400 leading-relaxed">
-                    Количество подписей и роли задаются ниже; при генерации PDF подставляются выбранные ФИО и системные поля макета.
-                </p>
+                
             </div>
 
-            <div class="space-y-3 rounded-2xl border border-orange-200/80 bg-orange-50/40 p-4 dark:border-orange-900/40 dark:bg-orange-950/25" x-show="needsStatementHeader" x-cloak>
-                <h3 class="text-sm font-semibold text-stone-900 dark:text-white">Шапка документа</h3>
-                <p class="text-xs text-stone-600 dark:text-stone-300 leading-relaxed">
-                    Текст шапки настраивается в разделе <a href="{{ route('boiler-chief.document-header-layouts.index') }}" class="font-medium text-orange-800 underline dark:text-orange-200/90">Макеты шапок</a>.
-                    Здесь вы только выбираете готовый макет шапки для этого PDF-макета.
-                </p>
-                <div>
-                    <label for="document_header_layout_id" class="block text-xs font-medium text-stone-700 dark:text-stone-200 mb-1">Макет шапки</label>
-                    <select id="document_header_layout_id" name="document_header_layout_id" x-model="documentHeaderLayoutId"
-                            class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm">
-                        <option value="">— Не выбрано —</option>
-                        @foreach(($documentHeaderLayouts ?? collect()) as $h)
-                            <option value="{{ $h->id }}">{{ $h->title }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <a href="{{ route('boiler-chief.document-header-layouts.create') }}" target="_blank" rel="noopener noreferrer"
-                   class="text-sm font-medium text-orange-800 hover:underline dark:text-orange-200/90">Создать новый макет шапки (откроется в новой вкладке)</a>
-                @error('document_header_layout_id')
-                    <p class="text-sm text-rose-600">{{ $message }}</p>
-                @enderror
-            </div>
         </div>
 
         <div class="flex flex-wrap gap-2 border-b border-orange-100/90 px-5 py-4 sm:px-8 dark:border-orange-900/40">
@@ -278,7 +346,6 @@
                             <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Название</label>
                             <input type="text" class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
                                    :name="'fields['+index+'][key]'" x-model="field.key" required maxlength="64" />
-                            <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">В тексте заявки вставляйте поле тем же именем в двойных фигурных скобках. Допустимы буквы, цифры, пробелы и «_»; ключ может начинаться с буквы, цифры или «_».</p>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Тип</label>
@@ -287,6 +354,7 @@
                                 <option value="text">Текст</option>
                                 <option value="number">Число</option>
                                 <option value="textarea">Многострочный текст</option>
+                                <option value="date">Дата</option>
                             </select>
                         </div>
                     </div>
@@ -298,20 +366,15 @@
         </div>
 
         <div class="px-5 sm:px-8 py-6 space-y-4" x-show="tab === 'text'" x-cloak>
-           
             <div class="flex flex-wrap gap-1.5 rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50 dark:bg-stone-900/50 p-2">
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs font-semibold dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('bold')">B</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs italic dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('italic')">I</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs underline dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('underline')">U</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs line-through dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('strikeThrough')">S</button>
                 <span class="w-px h-6 bg-stone-200 dark:bg-stone-600 self-center"></span>
-                <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('insertUnorderedList')">• Список</button>
-                <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('insertOrderedList')">1. Список</button>
-                <span class="w-px h-6 bg-stone-200 dark:bg-stone-600 self-center"></span>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('justifyLeft')">Слева</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('justifyCenter')">По центру</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('justifyRight')">Справа</button>
-                <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('insertHorizontalRule')">— Линия</button>
             </div>
             <div id="body_template"
                  x-ref="bodyEditor"
@@ -338,6 +401,47 @@
                         </template>
                     </select>
                     <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" @click="insertToken(selectedTokenField, 'body')">Вставить в текст</button>
+                </div>
+            </div>
+            <div class="rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900/40 p-4 space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <h4 class="text-sm font-semibold text-stone-900 dark:text-white">Предпросмотр документа</h4>
+                    <span class="text-[11px] text-stone-500 dark:text-stone-400">черновик</span>
+                </div>
+                <div class="rounded-lg border border-orange-200/80 dark:border-orange-900/40 bg-orange-50/30 dark:bg-orange-950/15 p-4 space-y-3">
+                    <template x-if="needsStatementHeader && documentHeaderLayoutId && headerPreviewBlockHtml()">
+                        <div class="space-y-2 border-b border-orange-200/70 dark:border-orange-900/35 pb-3 text-stone-900 dark:text-stone-100 [&_div]:text-stone-900 dark:[&_div]:text-stone-100"
+                             x-html="headerPreviewBlockHtml()"></div>
+                    </template>
+                    <div class="text-center">
+                        <div class="font-semibold tracking-wide uppercase"
+                             :style="'font-size:' + Number(presentationHeadingSizePt || 12) + 'pt;'"
+                             x-html="templateToPreviewHtml(documentTitle)"></div>
+                    </div>
+                    <div class="text-center"
+                         :style="'font-size:' + Number(presentationSubtitleSizePt || 10) + 'pt;'"
+                         x-html="templateToPreviewHtml(headingTemplate)"></div>
+                    <div :class="previewBodyAlignClass()"
+                         class="text-sm leading-6 border-t border-orange-200/70 dark:border-orange-900/35 pt-3"
+                         x-html="templateToPreviewHtml(bodyTemplate)"></div>
+                    <div class="border-t border-orange-200/70 dark:border-orange-900/35 pt-3 mt-3 space-y-2"
+                         x-show="Number(signatureSlotsCount) > 0 || footerStamp"
+                         x-cloak>
+                        <template x-if="Number(signatureSlotsCount) > 0">
+                            <div class="space-y-1.5">
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400 text-right">Подписи</p>
+                                <div class="text-sm text-right leading-relaxed text-stone-800 dark:text-stone-200 space-y-1">
+                                    <template x-for="slot in signatureSlotIndices()" :key="'sigprev_' + slot">
+                                        <div class="whitespace-nowrap font-sans" x-text="signaturePreviewLine(slot)"></div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                        <div class="text-right text-xs font-medium text-stone-600 dark:text-stone-400 tracking-wide"
+                             x-show="footerStamp"
+                             x-cloak
+                             :class="Number(signatureSlotsCount) > 0 ? 'pt-1' : ''">М.П.</div>
+                    </div>
                 </div>
             </div>
             @error('body_template')

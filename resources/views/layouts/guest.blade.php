@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>ИС учёта материалов</title>
@@ -41,9 +41,7 @@
             </div>
         </div>
 
-        <p class="mt-10 text-center text-xs text-black/50 dark:text-white/45 max-w-sm leading-relaxed">
-            Централизованный учёт заявок и материалов для подразделений
-        </p>
+      
     </div>
 </body>
 </html>

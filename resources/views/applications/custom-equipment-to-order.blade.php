@@ -21,18 +21,47 @@
                         Нет заявок с незавершённым своим оборудованием (все позиции уже оприходованы или нет согласованных строк без справочника).
                     </p>
                 @else
-                    <form method="GET" action="{{ route('applications.custom-equipment-to-order') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <form method="GET" action="{{ route('applications.custom-equipment-to-order') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between" data-auto-submit="filter">
                         <div class="w-full sm:w-auto">
                             <label for="sort_date" class="app-form-label">Сортировка по дате</label>
-                            <select id="sort_date" name="sort_date" class="app-select min-w-[16rem]" onchange="this.form.submit()">
+                            <select id="sort_date" name="sort_date" class="app-select min-w-[16rem]">
                                 <option value="desc" @selected(($sortDate ?? 'desc') === 'desc')>Сначала новые заявки</option>
                                 <option value="asc" @selected(($sortDate ?? 'desc') === 'asc')>Сначала старые заявки</option>
                             </select>
                         </div>
                     </form>
-                    <div class="overflow-x-auto rounded-xl border border-stone-200/90 dark:border-stone-600">
-                        <table class="min-w-full text-sm">
-                            <thead class="bg-stone-50 dark:bg-stone-900/40">
+                    <div class="md:hidden app-card-list">
+                        @foreach($applications as $appRow)
+                            <article class="app-card-list__item">
+                                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                                    <p class="text-sm font-semibold text-black dark:text-white">№{{ $appRow->id }}</p>
+                                    <p class="text-xs text-black/65 dark:text-white/65">{{ $appRow->created_at?->format('d.m.Y H:i') ?? '—' }}</p>
+                                </div>
+                                <div class="grid grid-cols-1 gap-1 text-sm text-black dark:text-white">
+                                    <div>
+                                        <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Подразделение</p>
+                                        <p class="break-words">{{ $appRow->subdivision->name ?? '—' }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Автор</p>
+                                        <p class="break-words">
+                                            @if($appRow->user)
+                                                {{ $appRow->user->surname }} {{ $appRow->user->name }}
+                                            @else
+                                                —
+                                            @endif
+                                        </p>
+                                    </div>
+                                </div>
+                                <a href="{{ route('applications.custom-equipment-order', $appRow) }}" class="ui-btn ui-btn--primary w-full justify-center">
+                                    Открыть форму
+                                </a>
+                            </article>
+                        @endforeach
+                    </div>
+                    <div class="hidden md:block app-table-shell">
+                        <table>
+                            <thead>
                                 <tr>
                                     <th class="px-3 py-2 text-left text-black dark:text-white">Заявка</th>
                                     <th class="px-3 py-2 text-left text-black dark:text-white">Дата</th>
@@ -41,9 +70,9 @@
                                     <th class="px-3 py-2 text-right text-black dark:text-white">Форма</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-stone-200 dark:divide-stone-800">
+                            <tbody>
                                 @foreach($applications as $appRow)
-                                    <tr class="bg-white dark:bg-stone-950/70">
+                                    <tr>
                                         <td class="px-3 py-2 align-top text-black dark:text-white font-medium">
                                             №{{ $appRow->id }}
                                         </td>

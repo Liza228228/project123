@@ -5,19 +5,50 @@ namespace Database\Seeders;
 use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
+/**
+ * Мастера участка (role_id = 4): у подразделения может быть несколько мастеров;
+ * у каждого подразделения из {@see SubdivisionSeeder::definitionNames()} — хотя бы один.
+ */
 class ForemanSubdivisionSeeder extends Seeder
 {
     public function run(): void
     {
-        $assignments = [
-            'Kozlov@mail.ru' => [
-                'Район тепловых сетей Северный',
-                'Участок котельных',
-            ],
+        $subdivisionNames = SubdivisionSeeder::definitionNames();
+        $foremanEmails = UserSeeder::FOREMAN_SEED_EMAILS;
+
+        $primaryCount = count($subdivisionNames);
+        $primaryEmails = array_slice($foremanEmails, 0, $primaryCount);
+        $extraEmails = array_slice($foremanEmails, $primaryCount);
+
+        if (count($primaryEmails) < $primaryCount) {
+            throw new RuntimeException(
+                'UserSeeder::FOREMAN_SEED_EMAILS must contain at least as many emails as subdivisions in SubdivisionSeeder::definitionNames().'
+            );
+        }
+
+        $assignments = [];
+        foreach (range(0, $primaryCount - 1) as $i) {
+            $assignments[$primaryEmails[$i]] = [$subdivisionNames[$i]];
+        }
+
+        $assignments['Kozlov@mail.ru'] = [
+            $subdivisionNames[0],
+            $subdivisionNames[6],
         ];
 
-        foreach ($assignments as $foremanEmail => $subdivisionNames) {
+        if (isset($extraEmails[0])) {
+            $assignments[$extraEmails[0]] = [$subdivisionNames[0]];
+        }
+        if (isset($extraEmails[1])) {
+            $assignments[$extraEmails[1]] = [$subdivisionNames[0]];
+        }
+        if (isset($extraEmails[2])) {
+            $assignments[$extraEmails[2]] = [$subdivisionNames[1]];
+        }
+
+        foreach ($assignments as $foremanEmail => $names) {
             $foreman = User::query()
                 ->where('email', $foremanEmail)
                 ->where('role_id', 4)
@@ -28,7 +59,7 @@ class ForemanSubdivisionSeeder extends Seeder
             }
 
             $subdivisionIds = Subdivision::query()
-                ->whereIn('name', $subdivisionNames)
+                ->whereIn('name', $names)
                 ->pluck('id');
 
             $foreman->assignedSubdivisions()->sync($subdivisionIds->all());

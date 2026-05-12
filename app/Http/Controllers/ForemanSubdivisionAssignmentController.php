@@ -6,9 +6,12 @@ use App\Models\Subdivision;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\DadataAddressService;
+use App\Support\AssignmentListPerPage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
@@ -18,11 +21,10 @@ class ForemanSubdivisionAssignmentController extends Controller
     public function index(Request $request): View
     {
         $this->authorizeForView($request);
-        $allowedPerPage = [10, 25, 50];
-        $perPage = (int) $request->integer('per_page', 10);
-        if (! in_array($perPage, $allowedPerPage, true)) {
-            $perPage = 10;
-        }
+        $pagination = AssignmentListPerPage::fromRequest($request);
+        $perPage = $pagination['perPage'];
+        $allowedPerPage = $pagination['allowedPerPage'];
+        $defaultPerPage = $pagination['defaultPerPage'];
 
         $subdivisionsQuery = Subdivision::query()
             ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
@@ -40,14 +42,26 @@ class ForemanSubdivisionAssignmentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $canManage = $this->canManageSubdivisionsAndWarehouses($request);
+        $canManage = $this->canManageSubdivisionInfrastructure($request);
 
-        return view('foreman-subdivisions.subdivisions-readonly', compact('subdivisions', 'subdivisionOptions', 'canManage', 'perPage'));
+        return view('foreman-subdivisions.subdivisions-readonly', compact(
+            'subdivisions',
+            'subdivisionOptions',
+            'canManage',
+            'perPage',
+            'allowedPerPage',
+            'defaultPerPage',
+        ));
     }
 
     public function assignments(Request $request): View
     {
-        $this->authorizeForManage($request);
+        $this->authorizeForemanAssignmentAccess($request);
+
+        $pagination = AssignmentListPerPage::fromRequest($request);
+        $perPage = $pagination['perPage'];
+        $allowedPerPage = $pagination['allowedPerPage'];
+        $defaultPerPage = $pagination['defaultPerPage'];
 
         $search = trim((string) $request->input('q', ''));
 
@@ -69,14 +83,21 @@ class ForemanSubdivisionAssignmentController extends Controller
         $foremen = $foremenQuery
             ->orderBy('surname')
             ->orderBy('name')
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('foreman-subdivisions.index', compact('foremen', 'search'));
+        return view('foreman-subdivisions.index', compact(
+            'foremen',
+            'search',
+            'perPage',
+            'allowedPerPage',
+            'defaultPerPage',
+        ));
     }
 
     public function storeSubdivision(Request $request): RedirectResponse
     {
-        $this->authorizeForManage($request);
+        $this->authorizeSubdivisionInfrastructureManage($request);
 
         $request->merge([
             'subdivision_name' => trim((string) $request->input('subdivision_name', '')),
@@ -112,7 +133,7 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     public function storeWarehouse(Request $request): RedirectResponse
     {
-        $this->authorizeForManage($request);
+        $this->authorizeSubdivisionInfrastructureManage($request);
 
         $validated = $request->validate([
             'subdivision_id' => ['required', 'integer', 'exists:subdivisions,id'],
@@ -152,9 +173,6 @@ class ForemanSubdivisionAssignmentController extends Controller
             /** @var DadataAddressService $dadata */
             $dadata = app(DadataAddressService::class);
             $cleaned = $dadata->clean($normalizedAddress);
-            if (isset($cleaned['result']) && is_string($cleaned['result']) && trim($cleaned['result']) !== '') {
-                $normalizedAddress = trim($cleaned['result']);
-            }
             if ($cleaned !== []) {
                 $addressParts = [
                     'address_postal_code' => $this->toNullableString($cleaned['postal_code'] ?? null, 20),
@@ -168,14 +186,20 @@ class ForemanSubdivisionAssignmentController extends Controller
                 ];
             }
         } catch (RuntimeException) {
-            // If DaData is unavailable, we still save raw address.
+            //
+        }
+
+        if (! $this->warehouseStructuredAddressIsPresent($addressParts)) {
+            throw ValidationException::withMessages([
+                'address' => 'Не удалось распознать адрес. Уточните строку адреса или проверьте настройки DaData (ключи и доступность сервиса).',
+            ]);
         }
 
         $warehouseName = trim((string) $validated['warehouse_name']);
         $isAdministrationWarehouse = preg_match('/администрац/iu', $warehouseName) === 1;
         $isPrimary = (bool) ($validated['is_primary'] ?? false) || $isAdministrationWarehouse;
 
-        DB::transaction(function () use ($validated, $warehouseName, $normalizedAddress, $addressParts, $isPrimary): void {
+        DB::transaction(function () use ($validated, $warehouseName, $addressParts, $isPrimary): void {
             if ($isPrimary) {
                 // In the system there must be only one priority warehouse.
                 Warehouse::query()->where('is_primary', true)->update(['is_primary' => false]);
@@ -185,7 +209,6 @@ class ForemanSubdivisionAssignmentController extends Controller
                 'subdivision_id' => (int) $validated['subdivision_id'],
                 'name' => $warehouseName,
                 'code' => trim((string) $validated['code']),
-                'address' => $normalizedAddress,
                 ...$addressParts,
                 'is_primary' => $isPrimary,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
@@ -200,37 +223,60 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     public function edit(Request $request, User $foreman): View
     {
-        $this->authorizeForManage($request);
+        $this->authorizeForemanAssignmentAccess($request);
 
         if (! $foreman->hasRoleId(4)) {
             abort(404);
         }
 
         $foreman->load(['assignedSubdivisions' => fn ($q) => $q->orderBy('name')]);
-        $subdivisions = Subdivision::query()->orderBy('name')->get();
+        $chiefManagedIds = $this->chiefManagedSubdivisionIds($request);
+        $subdivisions = $chiefManagedIds !== null
+            ? Subdivision::query()->whereIn('id', $chiefManagedIds)->orderBy('name')->get()
+            : Subdivision::query()->orderBy('name')->get();
+        $foremanAssignmentRestrictedToChiefSubdivisions = $chiefManagedIds !== null;
 
-        return view('foreman-subdivisions.edit', compact('foreman', 'subdivisions'));
+        return view('foreman-subdivisions.edit', compact(
+            'foreman',
+            'subdivisions',
+            'foremanAssignmentRestrictedToChiefSubdivisions',
+        ));
     }
 
     public function update(Request $request, User $foreman): RedirectResponse
     {
-        $this->authorizeForManage($request);
+        $this->authorizeForemanAssignmentAccess($request);
 
         if (! $foreman->hasRoleId(4)) {
             abort(404);
         }
 
+        $chiefManagedIds = $this->chiefManagedSubdivisionIds($request);
+        $subdivisionIdRule = ['integer', 'exists:subdivisions,id'];
+        if ($chiefManagedIds !== null) {
+            $subdivisionIdRule[] = Rule::in($chiefManagedIds->all());
+        }
+
         $validated = $request->validate([
             'subdivision_ids' => ['array'],
-            'subdivision_ids.*' => ['integer', 'exists:subdivisions,id'],
+            'subdivision_ids.*' => $subdivisionIdRule,
         ]);
 
-        $selectedIds = collect($validated['subdivision_ids'] ?? [])
+        $selectedFromForm = collect($validated['subdivision_ids'] ?? [])
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
 
-        $foreman->assignedSubdivisions()->sync($selectedIds->all());
+        if ($chiefManagedIds !== null) {
+            $foreman->loadMissing('assignedSubdivisions:id');
+            $existingIds = $foreman->assignedSubdivisions->pluck('id')->map(fn ($id) => (int) $id);
+            $managedSet = $chiefManagedIds->flip();
+            $outsideChiefZone = $existingIds->filter(fn (int $id) => ! $managedSet->has($id))->values();
+            $merged = $outsideChiefZone->merge($selectedFromForm)->unique()->values();
+            $foreman->assignedSubdivisions()->sync($merged->all());
+        } else {
+            $foreman->assignedSubdivisions()->sync($selectedFromForm->all());
+        }
 
         return redirect()
             ->route('foreman-subdivisions.assignments')
@@ -239,23 +285,55 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     private function authorizeForView(Request $request): void
     {
-        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3, 7]) ?? false;
+        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3, 5]) ?? false;
 
         if (! $allowed) {
-            abort(403, 'Доступ разрешён только директору, техническому директору, начальнику отдела снабжения, начальнику котельной и бухгалтеру.');
+            abort(403, 'Просмотр подразделений и складов разрешён только директору, техническому директору, начальнику отдела снабжения, администратору и бухгалтеру.');
         }
     }
 
-    private function authorizeForManage(Request $request): void
+    /**
+     * Просмотр списка мастеров и правка назначений мастеров на подразделения.
+     */
+    private function authorizeForemanAssignmentAccess(Request $request): void
     {
-        if (! $this->canManageSubdivisionsAndWarehouses($request)) {
-            abort(403, 'Изменение подразделений и складов разрешено только директору, техническому директору и начальнику отдела снабжения.');
+        if ($this->canAssignForemenToSubdivisions($request)) {
+            return;
+        }
+
+        abort(403, 'Назначение мастеров участка по подразделениям разрешено директору, техническому директору, начальнику отдела снабжения, администратору и начальнику котельной (только по своим подразделениям).');
+    }
+
+    private function authorizeSubdivisionInfrastructureManage(Request $request): void
+    {
+        if (! $this->canManageSubdivisionInfrastructure($request)) {
+            abort(403, 'Создание подразделений и складов разрешено только директору, техническому директору, начальнику отдела снабжения и администратору.');
         }
     }
 
-    private function canManageSubdivisionsAndWarehouses(Request $request): bool
+    private function canAssignForemenToSubdivisions(Request $request): bool
     {
-        return $request->user()?->hasAnyRoleId([1, 6, 2]) ?? false;
+        return $this->canManageSubdivisionInfrastructure($request)
+            || (bool) $request->user()?->hasRoleId(7);
+    }
+
+    private function canManageSubdivisionInfrastructure(Request $request): bool
+    {
+        return $request->user()?->hasAnyRoleId(User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS) ?? false;
+    }
+
+    /**
+     * Для начальника котельной — id подразделений в его зоне; иначе null (полный доступ).
+     *
+     * @return Collection<int, int>|null
+     */
+    private function chiefManagedSubdivisionIds(Request $request): ?Collection
+    {
+        if (! $request->user()?->hasRoleId(7)) {
+            return null;
+        }
+
+        return $request->user()->boilerChiefSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id)->values();
     }
 
     private function toNullableString(mixed $value, int $maxLength): ?string
@@ -266,5 +344,22 @@ class ForemanSubdivisionAssignmentController extends Controller
         }
 
         return mb_substr($text, 0, $maxLength);
+    }
+
+    /**
+     * @param  array<string, ?string>  $addressParts
+     */
+    private function warehouseStructuredAddressIsPresent(array $addressParts): bool
+    {
+        foreach ($addressParts as $key => $value) {
+            if ($key === 'address_fias_id') {
+                continue;
+            }
+            if ($value !== null && trim((string) $value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

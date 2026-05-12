@@ -11,7 +11,7 @@
 
     $defaultHeader = "Заместителю директора\n{{coordinator_name}}\n\n{{representative_prefix}}\n{{representative_name}}";
     $defaultBody = "{{текст}}";
-    $defaultFooter = "{{фио}}\n\n{{текст}}\n\nДата: {{document_date}}";
+    $defaultFooter = "{{текст}}\n\nДата: {{document_date}}";
     $defaultSignature = "________________ / {{signatory_print_name}}";
 
     if (old('fields')) {
@@ -46,7 +46,7 @@
     $initialHeader = old('header_template', $schema['header_template'] ?? $defaultHeader);
     $initialFooter = old('footer_left_template', $schema['footer_left_template'] ?? $defaultFooter);
     $initialSignature = old('signature_template', $schema['signature_template'] ?? $defaultSignature);
-    $initialDocTitle = old('document_title', $schema['document_title'] ?? 'ЗАЯВКА');
+    $initialDocTitle = old('document_title', $schema['document_title'] ?? '');
     $initialHeading = old('heading_template', $schema['heading_template'] ?? '');
     $pdfHeaderAlign = old('pdf_header_align', $schema['pdf_header_align'] ?? 'right');
     $pdfBodyAlign = old('pdf_body_align', $schema['pdf_body_align'] ?? 'center');
@@ -262,25 +262,25 @@
         <input type="hidden" name="layout_version" value="{{ old('layout_version', $layout?->version ?? 1) }}"/>
 
         <div class="rounded-xl border border-stone-200 dark:border-stone-700 overflow-hidden">
-            <div class="flex text-sm font-medium">
+            <div class="flex overflow-x-auto text-sm font-medium [-webkit-overflow-scrolling:touch]">
                 <button type="button" @click="tab = 'fields'"
                         :class="tab === 'fields' ? 'bg-orange-600 text-black dark:text-black' : 'bg-stone-100 dark:bg-stone-900 text-stone-700 dark:text-stone-200'"
-                        class="flex-1 px-3 sm:px-4 py-2.5 transition-colors">
+                        class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 transition-colors sm:flex-1">
                     Поля заявки
                 </button>
                 <button type="button" @click="tab = 'header'"
                         :class="tab === 'header' ? 'bg-orange-600 text-black dark:text-black' : 'bg-stone-100 dark:bg-stone-900 text-stone-700 dark:text-stone-200'"
-                        class="flex-1 px-3 sm:px-4 py-2.5 transition-colors">
+                        class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 transition-colors sm:flex-1">
                     Шапка
                 </button>
                 <button type="button" @click="tab = 'text'"
                         :class="tab === 'text' ? 'bg-orange-600 text-black dark:text-black' : 'bg-stone-100 dark:bg-stone-900 text-stone-700 dark:text-stone-200'"
-                        class="flex-1 px-3 sm:px-4 py-2.5 transition-colors">
+                        class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 transition-colors sm:flex-1">
                     Текст заявки
                 </button>
                 <button type="button" @click="tab = 'footer'"
                         :class="tab === 'footer' ? 'bg-orange-600 text-black dark:text-black' : 'bg-stone-100 dark:bg-stone-900 text-stone-700 dark:text-stone-200'"
-                        class="flex-1 px-3 sm:px-4 py-2.5 transition-colors">
+                        class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 transition-colors sm:flex-1">
                     Подписи
                 </button>
             </div>

@@ -50,7 +50,7 @@
 
             <div class="app-form-card">
                 <div class="px-4 py-5 sm:p-8 space-y-5 sm:space-y-6">
-                    <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4">
+                    <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
                         <input type="hidden" name="archive" value="{{ ($archiveFilter ?? 'active') === 'archived' ? 'archived' : 'active' }}">
                         <div class="app-filter-panel">
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:items-end">
@@ -85,7 +85,7 @@
                                         <option value="">Все мастера участка</option>
                                         @foreach($foremen as $foreman)
                                             <option value="{{ $foreman->id }}" @selected($selectedForemanId === (int) $foreman->id)>
-                                                {{ trim($foreman->surname.' '.$foreman->name.' '.$foreman->patronymic) }}
+                                                {{ trim($foreman->surname.' '.$foreman->name.' '.$foreman->patronymic) }}{{ ($foreman->is_blocked ?? false) ? ' (заблокирован)' : '' }}
                                             </option>
                                         @endforeach
                                     </select>
@@ -103,7 +103,7 @@
                             <div class="min-w-0 lg:col-span-4">
                                 <p class="app-form-label">Сортировка</p>
                                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                    <div class="grid grid-cols-2 gap-2">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <select name="sort_primary_field"
                                             class="app-select">
                                             <option value="created_at" @selected(($sortState['primary_field'] ?? '') === 'created_at')>Дата создания</option>
@@ -120,7 +120,7 @@
                                             <option value="desc" @selected(($sortState['primary_direction'] ?? '') === 'desc')>По убыванию</option>
                                         </select>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-2">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <select name="sort_secondary_field"
                                             class="app-select">
                                             <option value="" @selected(empty($sortState['secondary_field']))>Без второго поля</option>
@@ -143,9 +143,6 @@
                         </div>
                         </div>
                         <div class="flex flex-col sm:flex-row flex-wrap gap-2 pt-1 sm:justify-end">
-                            <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[44px] py-3 sm:min-h-0 sm:w-auto sm:py-2 whitespace-nowrap shrink-0 [touch-action:manipulation]">
-                                Применить
-                            </button>
                             @php
                                 $archiveResetQuery = ($archiveFilter ?? 'active') === 'archived' ? ['archive' => 'archived'] : [];
                             @endphp
@@ -175,6 +172,13 @@
                             @endif
                         </p>
                     @else
+                        <div class="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-200/80 bg-orange-50/50 px-3 py-2.5 dark:border-orange-900/45 dark:bg-orange-950/25">
+                            <span class="text-[10px] font-semibold uppercase tracking-wide text-black/70 dark:text-white/60">Оборудование</span>
+                            <div class="applications-equipment-bulk-host flex flex-wrap justify-end gap-1.5">
+                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[11px]" data-action="collapse-all">Свернуть все</button>
+                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[11px]" data-action="expand-all">Развернуть все</button>
+                            </div>
+                        </div>
                         <div class="md:hidden space-y-4">
                             @foreach($applications as $application)
                                 <article class="rounded-xl border p-4 space-y-3 shadow-sm {{ $application->needsCustomEquipmentOrder() ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : 'border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20' }}">
@@ -225,7 +229,7 @@
                                         </div>
                                         <div>
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Оборудование</p>
-                                            <p class="text-sm break-words line-clamp-4" title="{{ $application->equipment_summary }}">{{ $application->equipment_summary }}</p>
+                                            @include('applications.partials.index-equipment-collapsible', ['application' => $application])
                                         </div>
                                         <div class="flex flex-wrap gap-x-4 gap-y-1">
                                             <div>
@@ -292,7 +296,15 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Ответственный</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[9rem]">Создал(а)</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[9rem]">Согласовал(а)</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[14rem] max-w-md">Оборудование</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[14rem] max-w-md align-bottom">
+                                        <div class="flex flex-col gap-2 min-w-0">
+                                            <span class="tracking-wide">Оборудование</span>
+                                            <div class="applications-equipment-bulk-host flex flex-wrap gap-1.5 normal-case">
+                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[10px] font-semibold" data-action="collapse-all">Свернуть все</button>
+                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[10px] font-semibold" data-action="expand-all">Развернуть все</button>
+                                            </div>
+                                        </div>
+                                    </th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Транспорт</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Желаемая дата поставки</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Согласование</th>
@@ -345,43 +357,7 @@
                                             @endif
                                         </td>
                                         <td class="px-4 py-3 text-sm text-black dark:text-white align-top min-w-[14rem] max-w-md">
-                                            @if($application->items->isEmpty())
-                                                <span class="opacity-50">—</span>
-                                            @else
-                                                @php
-                                                    $idxUnchecked = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id))->sortBy('id');
-                                                    $idxChecked = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id))->sortBy('id');
-                                                @endphp
-                                                @if($idxUnchecked->isNotEmpty())
-                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Не согласовано</h4>
-                                                    <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden mb-6">
-                                                        @foreach($idxUnchecked as $item)
-                                                            <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25 space-y-1">
-                                                                <span class="text-sm font-medium text-black dark:text-white">
-                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
-                                                                </span>
-                                                                @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
-                                                                @if($application->itemLineRejectionReason($item->id))
-                                                                    <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
-                                                                @endif
-                                                            </li>
-                                                        @endforeach
-                                                    </ul>
-                                                @endif
-                                                @if($idxChecked->isNotEmpty())
-                                                    <h4 class="text-xs font-medium text-black dark:text-white uppercase tracking-wide mb-2">Согласовано</h4>
-                                                    <ul class="divide-y divide-stone-200 dark:divide-stone-800 rounded-lg border border-stone-300 dark:border-stone-700 overflow-hidden">
-                                                        @foreach($idxChecked as $item)
-                                                            <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30 space-y-1">
-                                                                <span class="text-sm font-medium text-black dark:text-white">
-                                                                    {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
-                                                                </span>
-                                                                @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
-                                                            </li>
-                                                        @endforeach
-                                                    </ul>
-                                                @endif
-                                            @endif
+                                            @include('applications.partials.index-equipment-collapsible', ['application' => $application])
                                         </td>
                                         <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
                                             @if($application->transportOption)
@@ -470,4 +446,20 @@
                 </div>
             </div>
     </div>
+    @unless($applications->isEmpty())
+        <script>
+            (function () {
+                document.addEventListener('click', function (e) {
+                    var btn = e.target.closest('.applications-equipment-bulk-host button[data-action]');
+                    if (!btn) {
+                        return;
+                    }
+                    var open = btn.getAttribute('data-action') === 'expand-all';
+                    document.querySelectorAll('details.application-index-equipment-details').forEach(function (d) {
+                        d.open = open;
+                    });
+                });
+            })();
+        </script>
+    @endunless
 </x-app-layout>

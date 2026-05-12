@@ -356,7 +356,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                     : (string) ($validated['header_template'] ?? ''),
                 'footer_left_template' => $footerLeft,
                 'signature_template' => $signature,
-                'document_title' => trim((string) ($validated['document_title'] ?? '')) ?: 'ЗАЯВКА',
+                'document_title' => trim((string) ($validated['document_title'] ?? '')),
                 'heading_template' => (string) ($validated['heading_template'] ?? ''),
                 'presentation_heading_size_pt' => $presentationHeadingPt,
                 'presentation_subtitle_size_pt' => $presentationSubtitlePt,
@@ -411,7 +411,7 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
 
         return match ($preset) {
             'one_signer_author' => [
-                "{{фио}}\n\nДата: {{document_date}}",
+                'Дата: {{document_date}}',
                 '________________ / {{signatory_print_name}}'.$mp,
             ],
             'two_signers' => [
@@ -423,11 +423,11 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
                 '________________'.$mp,
             ],
             'classic_split' => [
-                "{{фио}}\n\n{{текст}}\n\nДата: {{document_date}}",
+                "{{текст}}\n\nДата: {{document_date}}",
                 '________________ / {{signatory_print_name}}'.$mp,
             ],
             default => [
-                "{{фио}}\n\nДата: {{document_date}}",
+                'Дата: {{document_date}}',
                 '________________ / {{signatory_print_name}}'.$mp,
             ],
         };

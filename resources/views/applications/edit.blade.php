@@ -72,21 +72,6 @@
 
                             @include('applications.partials.subdivision-warehouses-hint')
 
-                            @if (! Auth::user()->hasRoleId(4))
-                                <div class="sm:col-span-2">
-                                    <label for="responsible_user_id" class="app-form-label">Ответственный</label>
-                                    <select id="responsible_user_id" name="responsible_user_id" class="app-select">
-                                        <option value="">Не назначен / выбрать автоматически</option>
-                                        @foreach($users as $u)
-                                            <option value="{{ $u->id }}" @selected(old('responsible_user_id', $application->responsible_user_id) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
-                                        @endforeach
-                                    </select>
-                                    <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1.5" />
-                                </div>
-                            @else
-                                <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
-                            @endif
-
                             @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
                                 <div id="management-change-reason-block" class="sm:col-span-2 space-y-2 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
                                     <label for="management_change_reason" class="app-form-label">Причина изменения</label>

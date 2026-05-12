@@ -26,7 +26,7 @@
                     <section class="space-y-4" aria-labelledby="bc-subdivisions-section">
                         <h3 id="bc-subdivisions-section" class="app-section-title">Подразделения</h3>
                         <p class="text-xs text-stone-500 dark:text-stone-400 -mt-1 max-w-2xl">
-                            Отметьте подразделения, за которые отвечает начальник котельной (заявки мастеров этих участков сначала попадут к нему).
+                            Отметьте подразделения, за которые отвечает начальник котельной.
                         </p>
 
                         <div class="rounded-xl border border-stone-200/80 bg-white px-4 py-3 dark:border-stone-600/80 dark:bg-stone-900/30 sm:px-5 sm:py-4">
@@ -83,7 +83,7 @@
 
                     <div class="app-form-actions-mobile">
                         <a href="{{ route('boiler-chief-subdivisions.assignments') }}" class="min-h-11 content-center text-center text-sm font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200 sm:text-left">
-                            Отмена и к списку начальников
+                            Отмена и к списку 
                         </a>
                         <button type="submit" class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
                             Сохранить

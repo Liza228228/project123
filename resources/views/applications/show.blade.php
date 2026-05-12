@@ -26,22 +26,27 @@
                     <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white shrink-0">На согласовании</span>
                 @endif
             </div>
-            <div class="flex flex-col sm:flex-row flex-wrap gap-2">
+            <div class="app-actions-row">
                 @if (! $application->archived_at
                     && Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7])
                     && ! $application->items->contains(fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true)))
-                    <a href="{{ route('applications.edit', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto">
+                    <a href="{{ route('applications.edit', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0">
                         Изменить
                     </a>
                 @endif
+                @if($canChangeApplicationResponsible ?? false)
+                    <a href="{{ route('applications.responsible.edit', $application) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0">
+                        Изменить ответственного
+                    </a>
+                @endif
                 @if (((! $application->archived_at && Auth::user()->hasAnyRoleId([1, 6, 2, 7])) || Auth::user()->hasRoleId(4)) && $application->canUploadInstallationActAndPhotos())
-                    <a href="{{ route('applications.installation-act.upload', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0 w-full sm:w-auto">
+                    <a href="{{ route('applications.installation-act.upload', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0">
                         Акт установки
                     </a>
                 @endif
                 @if (Auth::user()->hasAnyRoleId([4, 7]))
                     <a href="{{ route('applications.repeat', $application) }}"
-                       class="ui-btn ui-btn--primary whitespace-nowrap shrink-0 w-full sm:w-auto"
+                       class="ui-btn ui-btn--primary whitespace-nowrap shrink-0"
                        onclick="return window.confirm('Вы уверены, что хотите создать повторную заявку?');">
                         Создать повторную
                     </a>
@@ -84,6 +89,11 @@
                     {{ $message }}
                 </div>
             @enderror
+            @error('delivery_bulk_warehouse_id')
+                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                    {{ $message }}
+                </div>
+            @enderror
             @error('transport_option_id')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
@@ -109,6 +119,12 @@
                     {{ $message }}
                 </div>
             @enderror
+            @if(Auth::user()->hasRoleId(7) && $application->user && $application->user->hasRoleId(4) && $application->user->is_blocked)
+                <div class="mb-4 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                    <p class="font-medium">Автор заявки (мастер участка) заблокирован</p>
+                    <p class="mt-1">Заявка доступна вам для ведения и согласования. Чтобы передать её другому мастеру <strong>этого же подразделения</strong> (как у заблокированного автора по этой заявке), откройте «Изменить» и в блоке «Автор заявки» выберите активного мастера из списка закрепления за подразделением.</p>
+                </div>
+            @endif
             <div class="app-form-card">
                 <div class="px-4 py-5 sm:p-8 space-y-8 sm:space-y-10">
                     <section class="space-y-4" aria-labelledby="show-section-main">
@@ -162,6 +178,9 @@
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
                                     @if($application->user)
                                         {{ $application->user->surname }} {{ $application->user->name }}
+                                        @if($application->user->hasRoleId(4) && $application->user->is_blocked)
+                                            <span class="ml-1 inline-flex items-center rounded-full bg-amber-200/90 px-2 py-0.5 text-[11px] font-semibold text-amber-950 dark:bg-amber-900/50 dark:text-amber-100">заблокирован</span>
+                                        @endif
                                         <span class="block text-xs font-normal opacity-80 mt-0.5">{{ $application->created_at->format('d.m.Y H:i') }}</span>
                                     @else
                                         —
@@ -651,6 +670,48 @@
                                     <p class="text-xs text-black dark:text-white">
                                         Для позиций <span class="font-medium">«В пути»</span> подразделение получения задано заявкой — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование. После «Доставлено» количество отображается на остатках склада; списание выполняется отдельно (при сохранении акта установки или через операцию списания со склада поступления).
                                     </p>
+                                    @php
+                                        $deliveryGroups = $chiefDeliveryCandidates
+                                            ->sortBy('id')
+                                            ->groupBy(fn ($deliveryItem) => (string) ($deliveryItem->resolvedDeliveryTargetSubdivisionId() ?? 0));
+                                    @endphp
+                                    @foreach($deliveryGroups as $targetSubId => $groupItems)
+                                        @php
+                                            $targetSubIdInt = (int) $targetSubId;
+                                            $groupSubdivision = ($boilerChiefDeliverySubdivisions ?? collect())->firstWhere('id', $targetSubIdInt);
+                                        @endphp
+                                        @if($groupSubdivision)
+                                            <form method="POST"
+                                                  action="{{ route('applications.delivery-delivered.bulk', $application) }}"
+                                                  class="space-y-3 rounded-lg border border-emerald-200/80 bg-white/80 p-3 dark:border-emerald-900/50 dark:bg-stone-950/45">
+                                                @csrf
+                                                <p class="text-xs text-black dark:text-white app-equipment-line">
+                                                    <span class="font-medium">Отметить вместе для подразделения:</span> {{ $groupSubdivision->name }}
+                                                </p>
+                                                <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                                                    @foreach($groupItems as $groupItem)
+                                                        <input type="hidden" name="item_ids[]" value="{{ $groupItem->id }}">
+                                                    @endforeach
+                                                    <div class="min-w-0 flex-1">
+                                                        <label class="app-form-label !normal-case text-xs" for="delivery-wh-bulk-{{ $targetSubIdInt }}">Склад поступления (для всех позиций блока)</label>
+                                                        <select name="delivery_bulk_warehouse_id" id="delivery-wh-bulk-{{ $targetSubIdInt }}" class="app-select text-sm w-full sm:max-w-md" required>
+                                                            <option value="" disabled @selected(! old('delivery_bulk_warehouse_id'))>Выберите склад</option>
+                                                            @foreach($groupSubdivision->warehouses->sortBy('name') as $warehouse)
+                                                                <option value="{{ $warehouse->id }}" @selected((string) old('delivery_bulk_warehouse_id') === (string) $warehouse->id)>
+                                                                    {{ $warehouse->code }} — {{ $warehouse->name }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="w-full shrink-0 sm:w-auto">
+                                                        <button type="submit" class="ui-btn ui-btn--secondary ui-btn--sm w-full whitespace-normal sm:w-auto sm:whitespace-nowrap">
+                                                            Доставлено для всех в блоке
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        @endif
+                                    @endforeach
                                     <ul class="space-y-2">
                                         @foreach($chiefDeliveryCandidates->sortBy('id') as $deliveryItem)
                                             @php
@@ -668,11 +729,11 @@
                                                     <form method="POST" action="{{ route('applications.delivery-delivered', [$application, $deliveryItem]) }}" class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
                                                         @csrf
                                                         <div class="min-w-0 flex-1 space-y-1">
-                                                            <p class="text-xs text-black dark:text-white">
+                                                            <p class="text-xs text-black dark:text-white app-equipment-line">
                                                                 <span class="font-medium">Подразделение:</span> {{ $subForChief->name }}
                                                             </p>
                                                             <label class="app-form-label !normal-case text-xs" for="delivery-wh-{{ $deliveryItem->id }}">Склад поступления</label>
-                                                            <select name="delivery_warehouse_id" id="delivery-wh-{{ $deliveryItem->id }}" class="app-select text-sm w-full max-w-md" required>
+                                                            <select name="delivery_warehouse_id" id="delivery-wh-{{ $deliveryItem->id }}" class="app-select text-sm w-full sm:max-w-md" required>
                                                                 <option value="" disabled @selected(! old('delivery_warehouse_id'))>Выберите склад</option>
                                                                 @foreach($subForChief->warehouses->sortBy('name') as $warehouse)
                                                                     <option
@@ -687,8 +748,8 @@
                                                                 <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                             @enderror
                                                         </div>
-                                                        <div class="shrink-0">
-                                                            <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap w-full sm:w-auto">
+                                                        <div class="w-full shrink-0 sm:w-auto">
+                                                            <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm w-full whitespace-nowrap sm:w-auto">
                                                                 Доставлено
                                                             </button>
                                                         </div>

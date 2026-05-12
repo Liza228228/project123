@@ -20,11 +20,23 @@ class User extends Authenticatable
     /** Директор и начальник снабжения — заказ нестандартного («своего») оборудования и приход на основной склад по нему. */
     public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = [1, 2];
 
-    /** Начальник котельной и бухгалтер — раздел «Заявки по макетам» (PDF) и JSON схемы для формы. */
-    public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = [7, 3];
+    /** Начальник котельной, бухгалтер и администратор — раздел «Заявки по макетам» (PDF) и JSON схемы для формы. */
+    public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = [7, 3, 5];
+
+    /** Начальник котельной и администратор — полный доступ к генератору отчётов. */
+    public const REPORT_GENERATOR_ROLE_IDS = [7, 5];
 
     /** Списание со склада «Администрация» по согласованным позициям из справочника. */
     public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = [1, 2, 6];
+
+    /** Администратор — пользователи, блокировки, макеты отчётов. */
+    public const ADMINISTRATOR_ROLE_ID = 5;
+
+    /**
+     * Назначение мастеров участка и начальников котельных по подразделениям
+     * (директор, технический директор, начальник отдела снабжения, администратор).
+     */
+    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, 6, 2, 5];
 
     /**
      * The attributes that are mass assignable.
@@ -89,6 +101,43 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Subdivision::class, 'boiler_chief_subdivision_user', 'boiler_chief_user_id', 'subdivision_id')
             ->withTimestamps();
+    }
+
+    /**
+     * Начальник котельной может выбрать этого мастера участка как подписанта (пересечение подразделений).
+     */
+    public static function boilerChiefMaySelectForemanAsSigner(User $chief, User $foreman): bool
+    {
+        if (! $chief->hasRoleId(7) || ! $foreman->hasRoleId(4)) {
+            return true;
+        }
+
+        $chiefIds = $chief->boilerChiefSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id)->all();
+        $foremanIds = $foreman->assignedSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id)->all();
+
+        return $chiefIds !== [] && $foremanIds !== [] && count(array_intersect($chiefIds, $foremanIds)) > 0;
+    }
+
+    /**
+     * Для формы «Отчёт по макету»: фильтр мастеров по подразделениям начальника котельной.
+     *
+     * @return array{isBoilerChief: bool, foremanRoleId: int, chiefSubdivisionIds: list<int>}
+     */
+    public static function layoutReportViewerContext(?User $user): array
+    {
+        if (! $user?->hasRoleId(7)) {
+            return ['isBoilerChief' => false, 'foremanRoleId' => 4, 'chiefSubdivisionIds' => []];
+        }
+
+        return [
+            'isBoilerChief' => true,
+            'foremanRoleId' => 4,
+            'chiefSubdivisionIds' => $user->boilerChiefSubdivisions()
+                ->pluck('subdivisions.id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all(),
+        ];
     }
 
     public function hasRoleId(int $roleId): bool

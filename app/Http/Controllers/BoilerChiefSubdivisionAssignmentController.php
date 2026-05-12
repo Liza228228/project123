@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Subdivision;
 use App\Models\User;
+use App\Support\AssignmentListPerPage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,6 +14,11 @@ class BoilerChiefSubdivisionAssignmentController extends Controller
     public function assignments(Request $request): View
     {
         $this->authorizeForManage($request);
+
+        $pagination = AssignmentListPerPage::fromRequest($request);
+        $perPage = $pagination['perPage'];
+        $allowedPerPage = $pagination['allowedPerPage'];
+        $defaultPerPage = $pagination['defaultPerPage'];
 
         $search = trim((string) $request->input('q', ''));
 
@@ -34,9 +40,16 @@ class BoilerChiefSubdivisionAssignmentController extends Controller
         $chiefs = $chiefsQuery
             ->orderBy('surname')
             ->orderBy('name')
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('boiler-chief-subdivisions.assignments', compact('chiefs', 'search'));
+        return view('boiler-chief-subdivisions.assignments', compact(
+            'chiefs',
+            'search',
+            'perPage',
+            'allowedPerPage',
+            'defaultPerPage',
+        ));
     }
 
     public function edit(Request $request, User $chief): View
@@ -80,8 +93,8 @@ class BoilerChiefSubdivisionAssignmentController extends Controller
 
     private function authorizeForManage(Request $request): void
     {
-        if (! $request->user()?->hasAnyRoleId([1, 6, 2])) {
-            abort(403, 'Назначение подразделений начальникам котельных разрешено только директору, техническому директору и начальнику отдела снабжения.');
+        if (! $request->user()?->hasAnyRoleId(User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS)) {
+            abort(403, 'Назначение подразделений начальникам котельных разрешено только директору, техническому директору, начальнику отдела снабжения и администратору.');
         }
     }
 }

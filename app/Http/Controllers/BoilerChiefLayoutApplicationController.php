@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreLayoutApplicationRequest;
+use App\Http\Requests\UpdateLayoutApplicationRequest;
 use App\Models\Application;
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
@@ -35,7 +36,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->get();
 
         $users = User::query()
-            ->with('role')
+            ->with(['role', 'assignedSubdivisions:id'])
             ->orderBy('surname')
             ->orderBy('name')
             ->limit(500)
@@ -50,6 +51,45 @@ class BoilerChiefLayoutApplicationController extends Controller
             'users' => $users,
             'applications' => $applications,
             'layoutSchemasById' => $layoutSchemasById,
+            'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
+        ]);
+    }
+
+    public function edit(Request $request, RequestSubmission $submission): View
+    {
+        $this->authorizeSubmission($submission, $request->user());
+        $submission->loadMissing('requestLayout');
+        $layout = $submission->requestLayout;
+        if (! $layout instanceof RequestLayout) {
+            abort(404);
+        }
+
+        $layouts = collect([$layout]);
+        $users = User::query()
+            ->with(['role', 'assignedSubdivisions:id'])
+            ->orderBy('surname')
+            ->orderBy('name')
+            ->limit(500)
+            ->get();
+        $applications = $this->applicationsForLayoutInsertion($request->user());
+        $layoutSchemasById = [$layout->id => $layout->clientFillPayload()];
+
+        $data = is_array($submission->data) ? $submission->data : [];
+        $formDocumentDate = '';
+        $doc = trim((string) ($data['_document_date'] ?? ''));
+        if ($doc !== '' && preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/u', $doc, $m)) {
+            $formDocumentDate = $m[3].'-'.$m[2].'-'.$m[1];
+        }
+
+        return view('boiler-chief.layout-applications.create', [
+            'layouts' => $layouts,
+            'users' => $users,
+            'applications' => $applications,
+            'layoutSchemasById' => $layoutSchemasById,
+            'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
+            'editingSubmission' => $submission,
+            'initialSubmissionPayload' => $data,
+            'formDocumentDate' => $formDocumentDate,
         ]);
     }
 
@@ -88,6 +128,40 @@ class BoilerChiefLayoutApplicationController extends Controller
         RequestLayoutDocumentBuilder $builder
     ): SymfonyResponse {
         $layout = $request->layout();
+        $values = $this->layoutApplicationValuesFromRequest($request, $layout);
+
+        $submission = RequestSubmission::query()->create([
+            'data' => $values,
+            'created_by' => $request->user()->id,
+            'layout_structure_id' => $layout->id,
+        ]);
+
+        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+    }
+
+    public function update(
+        UpdateLayoutApplicationRequest $request,
+        RequestSubmission $submission,
+        RequestLayoutDocumentBuilder $builder
+    ): SymfonyResponse {
+        $this->authorizeSubmission($submission, $request->user());
+        $submission->loadMissing('requestLayout');
+        $layout = $submission->requestLayout;
+        if (! $layout instanceof RequestLayout) {
+            abort(404);
+        }
+
+        $values = $this->layoutApplicationValuesFromRequest($request, $layout);
+        $submission->update(['data' => $values]);
+
+        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function layoutApplicationValuesFromRequest(StoreLayoutApplicationRequest $request, RequestLayout $layout): array
+    {
         $values = $request->fieldValues($layout);
 
         foreach ([1, 2, 3] as $i) {
@@ -103,13 +177,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             $values['_document_date'] = $request->date('form_document_date')->format('d.m.Y');
         }
 
-        $submission = RequestSubmission::query()->create([
-            'data' => $values,
-            'created_by' => $request->user()->id,
-            'layout_structure_id' => $layout->id,
-        ]);
-
-        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+        return $values;
     }
 
     public function pdf(

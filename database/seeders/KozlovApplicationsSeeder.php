@@ -23,39 +23,114 @@ class KozlovApplicationsSeeder extends Seeder
         }
 
         $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+        $approvedId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
+        $partialId = ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL);
+        $rejectedId = ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED);
         $transportQuery = TransportOption::query()->orderBy('id');
         if (Schema::hasColumn('transport_options', 'plate')) {
             $transportQuery->whereNull('plate');
         }
         $transportId = (int) ($transportQuery->value('id') ?? 0);
-        $subdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
-        $equipment = Equipment::query()->where('is_catalog', true)->orderBy('id')->limit(6)->get();
-
-        if ($pendingId <= 0 || $transportId <= 0 || $subdivisionIds === [] || $equipment->count() < 2) {
+        $allSubdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
+        if ($allSubdivisionIds === []) {
             return;
         }
 
-        for ($i = 0; $i < 3; $i++) {
+        $assignedSubdivisionIds = $kozlov->assignedSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id)->all();
+        if ($assignedSubdivisionIds === []) {
+            // Если у мастера ещё нет назначений, назначаем несколько подразделений для тестовых заявок.
+            $assignedSubdivisionIds = array_slice($allSubdivisionIds, 0, min(3, count($allSubdivisionIds)));
+            $kozlov->assignedSubdivisions()->sync($assignedSubdivisionIds);
+        }
+
+        $equipmentIds = Equipment::query()
+            ->where('is_catalog', true)
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (
+            $pendingId <= 0
+            || $approvedId <= 0
+            || $partialId <= 0
+            || $rejectedId <= 0
+            || $transportId <= 0
+            || count($equipmentIds) < 5
+        ) {
+            return;
+        }
+
+        $existingCount = Application::query()
+            ->where('responsible_user_id', (int) $kozlov->id)
+            ->where('user_id', (int) $kozlov->id)
+            ->count();
+        $targetCount = 20;
+        $toCreate = max(0, $targetCount - $existingCount);
+        if ($toCreate === 0) {
+            return;
+        }
+
+        $statusCycle = [
+            ['id' => $pendingId, 'type' => 'pending'],
+            ['id' => $approvedId, 'type' => 'approved'],
+            ['id' => $partialId, 'type' => 'partial'],
+            ['id' => $rejectedId, 'type' => 'rejected'],
+        ];
+        $directorId = (int) (User::query()->where('role_id', 1)->value('id') ?? 0);
+
+        for ($i = 0; $i < $toCreate; $i++) {
+            $statusMeta = $statusCycle[$i % count($statusCycle)];
+            $statusId = (int) $statusMeta['id'];
+            $statusType = (string) $statusMeta['type'];
+
+            $reason = match ($statusType) {
+                'rejected' => 'Тестовый отказ (сидер Козлова).',
+                default => null,
+            };
+
             $app = Application::query()->create([
-                'subdivision_id' => (int) $subdivisionIds[$i % count($subdivisionIds)],
+                'subdivision_id' => (int) $assignedSubdivisionIds[$i % count($assignedSubdivisionIds)],
                 'responsible_user_id' => (int) $kozlov->id,
                 'user_id' => (int) $kozlov->id,
                 'transport_option_id' => $transportId,
-                'application_status_id' => $pendingId,
-                'desired_delivery_date' => Carbon::now()->addDays(3 + ($i * 4)),
+                'application_status_id' => $statusId,
+                'approved_by_user_id' => $directorId > 0 && $statusType !== 'pending' ? $directorId : null,
+                'reason_for_refusal' => $reason,
+                'desired_delivery_date' => Carbon::now()->addDays(2 + $i),
             ]);
 
-            ApplicationItem::query()->create([
-                'application_id' => (int) $app->id,
-                'equipment_id' => (int) $equipment[$i % $equipment->count()]->id,
-                'quantity' => 5 + $i,
-            ]);
+            $itemsCount = random_int(5, 10);
+            $shuffledEquipment = $equipmentIds;
+            shuffle($shuffledEquipment);
 
-            ApplicationItem::query()->create([
-                'application_id' => (int) $app->id,
-                'equipment_id' => (int) $equipment[($i + 1) % $equipment->count()]->id,
-                'quantity' => 3 + $i,
-            ]);
+            for ($line = 0; $line < $itemsCount; $line++) {
+                $equipmentId = (int) $shuffledEquipment[$line % count($shuffledEquipment)];
+                $isChecked = match ($statusType) {
+                    'approved' => true,
+                    'rejected' => false,
+                    'partial' => $line < max(1, (int) floor($itemsCount / 2)),
+                    default => false,
+                };
+                $reasonNotSelected = ! $isChecked && $statusType !== 'pending'
+                    ? 'Нет на складе.'
+                    : null;
+                $deliveryStatusId = null;
+                if ($isChecked) {
+                    $deliveryStatusId = ($line % 2 === 0)
+                        ? ApplicationItem::DELIVERY_DELIVERED_ID
+                        : ApplicationItem::DELIVERY_IN_TRANSIT_ID;
+                }
+
+                ApplicationItem::query()->create([
+                    'application_id' => (int) $app->id,
+                    'equipment_id' => $equipmentId,
+                    'quantity' => random_int(1, 25),
+                    'is_checked' => $isChecked,
+                    'reason_not_selected' => $reasonNotSelected,
+                    'delivery_status_id' => $deliveryStatusId,
+                ]);
+            }
         }
     }
 }

@@ -4,9 +4,6 @@
             Изменение пароля
         </h2>
 
-        <p class="mt-1 text-sm text-black/75 dark:text-white/75">
-            Используйте надежный пароль для безопасности учетной записи.
-        </p>
     </header>
 
     <form method="post" action="{{ route('password.update') }}" class="mt-6 space-y-6">
@@ -37,8 +34,8 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-4">
-            <button type="submit" class="ui-btn ui-btn--primary">
+        <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <button type="submit" class="ui-btn ui-btn--primary w-full justify-center sm:w-auto">
                 Сохранить
             </button>
 
@@ -48,7 +45,7 @@
                     x-show="show"
                     x-transition
                     x-init="setTimeout(() => show = false, 2000)"
-                    class="text-sm text-black dark:text-white"
+                    class="text-sm text-center text-black dark:text-white sm:text-left"
                 >Сохранено.</p>
             @endif
         </div>

@@ -2,9 +2,12 @@
     $layoutOptions = $layouts->map(fn ($l) => ['id' => $l->id, 'title' => $l->title])->values();
     $userOptions = $users->map(fn ($u) => [
         'id' => $u->id,
-        'label' => $u->fullName().' (id '.$u->id.')',
+        'label' => $u->fullName(),
         'role_id' => (int) ($u->role_id ?? 0),
         'role_name' => (string) ($u->role?->name ?? ''),
+        'subdivision_ids' => (int) ($u->role_id ?? 0) === 4
+            ? $u->assignedSubdivisions->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+            : [],
     ])->values();
     $applicationOptions = ($applications ?? collect())->map(function ($a) {
         $approvedItems = $a->items->where('is_checked', true)->values();
@@ -20,6 +23,8 @@
             'id' => $a->id,
             'label' => '#'.$a->id.' - '.($a->subdivision?->name ?? 'Без подразделения'),
             'equipment' => $lineItems,
+            'foreman_user_id' => (int) ($a->user_id ?? 0),
+            'subdivision_id' => (int) ($a->subdivision_id ?? 0),
         ];
     })->values();
 @endphp
@@ -27,34 +32,44 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('boiler-chief.layout-applications.index')">Заявки по макетам</x-page-header-nav>
-            <h2 class="font-semibold text-xl text-stone-900 dark:text-white">Новая заявка по макету</h2>
+            <x-page-header-nav :href="route('boiler-chief.layout-applications.index')">Отчеты по макетам</x-page-header-nav>
+            <h2 class="font-semibold text-xl text-stone-900 dark:text-white">{{ isset($editingSubmission) ? 'Редактирование отчета' : 'Новый отчет по макету' }}</h2>
         </div>
     </x-slot>
 
-    <div class="py-6 sm:py-10"
+    <div class="py-6 sm:py-10 w-full min-w-0"
          x-data="layoutApplicationCreate({
             layouts: {{ \Illuminate\Support\Js::from($layoutOptions) }},
             users: {{ \Illuminate\Support\Js::from($userOptions) }},
             applications: {{ \Illuminate\Support\Js::from($applicationOptions) }},
             layoutSchemasById: {{ \Illuminate\Support\Js::from($layoutSchemasById ?? []) }},
             schemaJsonBase: @js(url('/applications/installation-act/layout-schema')),
-            storeUrl: @js(route('boiler-chief.layout-applications.store')),
+            storeUrl: @js(isset($editingSubmission) ? route('boiler-chief.layout-applications.update', $editingSubmission) : route('boiler-chief.layout-applications.store')),
             token: @js(csrf_token()),
-            preselectLayoutId: @js((int) request('layout', 0)),
+            preselectLayoutId: @js((int) (isset($editingSubmission) ? $editingSubmission->layout_structure_id : request('layout', 0))),
+            layoutLocked: @js((bool) isset($editingSubmission)),
+            initialSubmissionPayload: {{ \Illuminate\Support\Js::from($initialSubmissionPayload ?? []) }},
+            layoutViewerContext: {{ \Illuminate\Support\Js::from($layoutViewerContext ?? ['isBoilerChief' => false, 'foremanRoleId' => 4, 'chiefSubdivisionIds' => []]) }},
          })">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 px-3">
+        <div class="max-w-4xl mx-auto w-full min-w-0 sm:px-6 lg:px-8 px-3">
             @if($layouts->isEmpty())
                 <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                    Нет доступных макетов. Сначала создайте макет в разделе «Макеты заявок (PDF)».
+                    Нет доступных макетов. Сначала создайте макет в разделе «Макеты отчетов (PDF)».
                 </div>
             @else
                 <form method="POST" :action="storeUrl" @submit.prevent="submit" class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
                     @csrf
+                    @isset($editingSubmission)
+                        @method('PUT')
+                    @endisset
 
                     <div class="px-5 sm:px-8 py-6 space-y-6 border-b border-orange-100/90 dark:border-orange-900/40">
                         <div>
                             <label for="layout_structure_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет</label>
+                            @isset($editingSubmission)
+                                <input type="hidden" name="layout_structure_id" value="{{ $editingSubmission->layout_structure_id }}"/>
+                                <p class="text-sm text-stone-800 dark:text-stone-200 py-2 px-3 rounded-lg border border-orange-200/80 bg-orange-50/40 dark:border-orange-900/50 dark:bg-stone-900/50">{{ $layouts->first()?->title ?? '—' }}</p>
+                            @else
                             <select id="layout_structure_id" name="layout_structure_id" required
                                     x-model.number="layoutId" @change="loadFields()"
                                     class="app-select">
@@ -63,6 +78,7 @@
                                     <option :value="l.id" x-text="l.title"></option>
                                 </template>
                             </select>
+                            @endisset
                         </div>
 
                         <div class="space-y-2 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
@@ -75,9 +91,19 @@
                                         <button type="button" class="text-xs font-medium text-stone-600 hover:underline dark:text-stone-400" @click="clearApplicationSelection()">Снять</button>
                                     </div>
                                 </div>
-                                <template x-if="!applications || applications.length === 0">
+                            <template x-if="!applications || applications.length === 0">
                                     <p class="text-xs text-stone-500 dark:text-stone-400">Нет заявок для подстановки.</p>
                                 </template>
+                            <div x-show="applications && applications.length > 0" class="mb-2">
+                                <label for="report-application-search" class="sr-only">Поиск заявки</label>
+                                <input
+                                    id="report-application-search"
+                                    type="search"
+                                    x-model.trim="applicationSearch"
+                                    placeholder="Поиск заявки: номер или подразделение"
+                                    class="app-input"
+                                />
+                            </div>
                                 <div x-show="applications && applications.length > 0" class="max-h-48 overflow-y-auto rounded-lg border border-orange-200/80 bg-white px-3 py-2 space-y-1.5 dark:border-orange-900/50 dark:bg-stone-900/40">
                                     <label class="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-200 cursor-pointer border-b border-stone-100 pb-1.5 mb-0.5 dark:border-stone-700">
                                         <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"
@@ -86,7 +112,8 @@
                                         <span>Выбрать все заявки</span>
                                     </label>
                                     <template x-for="app in applications" :key="'app_cb_' + app.id">
-                                        <label class="flex items-center gap-2 text-sm text-stone-800 dark:text-stone-100 cursor-pointer">
+                                    <label x-show="!applicationSearch || String(app.label || '').toLowerCase().includes(applicationSearch.toLowerCase())"
+                                           class="flex items-center gap-2 text-sm text-stone-800 dark:text-stone-100 cursor-pointer">
                                             <input type="checkbox" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"
                                                    :value="app.id"
                                                    x-model="selectedApplicationIds"/>
@@ -123,11 +150,10 @@
                         <template x-if="signerSlotCount > 0">
                             <div class="space-y-3 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
                                 <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Подписанты в нижнем блоке PDF</p>
-                                <p class="text-xs text-stone-600 dark:text-stone-400">Это подписи. В документ подставляются их ФИО в формате подписи (линия + ФИО) в плейсхолдеры <code class="text-[11px]">signer_1_fio</code>, <code class="text-[11px]">signer_2_fio</code>, <code class="text-[11px]">signer_3_fio</code>.</p>
-                                <template x-for="n in signerIndices()" :key="n">
+                                 <template x-for="n in signerIndices()" :key="n">
                                     <div>
                                         <label class="block text-sm font-medium text-stone-800 dark:text-stone-200 mb-1" x-text="signerRoleLabel(n)"></label>
-                                        <select class="app-select" :name="'signer_' + n + '_user_id'">
+                                        <select class="app-select" :name="'signer_' + n + '_user_id'" x-model="signerSelections[n]">
                                             <option value="">— Выберите ФИО —</option>
                                             <template x-for="u in usersForSignerSlot(n)" :key="u.id">
                                                 <option :value="u.id" x-text="u.label"></option>
@@ -178,7 +204,15 @@
                                     </div>
                                 </template>
 
-                                <template x-if="field.type !== 'number'">
+                                <template x-if="field.type === 'date'">
+                                    <div class="rounded-xl border border-orange-200/75 bg-white p-4 dark:border-orange-900/40 dark:bg-stone-900/40">
+                                        <label class="block text-sm text-stone-600 dark:text-stone-400 mb-2" x-text="'(' + (field.label || field.key) + ')'"></label>
+                                        <input type="date" class="app-input"
+                                               :name="'values[' + field.key + ']'" />
+                                    </div>
+                                </template>
+
+                                <template x-if="field.type === 'text' || field.type === 'textarea'">
                                     <div>
                                         <p class="text-sm text-stone-600 dark:text-stone-400 mb-1.5" x-text="'(' + (field.label || field.key) + ')'"></p>
                                         <div class="overflow-hidden rounded-xl border-2 border-orange-400/90 shadow-sm dark:border-orange-600/70">
@@ -221,12 +255,12 @@
                             <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Дата формирования</p>
                             <input type="hidden" name="use_current_date" value="0"/>
                             <label class="inline-flex items-center gap-2 text-sm cursor-pointer text-stone-800 dark:text-stone-200">
-                                <input id="use-current-date-checkbox" type="checkbox" name="use_current_date" value="1" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" checked/>
+                                <input id="use-current-date-checkbox" type="checkbox" name="use_current_date" value="1" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" @checked(! isset($editingSubmission))/>
                                 <span>Использовать текущую дату</span>
                             </label>
                             <div>
                                 <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Или укажите дату</label>
-                                <input id="form-document-date-input" type="date" name="form_document_date" class="app-input"/>
+                                <input id="form-document-date-input" type="date" name="form_document_date" value="{{ old('form_document_date', $formDocumentDate ?? '') }}" class="app-input"/>
                             </div>
                         </div>
 

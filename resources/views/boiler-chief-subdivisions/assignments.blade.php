@@ -1,9 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('foreman-subdivisions.index')">Подразделения и склады</x-page-header-nav>
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
-                Начальники котельных — подразделения
+                Назначения начальников котельных
             </h2>
         </div>
     </x-slot>
@@ -24,9 +23,9 @@
                     </p>
                 </div>
 
-                <form method="get" action="{{ route('boiler-chief-subdivisions.assignments') }}" class="mb-6 space-y-3">
+                <form method="get" action="{{ route('boiler-chief-subdivisions.assignments') }}" class="mb-6 space-y-3" data-auto-submit="filter">
                     <div class="app-filter-panel">
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
                             <div class="min-w-0">
                                 <label for="boiler-chief-assignments-q" class="app-form-label">Поиск</label>
                                 <div class="relative">
@@ -44,10 +43,21 @@
                                     >
                                 </div>
                             </div>
-                            <div class="flex flex-col gap-2 sm:flex-row sm:justify-end sm:pb-0.5">
-                                <button type="submit" class="ui-btn ui-btn--primary w-full min-h-[3rem] sm:min-h-0 sm:w-auto">Найти</button>
-                                @if($search !== '')
-                                    <a href="{{ route('boiler-chief-subdivisions.assignments') }}" class="ui-btn ui-btn--secondary w-full min-h-[3rem] content-center text-center sm:min-h-0 sm:w-auto">Сбросить</a>
+                            <div class="w-full lg:w-40">
+                                <label for="boiler-chief-assignments-per-page" class="app-form-label">На странице</label>
+                                <select
+                                    name="per_page"
+                                    id="boiler-chief-assignments-per-page"
+                                    class="app-input"
+                                >
+                                    @foreach($allowedPerPage as $size)
+                                        <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-end lg:pb-0.5">
+                                @if($search !== '' || $perPage !== $defaultPerPage)
+                                    <a href="{{ route('boiler-chief-subdivisions.assignments') }}" class="ui-btn ui-btn--secondary w-full min-h-[3rem] content-center text-center lg:min-h-0 lg:w-auto">Сбросить</a>
                                 @endif
                             </div>
                         </div>
@@ -136,6 +146,12 @@
                             </tbody>
                         </table>
                     </div>
+
+                    @if($chiefs->hasPages())
+                        <div class="mt-6">
+                            {{ $chiefs->links() }}
+                        </div>
+                    @endif
                 @endif
             </div>
         </div>

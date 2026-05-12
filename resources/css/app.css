@@ -53,11 +53,25 @@
      * Оформление таблиц: белый блок, тёплая рамка, шапка и зебра на светлом фоне.
      */
     .app-table-shell {
-        @apply overflow-x-auto rounded-xl border border-orange-200/85 bg-orange-50/55 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35;
+        @apply max-w-full overflow-x-auto rounded-xl border border-orange-200/85 bg-orange-50/55 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 [-webkit-overflow-scrolling:touch] dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35;
     }
 
     .app-table-shell > table {
         @apply min-w-full border-collapse text-sm;
+    }
+
+    /* Список заявок: свёрнутый блок «Оборудование» (<details>) */
+    .application-index-equipment-details > summary .application-index-equipment-expand-label--expanded {
+        display: none;
+    }
+    .application-index-equipment-details[open] > summary .application-index-equipment-expand-label--collapsed {
+        display: none;
+    }
+    .application-index-equipment-details[open] > summary .application-index-equipment-expand-label--expanded {
+        display: inline;
+    }
+    .application-index-equipment-details > summary {
+        list-style: none;
     }
 
     .app-table-shell > table > thead {
@@ -165,6 +179,15 @@
         @apply rounded-xl border border-stone-200/90 bg-stone-50/80 p-4 shadow-sm dark:border-stone-600 dark:bg-stone-800/35 sm:p-5;
     }
 
+    /** Карточки метрик «Заявки» на дашборде: общий фон, цвет задаётся классами border-l-*. */
+    .dash-stat-card {
+        @apply flex min-h-[11.5rem] flex-col rounded-xl border border-stone-200/80 border-l-4 border-l-orange-500 bg-gradient-to-b from-white to-stone-50/80 p-3 shadow-sm transition-[box-shadow,border-color] duration-200 sm:min-h-[10.5rem] sm:p-4 dark:border-stone-600 dark:border-l-orange-500 dark:from-stone-900/95 dark:to-stone-950/90 dark:shadow-black/20;
+    }
+
+    .dash-stat-card:hover {
+        @apply border-stone-300/90 border-l-orange-600 shadow-md dark:border-stone-500 dark:border-l-orange-400;
+    }
+
     .app-suggestions {
         @apply absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-xl border border-orange-200/80 bg-white py-1 shadow-lg shadow-orange-950/10 ring-1 ring-orange-100/90 dark:border-orange-800/50 dark:bg-stone-950 dark:ring-orange-950/40;
     }
@@ -178,5 +201,51 @@
      */
     .app-form-actions-mobile {
         @apply mt-8 flex flex-col-reverse gap-3 border-t border-stone-100 pt-6 dark:border-stone-800 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-40 max-sm:mt-0 max-sm:border-stone-200 max-sm:bg-white/95 max-sm:px-4 max-sm:pt-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom,0px))] max-sm:shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.12)] max-sm:backdrop-blur-md dark:max-sm:border-stone-700 dark:max-sm:bg-stone-900/95 sm:flex-row sm:items-center sm:justify-between sm:shadow-none sm:backdrop-blur-none;
+    }
+
+    /**
+     * Универсальный ряд действий: на ≤sm растягиваем по ширине стеком, на sm+ - в строку.
+     */
+    .app-actions-row {
+        @apply flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center;
+    }
+
+    .app-actions-row > .ui-btn,
+    .app-actions-row > a.ui-btn,
+    .app-actions-row > button {
+        @apply w-full justify-center sm:w-auto;
+    }
+
+    /**
+     * Список карточек: единый вид мобильных карточек на местах табличных списков.
+     */
+    .app-card-list {
+        @apply space-y-3;
+    }
+
+    .app-card-list__item {
+        @apply rounded-xl border border-stone-200/90 bg-white/85 p-4 shadow-sm space-y-3 dark:border-stone-700 dark:bg-stone-900/55;
+    }
+
+    /**
+     * Группа алертов: единый вертикальный отступ, без дублирующихся полей.
+     */
+    .app-alerts > * + * {
+        @apply mt-3;
+    }
+
+    /**
+     * Перенос длинного текста "название × кол-во ед" на узких экранах.
+     */
+    .app-equipment-line {
+        @apply break-words;
+        word-break: break-word;
+    }
+
+    /**
+     * Тулбар форматирования (генератор отчётов): на ≤sm — крупнее тап-цели.
+     */
+    .layout-field-toolbar > button {
+        @apply min-h-9;
     }
 }

@@ -15,6 +15,7 @@ class MaterialStockMovement extends Model
         'warehouse_id',
         'material_stock_movement_type_id',
         'quantity',
+        'receipt_variant',
         'unit_price',
         'counterparty',
         'comment',

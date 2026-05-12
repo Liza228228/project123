@@ -3,20 +3,13 @@
         <h2 class="text-lg font-medium text-black dark:text-white">
             Данные профиля
         </h2>
-
-        <p class="mt-1 text-sm text-black/75 dark:text-white/75">
-            Обновите фамилию, имя, отчество и адрес электронной почты (не более 45 символов в каждом поле ФИО, до 50 — в почте).
-        </p>
     </header>
-
     <form method="post" action="{{ route('profile.update') }}" class="mt-6 space-y-6">
         @csrf
         @method('patch')
 
         <div class="grid gap-4 sm:grid-cols-2">
-            <div class="sm:col-span-2 rounded-xl border border-orange-200/70 bg-white/80 px-4 py-3 text-sm text-stone-700 shadow-sm dark:border-stone-700 dark:bg-stone-900/40 dark:text-stone-200">
-                Актуальные контактные данные используются в системе и отображаются в связанных разделах.
-            </div>
+           
 
             <div class="sm:col-span-1">
                 <x-input-label for="surname" value="Фамилия" />
@@ -43,8 +36,8 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-4">
-            <button type="submit" class="ui-btn ui-btn--primary">
+        <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <button type="submit" class="ui-btn ui-btn--primary w-full justify-center sm:w-auto">
                 Сохранить
             </button>
 
@@ -54,7 +47,7 @@
                     x-show="show"
                     x-transition
                     x-init="setTimeout(() => show = false, 2000)"
-                    class="text-sm text-black dark:text-white"
+                    class="text-sm text-center text-black dark:text-white sm:text-left"
                 >Сохранено.</p>
             @endif
         </div>

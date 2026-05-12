@@ -1,13 +1,15 @@
 ﻿<nav x-data="{ open: false }" class="sticky top-0 z-50 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md border-b border-orange-400/70 dark:border-orange-800/60 shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100 pt-[max(0px,env(safe-area-inset-top))]">
     @php
         $user = Auth::user();
-        $canManageAssignments = $user->hasAnyRoleId([1, 6, 2]);
+        $topNavBtnClass = 'ui-btn ui-btn--secondary px-3 py-2 whitespace-nowrap';
+        $canManageBoilerChiefAssignments = $user->hasAnyRoleId(\App\Models\User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS);
+        $canManageForemanAssignments = $canManageBoilerChiefAssignments || $user->hasRoleId(7);
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS);
         $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
-        $canUseReportGenerator = $user->hasRoleId(7);
+        $canUseReportGenerator = $user->hasAnyRoleId(\App\Models\User::REPORT_GENERATOR_ROLE_IDS);
         $canLayoutApplicationsOnly = $user->hasRoleId(3);
-        // Бухгалтер: без «Отчет» — макеты в «Заявки по макетам».
-        $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6, 7]);
+        // Бухгалтер: без «Отчет» — макеты в «Отчеты по макетам».
+        $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6]);
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
@@ -30,7 +32,7 @@
                 <div class="hidden sm:-my-px sm:ms-6 sm:flex sm:items-center gap-2">
                     @if ((int) Auth::user()->role_id === 5)
                         <a href="{{ route('users.index') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('users.*')) aria-current="page" @endif>
                             Пользователи
                         </a>
@@ -38,7 +40,7 @@
 
                     @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7]))
                         <a href="{{ route('applications.index') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.*') && ! request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store', 'applications.installation-act.browse', 'applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')) aria-current="page" @endif>
                             Заявки
                         </a>
@@ -46,7 +48,7 @@
 
                     @if (Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
                         <a href="{{ route('applications.custom-equipment-to-order') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.custom-equipment-to-order')) aria-current="page" @endif>
                             К заказу: своё оборудование
                         </a>
@@ -54,7 +56,7 @@
 
                     @if (Auth::user()->hasRoleId(3))
                         <a href="{{ route('applications.installation-act.browse') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.installation-act.browse')) aria-current="page" @endif>
                             Акты по заявкам
                         </a>
@@ -62,7 +64,7 @@
 
                     @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
                         <a href="{{ route('applications.installation-act.upload') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')) aria-current="page" @endif>
                             Акт установки
                         </a>
@@ -70,7 +72,7 @@
 
                     @if ($canFillReport)
                         <a href="{{ route('applications.installation-act.layout-fill.index') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.installation-act.layout-fill.*')) aria-current="page" @endif>
                             Отчет
                         </a>
@@ -79,7 +81,7 @@
                     @if ($canUseReportGenerator)
                         <x-dropdown align="left" width="64">
                             <x-slot name="trigger">
-                                <button type="button" class="ui-btn ui-btn--secondary px-3 py-2 gap-2"
+                                <button type="button" class="{{ $topNavBtnClass }} gap-2"
                                     @if(request()->routeIs('boiler-chief.document-header-layouts.*') || request()->routeIs('boiler-chief.request-layouts.*') || request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
                                     Генератор отчётов
                                     <svg class="h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -89,23 +91,23 @@
                             </x-slot>
                             <x-slot name="content">
                                 <x-dropdown-link :href="route('boiler-chief.document-header-layouts.index')">Макеты шапок</x-dropdown-link>
-                                <x-dropdown-link :href="route('boiler-chief.request-layouts.index')">Макеты заявок (PDF)</x-dropdown-link>
-                                <x-dropdown-link :href="route('boiler-chief.layout-applications.index')">Заявки по макетам</x-dropdown-link>
+                                <x-dropdown-link :href="route('boiler-chief.request-layouts.index')">Макеты отчетов (PDF)</x-dropdown-link>
+                                <x-dropdown-link :href="route('boiler-chief.layout-applications.index')">Отчеты по макетам</x-dropdown-link>
                             </x-slot>
                         </x-dropdown>
                     @elseif ($canLayoutApplicationsOnly)
                         <a href="{{ route('boiler-chief.layout-applications.index') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
-                            Заявки по макетам
+                            Отчеты по макетам
                         </a>
                     @endif
 
                     @if ($canManageMaterials || $canViewWarehouseBalances)
                         <x-dropdown align="left" width="64">
                             <x-slot name="trigger">
-                                <button type="button" class="ui-btn ui-btn--secondary px-3 py-2 gap-2"
-                                    @if(request()->routeIs('materials.*')) aria-current="page" @endif>
+                                <button type="button" class="{{ $topNavBtnClass }} gap-2"
+                                    @if(request()->routeIs('materials.*') || ($user->hasRoleId(2) && request()->routeIs('foreman-subdivisions.index'))) aria-current="page" @endif>
                                     Склады и оборудование
                                     <svg class="h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                                         <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
@@ -119,23 +121,27 @@
                                 @if ($canViewWarehouseBalances)
                                     <x-dropdown-link :href="route('materials.overview')">Остатки складов</x-dropdown-link>
                                 @endif
+                                <x-dropdown-link :href="route('materials.movements')">Журнал операций</x-dropdown-link>
+                                @if ($user->hasRoleId(2))
+                                    <x-dropdown-link :href="route('foreman-subdivisions.index')">Подразделения</x-dropdown-link>
+                                @endif
                             </x-slot>
                         </x-dropdown>
                     @endif
 
-                    @if (Auth::user()->hasAnyRoleId([1, 6, 2, 3, 7]))
+                    @if (Auth::user()->hasAnyRoleId([1, 6, 3, 5]))
                         <a href="{{ route('foreman-subdivisions.index') }}"
-                           class="ui-btn ui-btn--secondary px-3 py-2"
+                           class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('foreman-subdivisions.index')) aria-current="page" @endif>
                             Подразделения
                         </a>
                     @endif
 
-                    @if ($canManageAssignments)
+                    @if ($canManageBoilerChiefAssignments)
                         <x-dropdown align="left" width="72">
                             <x-slot name="trigger">
-                                <button type="button" class="ui-btn ui-btn--secondary px-3 py-2 gap-2"
-                                    @if(request()->routeIs('foreman-subdivisions.assignments') || request()->routeIs('boiler-chief-subdivisions.*')) aria-current="page" @endif>
+                                <button type="button" class="{{ $topNavBtnClass }} gap-2"
+                                    @if(request()->routeIs('foreman-subdivisions.assignments') || request()->routeIs('foreman-subdivisions.edit') || request()->routeIs('boiler-chief-subdivisions.*')) aria-current="page" @endif>
                                     Назначения
                                     <svg class="h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                                         <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
@@ -147,6 +153,12 @@
                                 <x-dropdown-link :href="route('boiler-chief-subdivisions.assignments')">Назначения котельной</x-dropdown-link>
                             </x-slot>
                         </x-dropdown>
+                    @elseif ($canManageForemanAssignments)
+                        <a href="{{ route('foreman-subdivisions.assignments') }}"
+                           class="{{ $topNavBtnClass }}"
+                           @if(request()->routeIs('foreman-subdivisions.assignments') || request()->routeIs('foreman-subdivisions.edit')) aria-current="page" @endif>
+                            Назначения мастерам
+                        </a>
                     @endif
                 </div>
             </div>
@@ -253,14 +265,14 @@
                     Макеты шапок
                 </x-responsive-nav-link>
                 <x-responsive-nav-link :href="route('boiler-chief.request-layouts.index')" :active="request()->routeIs('boiler-chief.request-layouts.*')">
-                    Макеты заявок (PDF)
+                    Макеты отчетов (PDF)
                 </x-responsive-nav-link>
                 <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
-                    Заявки по макетам
+                    Отчеты по макетам
                 </x-responsive-nav-link>
             @elseif ($canLayoutApplicationsOnly)
                 <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
-                    Заявки по макетам
+                    Отчеты по макетам
                 </x-responsive-nav-link>
             @endif
 
@@ -278,23 +290,35 @@
                         Остатки складов
                     </x-responsive-nav-link>
                 @endif
+                <x-responsive-nav-link :href="route('materials.movements')" :active="request()->routeIs('materials.movements')">
+                    Журнал операций
+                </x-responsive-nav-link>
+                @if (Auth::user()->hasRoleId(2))
+                    <x-responsive-nav-link :href="route('foreman-subdivisions.index')" :active="request()->routeIs('foreman-subdivisions.index')">
+                        Подразделения
+                    </x-responsive-nav-link>
+                @endif
             @endif
 
-            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 3, 7]))
+            @if (Auth::user()->hasAnyRoleId([1, 6, 3, 5]))
                 <x-responsive-nav-link :href="route('foreman-subdivisions.index')" :active="request()->routeIs('foreman-subdivisions.index')">
                     Подразделения
                 </x-responsive-nav-link>
             @endif
 
-            @if ($canManageAssignments)
+            @if ($canManageBoilerChiefAssignments)
                 <div class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-black/45 dark:text-white/45">
                     Назначения
                 </div>
-                <x-responsive-nav-link :href="route('foreman-subdivisions.assignments')" :active="request()->routeIs('foreman-subdivisions.assignments')">
+                <x-responsive-nav-link :href="route('foreman-subdivisions.assignments')" :active="request()->routeIs('foreman-subdivisions.assignments') || request()->routeIs('foreman-subdivisions.edit')">
                     Назначения мастерам
                 </x-responsive-nav-link>
                 <x-responsive-nav-link :href="route('boiler-chief-subdivisions.assignments')" :active="request()->routeIs('boiler-chief-subdivisions.*')">
                     Назначения котельной
+                </x-responsive-nav-link>
+            @elseif ($canManageForemanAssignments)
+                <x-responsive-nav-link :href="route('foreman-subdivisions.assignments')" :active="request()->routeIs('foreman-subdivisions.assignments') || request()->routeIs('foreman-subdivisions.edit')">
+                    Назначения мастерам
                 </x-responsive-nav-link>
             @endif
         </div>
