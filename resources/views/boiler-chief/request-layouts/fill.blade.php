@@ -104,6 +104,8 @@
                             @elseif($type === 'date')
                                 <input id="{{ $fieldId }}" name="values[{{ $key }}]" type="date"
                                        class="app-input min-h-0"/>
+                            @elseif($type === 'table')
+                                @include('boiler-chief.request-layouts._fill-field-table', ['field' => $field])
                             @elseif($type === 'address')
                                 <div class="relative" data-dadata-address-field>
                                     <input id="{{ $fieldId }}" name="values[{{ $key }}]" type="text" maxlength="255"

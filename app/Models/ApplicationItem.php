@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Schema;
 
 class ApplicationItem extends Model
 {
@@ -77,6 +78,7 @@ class ApplicationItem extends Model
         'custom_equipment_supply_status_id',
         'delivery_status_id',
         'delivery_warehouse_id',
+        'transport_option_id',
     ];
 
     protected function casts(): array
@@ -94,7 +96,24 @@ class ApplicationItem extends Model
         static::saved(function (ApplicationItem $item): void {
             $eid = $item->getAttributeFromArray('equipment_id');
             if ($eid !== null && $eid !== '') {
-                $item->manualDetail()->delete();
+                $buffer = $item->manualWriteBuffer;
+                $hasCatalogLineMeta = array_key_exists('size_value', $buffer)
+                    || array_key_exists('measurement_type', $buffer)
+                    || array_key_exists('quantity_unit', $buffer);
+                if ($hasCatalogLineMeta) {
+                    $existing = $item->manualDetail()->first();
+                    $item->manualDetail()->updateOrCreate(
+                        ['application_item_id' => $item->id],
+                        [
+                            'equipment_name' => null,
+                            'base_name' => $existing?->base_name,
+                            'size_value' => $buffer['size_value'] ?? $existing?->size_value,
+                            'measurement_type' => $buffer['measurement_type'] ?? $existing?->measurement_type ?? 'piece',
+                            'quantity_unit' => $buffer['quantity_unit'] ?? $existing?->quantity_unit ?? 'шт',
+                            'raw_input' => null,
+                        ]
+                    );
+                }
                 $item->manualWriteBuffer = [];
 
                 return;
@@ -156,6 +175,10 @@ class ApplicationItem extends Model
         if (in_array($key, self::MANUAL_DETAIL_KEYS, true)) {
             $eid = $this->getAttributeFromArray('equipment_id');
             if ($eid !== null && $eid !== '') {
+                if (in_array($key, ['size_value', 'measurement_type', 'quantity_unit'], true)) {
+                    $this->manualWriteBuffer[$key] = $value;
+                }
+
                 return $this;
             }
             $this->manualWriteBuffer[$key] = $value;
@@ -179,12 +202,18 @@ class ApplicationItem extends Model
             };
         }
 
+        $this->loadMissing('manualDetail');
+        $md = $this->manualDetail;
+        $manualSize = trim((string) ($md?->size_value ?? ''));
+        $manualType = trim((string) ($md?->measurement_type ?? ''));
+        $manualUnit = trim((string) ($md?->quantity_unit ?? ''));
+
         return match ($key) {
             'equipment_name' => null,
             'base_name' => $this->catalogBaseNameLabel($eq),
-            'size_value' => $eq->value,
-            'measurement_type' => $eq->measurementUnit?->unitType?->code ?? 'piece',
-            'quantity_unit' => $this->catalogQuantityUnitLabel($eq),
+            'size_value' => $manualSize !== '' ? $manualSize : $eq->value,
+            'measurement_type' => $manualType !== '' ? $manualType : ($eq->measurementUnit?->unitType?->code ?? 'piece'),
+            'quantity_unit' => $manualUnit !== '' ? $manualUnit : $this->catalogQuantityUnitLabel($eq),
             'raw_input' => null,
             default => null,
         };
@@ -242,6 +271,58 @@ class ApplicationItem extends Model
         return $this->belongsTo(Warehouse::class, 'delivery_warehouse_id');
     }
 
+    public function transportOption(): BelongsTo
+    {
+        return $this->belongsTo(TransportOption::class);
+    }
+
+    public function transportMethodOptionIdForDeliveryForm(): ?int
+    {
+        if (! Schema::hasColumn('transport_options', 'plate')) {
+            return $this->transport_option_id !== null ? (int) $this->transport_option_id : null;
+        }
+
+        $this->loadMissing('transportOption');
+        if ($this->transport_option_id === null || ! $this->transportOption) {
+            return null;
+        }
+
+        $plate = trim((string) ($this->transportOption->plate ?? ''));
+        if ($plate === '') {
+            return (int) $this->transport_option_id;
+        }
+
+        return TransportOption::query()
+            ->whereNull('plate')
+            ->where('name', $this->transportOption->name)
+            ->orderBy('id')
+            ->value('id');
+    }
+
+    public function transportAndVehicleLine(): ?string
+    {
+        $this->loadMissing('transportOption');
+        $opt = $this->transportOption;
+        if (! $opt) {
+            return null;
+        }
+
+        $name = trim((string) ($opt->name ?? ''));
+        $plate = Schema::hasColumn('transport_options', 'plate')
+            ? trim((string) ($opt->plate ?? ''))
+            : '';
+
+        if ($name === '' && $plate === '') {
+            return null;
+        }
+
+        if ($name !== '' && $plate !== '') {
+            return $name.' — '.$plate;
+        }
+
+        return $name !== '' ? $name : $plate;
+    }
+
     public function getEquipmentDisplayNameAttribute(): string
     {
         $baseName = trim((string) ($this->base_name ?? ''));
@@ -259,9 +340,33 @@ class ApplicationItem extends Model
 
     public function getQuantityWithUnitAttribute(): string
     {
+        if (($this->measurement_type ?? '') === 'clothing_size') {
+            $size = trim((string) ($this->size_value ?? ''));
+            if ($size !== '') {
+                $qty = (int) $this->quantity;
+
+                return $qty === 1 ? $size : $qty.'×'.$size;
+            }
+        }
+
         $unit = trim((string) ($this->quantity_unit ?? '')) ?: 'шт';
 
         return ((int) $this->quantity).' '.$unit;
+    }
+
+    /**
+     * Подпись к количеству в текстах про склад (без числа): для размера одежды — M, L и т.п.
+     */
+    public function quantityUnitLabelForDisplay(): string
+    {
+        if (($this->measurement_type ?? '') === 'clothing_size') {
+            $size = trim((string) ($this->size_value ?? ''));
+            if ($size !== '') {
+                return $size;
+            }
+        }
+
+        return trim((string) ($this->quantity_unit ?? '')) ?: 'шт';
     }
 
     /**
@@ -270,6 +375,40 @@ class ApplicationItem extends Model
     public function usesFreeTextEquipment(): bool
     {
         return $this->equipment_id === null;
+    }
+
+    /**
+     * Тип учёта, сохранённый в строке заявки (для каталога не подменяется справочником).
+     */
+    public function storedMeasurementType(): string
+    {
+        $this->loadMissing('manualDetail');
+        $fromManual = trim((string) ($this->manualDetail?->measurement_type ?? ''));
+        if ($fromManual !== '') {
+            return $fromManual;
+        }
+
+        return trim((string) ($this->measurement_type ?? 'piece')) ?: 'piece';
+    }
+
+    /**
+     * Размер, сохранённый в строке заявки (для каталога — из manual detail, не equipment.value).
+     */
+    public function storedSizeValue(): ?string
+    {
+        $this->loadMissing('manualDetail');
+        $fromManual = trim((string) ($this->manualDetail?->size_value ?? ''));
+        if ($fromManual !== '') {
+            return $fromManual;
+        }
+
+        if ($this->getAttributeFromArray('equipment_id')) {
+            return null;
+        }
+
+        $fromAccessor = trim((string) ($this->size_value ?? ''));
+
+        return $fromAccessor !== '' ? $fromAccessor : null;
     }
 
     /**
@@ -322,7 +461,7 @@ class ApplicationItem extends Model
             self::CUSTOM_SUPPLY_ORDERED => 'Заказано',
             self::CUSTOM_SUPPLY_IN_TRANSIT => 'В пути',
             self::CUSTOM_SUPPLY_ON_WAREHOUSE => 'На складе',
-            default => 'Своё название',
+            default => 'Своё оборудование',
         };
     }
 
@@ -332,7 +471,10 @@ class ApplicationItem extends Model
     public static function queryPendingCustomEquipmentOrder(): Builder
     {
         return static::query()
-            ->whereHas('application', fn ($q) => $q->whereNull('archived_at'))
+            ->whereHas('application', function ($q): void {
+                $q->whereNull('archived_at')
+                    ->whereSupplyApprovedForCustomEquipmentWorkflow();
+            })
             ->whereNull('equipment_id')
             ->where('is_checked', true)
             ->where(function ($w) {
@@ -397,6 +539,18 @@ class ApplicationItem extends Model
         return $this->is_checked
             && $this->equipment_id !== null
             && $this->resolvedDeliveryStatus() === null;
+    }
+
+    /**
+     * Позиция в состоянии «в пути» для отображения сводки по заявке: своё оборудование до прихода на склад или доставка каталога.
+     */
+    public function isInShipmentTransitState(): bool
+    {
+        if ($this->usesFreeTextEquipment()) {
+            return $this->resolvedCustomSupplyStatus() === self::CUSTOM_SUPPLY_IN_TRANSIT;
+        }
+
+        return $this->resolvedDeliveryStatus() === self::DELIVERY_IN_TRANSIT;
     }
 
     public function canMarkDeliveryDeliveredByBoilerChief(): bool

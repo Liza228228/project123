@@ -7,11 +7,8 @@
         $equipmentCount = (int) $application->items->count();
     @endphp
     <details class="application-index-equipment-details rounded-lg border border-stone-200/90 bg-white/60 dark:border-stone-700 dark:bg-stone-900/20">
-        <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-stone-800 outline-none hover:bg-stone-100/80 dark:text-stone-100 dark:hover:bg-stone-800/50 [&::-webkit-details-marker]:hidden">
-            <span class="text-left">
-                <span class="font-normal text-stone-600 dark:text-stone-400">{{ $equipmentCount }} позиций.</span>
-                <span class="block text-[11px] font-normal text-stone-500 dark:text-stone-400"></span>
-            </span>
+        <summary class="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1.5 text-xs font-medium text-stone-800 outline-none hover:bg-stone-100/80 dark:text-stone-100 dark:hover:bg-stone-800/50 [&::-webkit-details-marker]:hidden">
+            <span class="font-normal text-stone-600 dark:text-stone-400">{{ $equipmentCount }} {{ $equipmentCount === 1 ? 'позиция' : ($equipmentCount < 5 ? 'позиции' : 'позиций') }}</span>
             <span class="application-index-equipment-expand-label application-index-equipment-expand-label--collapsed shrink-0 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">Развернуть</span>
             <span class="application-index-equipment-expand-label application-index-equipment-expand-label--expanded shrink-0 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">Свернуть</span>
         </summary>

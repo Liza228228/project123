@@ -54,8 +54,8 @@ class TransportOptionSeeder extends Seeder
     private function companyPlatedVehicles(): array
     {
         return [
-            ['name' => 'Машина', 'plate' => '888', 'label' => 'Своя машина'],
-            ['name' => 'Машина', 'plate' => '777', 'label' => 'Своя машина'],
+            ['name' => 'Служебная машина', 'plate' => '777', 'label' => null],
+            ['name' => 'Служебная машина', 'plate' => '888', 'label' => null],
         ];
     }
 
@@ -72,6 +72,7 @@ class TransportOptionSeeder extends Seeder
             'Прицеп / фура',
             'Спецтехника',
             'Самовывоз',
+            'Служебная машина',
         ];
     }
 }

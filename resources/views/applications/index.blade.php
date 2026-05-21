@@ -1,20 +1,40 @@
-<x-app-layout>
+@php
+    $isAccountant = Auth::user()?->hasRoleId(\App\Models\User::ACCOUNTANT_ROLE_ID) ?? false;
+    $archiveFilterValue = $archiveFilter ?? ($isAccountant ? 'all' : 'active');
+@endphp
+<x-app-layout :wide="true">
     <x-slot name="header">
         <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-2 w-full min-w-0">
             <div class="min-w-0 space-y-1">
                 <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
-                    @if(($archiveFilter ?? 'active') === 'archived')
+                    @if($archiveFilterValue === 'archived')
                         Архив выполненных заявок
                     @else
                         Заявки
                     @endif
                 </h2>
-                @if(($archiveFilter ?? 'active') === 'archived')
+                @if($archiveFilterValue === 'archived')
                    
                 @endif
             </div>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:shrink-0">
-                @if(($archiveFilter ?? 'active') === 'archived')
+                @if($isAccountant)
+                    @if($archiveFilterValue !== 'all')
+                        <a href="{{ route('applications.index', array_merge(request()->except('page', 'archive'), ['archive' => 'all'])) }}" class="ui-btn ui-btn--secondary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
+                            Все заявки
+                        </a>
+                    @endif
+                    @if($archiveFilterValue !== 'active')
+                        <a href="{{ route('applications.index', array_merge(request()->except('page', 'archive'), ['archive' => 'active'])) }}" class="ui-btn ui-btn--secondary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
+                            Только активные
+                        </a>
+                    @endif
+                    @if($archiveFilterValue !== 'archived')
+                        <a href="{{ route('applications.archive', request()->except('page', 'archive')) }}" class="ui-btn ui-btn--secondary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
+                            Только архив
+                        </a>
+                    @endif
+                @elseif($archiveFilterValue === 'archived')
                     <a href="{{ route('applications.index', request()->except('page', 'archive')) }}" class="ui-btn ui-btn--secondary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
                         К активным заявкам
                     </a>
@@ -41,7 +61,7 @@
         </div>
     </x-slot>
 
-    <div class="mx-auto max-w-[96rem] px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
+    <div class="w-full max-w-[min(100%,1920px)] mx-auto px-0 py-2 max-sm:-mx-4 sm:px-4 lg:px-6 xl:px-8">
             @if (session('status'))
                 <div class="mb-4 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-900 dark:border-stone-700 dark:bg-stone-900/40 dark:text-stone-100">
                     {{ session('status') }}
@@ -49,9 +69,9 @@
             @endif
 
             <div class="app-form-card">
-                <div class="px-4 py-5 sm:p-8 space-y-5 sm:space-y-6">
+                <div class="px-4 py-5 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
-                        <input type="hidden" name="archive" value="{{ ($archiveFilter ?? 'active') === 'archived' ? 'archived' : 'active' }}">
+                        <input type="hidden" name="archive" value="{{ $archiveFilterValue }}">
                         <div class="app-filter-panel">
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:items-end">
                             <div class="min-w-0 lg:col-span-2">
@@ -66,15 +86,12 @@
                                 </div>
                             </div>
                             <div class="min-w-0">
-                                <label for="applications-equipment-filter" class="app-form-label">Статус согласования</label>
-                                <select name="equipment_filter" id="applications-equipment-filter"
+                                <label for="applications-approval-filter" class="app-form-label">Согласование</label>
+                                <select name="approval_filter" id="applications-approval-filter"
                                     class="app-select">
-                                    <option value="all" @selected($equipmentFilter === 'all')>Все заявки</option>
-                                    <option value="has_approved" @selected($equipmentFilter === 'has_approved')>Есть согласованные позиции</option>
-                                    <option value="has_not_approved" @selected($equipmentFilter === 'has_not_approved')>Есть несогласованные позиции</option>
-                                    <option value="fully_approved" @selected($equipmentFilter === 'fully_approved')>Все позиции согласованы</option>
-                                    <option value="on_approval" @selected($equipmentFilter === 'on_approval')>Заявка на согласовании</option>
-                                    <option value="needs_custom_equipment_order" @selected($equipmentFilter === 'needs_custom_equipment_order')>Нужно заказать своё оборудование</option>
+                                    @foreach($approvalFilterOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected($approvalFilter === $value)>{{ $label }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             @unless($isSiteForeman || ($isBoilerChief ?? false))
@@ -95,8 +112,8 @@
                                 <label for="applications-per-page" class="app-form-label">На странице</label>
                                 <select name="per_page" id="applications-per-page"
                                     class="app-select">
-                                    @foreach([10, 25, 50] as $size)
-                                        <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
+                                    @foreach($allowedPerPage as $size)
+                                        <option value="{{ $size }}" @selected((int) $perPage === (int) $size)>{{ $size }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -112,7 +129,6 @@
                                             <option value="responsible" @selected(($sortState['primary_field'] ?? '') === 'responsible')>Ответственный</option>
                                             <option value="author" @selected(($sortState['primary_field'] ?? '') === 'author')>Автор заявки</option>
                                             <option value="approved_by" @selected(($sortState['primary_field'] ?? '') === 'approved_by')>Согласовавший</option>
-                                            <option value="status" @selected(($sortState['primary_field'] ?? '') === 'status')>Статус</option>
                                         </select>
                                         <select name="sort_primary_direction"
                                             class="app-select">
@@ -130,7 +146,6 @@
                                             <option value="responsible" @selected(($sortState['secondary_field'] ?? '') === 'responsible')>Ответственный</option>
                                             <option value="author" @selected(($sortState['secondary_field'] ?? '') === 'author')>Автор заявки</option>
                                             <option value="approved_by" @selected(($sortState['secondary_field'] ?? '') === 'approved_by')>Согласовавший</option>
-                                            <option value="status" @selected(($sortState['secondary_field'] ?? '') === 'status')>Статус</option>
                                         </select>
                                         <select name="sort_secondary_direction"
                                             class="app-select">
@@ -148,7 +163,7 @@
                             @endphp
                             @if(
                                 $search !== ''
-                                || $equipmentFilter !== 'all'
+                                || $approvalFilter !== 'all'
                                 || (($archiveFilter ?? 'active') !== 'active')
                                 || $selectedForemanId !== null
                                 || (($sortState['primary_field'] ?? 'created_at') !== 'created_at')
@@ -165,7 +180,7 @@
 
                     @if($applications->isEmpty())
                         <p class="md:hidden py-6 text-center text-sm text-black dark:text-white">
-                            @if($search !== '' || $equipmentFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                 По заданным условиям заявок не найдено.
                             @else
                                 Заявок пока нет.
@@ -181,7 +196,11 @@
                         </div>
                         <div class="md:hidden space-y-4">
                             @foreach($applications as $application)
-                                <article class="rounded-xl border p-4 space-y-3 shadow-sm {{ $application->needsCustomEquipmentOrder() ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : 'border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20' }}">
+                                @php
+                                    $needsIndexSubmit = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
+                                @endphp
+                                <article class="rounded-xl border p-5 space-y-4 shadow-sm {{ $application->needsCustomEquipmentOrder() ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : ($needsIndexSubmit ? 'border-indigo-300/90 bg-indigo-50/30 dark:border-indigo-800/60 dark:bg-indigo-950/20' : 'border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20') }}">
+                                    <p class="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">Заявка № {{ $application->id }}</p>
                                     <div class="flex justify-between gap-3 items-start">
                                         <div class="min-w-0 flex-1">
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Подразделение</p>
@@ -203,26 +222,10 @@
                                             @endif
                                         </div>
                                         <div class="shrink-0 text-end">
-                                            @if($application->items->isEmpty())
-                                                <span class="text-xs text-black/50 dark:text-white/50">—</span>
-                                            @elseif($application->isLifecycleCompleted())
-                                                <span class="inline-flex items-center rounded-full border border-emerald-300/90 bg-emerald-50/90 px-2 py-0.5 text-[11px] font-medium text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">Выполнена</span>
-                                            @elseif($application->isStatusApproved())
-                                                <span class="inline-flex items-center rounded-full bg-stone-200 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white">Согласована</span>
-                                            @elseif($application->isStatusPartial())
-                                                <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">Частично</span>
-                                            @elseif($application->needsBoilerChiefReviewBeforeManagement())
-                                                <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">У котельной</span>
-                                            @elseif($application->awaitsManagementEquipmentApproval())
-                                                <span class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">У руководства</span>
-                                            @elseif($application->isStatusRejected())
-                                                <span class="inline-flex items-center rounded-full bg-stone-300/90 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/70 dark:text-white">Не согласована</span>
-                                            @else
-                                                <span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">На согласовании</span>
-                                            @endif
+                                            @include('applications.partials.index-approval-status-badge', ['application' => $application, 'compact' => true])
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-1 gap-2 text-sm text-black dark:text-white">
+                                    <div class="grid grid-cols-1 gap-3 text-base text-black dark:text-white">
                                         <div>
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Ответственный</p>
                                             <p>{{ $application->responsibleUser ? $application->responsibleUser->surname.' '.$application->responsibleUser->name : '—' }}</p>
@@ -238,7 +241,7 @@
                                             </div>
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Транспорт</p>
-                                                <p class="break-words">{{ $application->transportOption?->name ?? '—' }}</p>
+                                                <p class="break-words">{{ $application->transportAndVehicleLine() ?? '—' }}</p>
                                             </div>
                                         </div>
                                         <div>
@@ -257,13 +260,16 @@
                                             <p class="break-words">
                                                 @if($application->approvedBy)
                                                     {{ $application->approvedBy->surname }} {{ $application->approvedBy->name }}
+                                                    @if($application->approvedBy->role?->name)
+                                                        <span class="block text-xs opacity-75 mt-0.5">{{ $application->approvedBy->role->name }}</span>
+                                                    @endif
                                                 @else
                                                     —
                                                 @endif
                                             </p>
                                         </div>
                                     </div>
-                                    @if(Auth::user()->hasRoleId(3))
+                                    @if($isAccountant)
                                         @php
                                             $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                 || (int) ($application->installation_act_photos_count ?? 0) > 0;
@@ -278,6 +284,8 @@
                                                 </a>
                                             @endif
                                         </div>
+                                    @elseif(Auth::user()->hasAnyRoleId([4, 7]))
+                                        @include('applications.partials.index-row-actions', ['application' => $application, 'stacked' => true])
                                     @else
                                         <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary flex w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]">
                                             Просмотр
@@ -288,35 +296,52 @@
                         </div>
                     @endif
 
-                    <div class="hidden md:block app-table-shell">
-                        <table class="min-w-full">
+                    <div class="hidden md:block app-table-shell applications-index-table-shell">
+                        <table class="applications-index-table">
+                            <colgroup>
+                                <col style="width: 3%">
+                                <col style="width: 14%">
+                                <col style="width: 10%">
+                                <col style="width: 11%">
+                                <col style="width: 11%">
+                                <col style="width: 17%">
+                                <col style="width: 8%">
+                                <col style="width: 7%">
+                                <col style="width: 9%">
+                                <col style="width: 10%">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Подразделение</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Ответственный</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[9rem]">Создал(а)</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[9rem]">Согласовал(а)</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase min-w-[14rem] max-w-md align-bottom">
-                                        <div class="flex flex-col gap-2 min-w-0">
-                                            <span class="tracking-wide">Оборудование</span>
-                                            <div class="applications-equipment-bulk-host flex flex-wrap gap-1.5 normal-case">
-                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[10px] font-semibold" data-action="collapse-all">Свернуть все</button>
-                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm whitespace-nowrap !px-2.5 !py-1.5 text-[10px] font-semibold" data-action="expand-all">Развернуть все</button>
+                                    <th class="text-left text-black dark:text-white uppercase">№</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Подразделение</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Ответственный</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Создал(а)</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Согласовал(а)</th>
+                                    <th class="text-left text-black dark:text-white uppercase align-bottom">
+                                        <div class="flex flex-col gap-1 min-w-0">
+                                            <span>Оборудование</span>
+                                            <div class="applications-equipment-bulk-host flex flex-wrap gap-1 normal-case">
+                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm !px-2 !py-1 text-[10px] font-semibold" data-action="collapse-all">Свернуть</button>
+                                                <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm !px-2 !py-1 text-[10px] font-semibold" data-action="expand-all">Развернуть</button>
                                             </div>
                                         </div>
                                     </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Транспорт</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Желаемая дата поставки</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-black dark:text-white uppercase">Согласование</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-black dark:text-white uppercase w-[1%] whitespace-nowrap"><span class="sr-only">Действия</span></th>
+                                    <th class="text-left text-black dark:text-white uppercase">Транспорт</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Дата</th>
+                                    <th class="text-left text-black dark:text-white uppercase">Статус</th>
+                                    <th class="text-right text-black dark:text-white uppercase">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($applications as $application)
-                                    <tr class="align-top {{ $application->needsCustomEquipmentOrder() ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-400 dark:border-l-amber-600' : '' }}">
-                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
-                                            <div class="flex flex-col gap-1">
-                                                <span>{{ $application->subdivision->name }}</span>
+                                    @php
+                                        $needsIndexSubmit = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
+                                    @endphp
+                                    <tr class="align-top {{ $application->needsCustomEquipmentOrder() ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-400 dark:border-l-amber-600' : ($needsIndexSubmit ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-l-4 border-l-indigo-400 dark:border-l-indigo-600' : '') }}">
+                                        <td class="font-semibold tabular-nums text-black dark:text-white" title="Номер заявки">№ {{ $application->id }}</td>
+                                        <td class="text-black dark:text-white">
+                                            <div class="flex flex-col gap-1 min-w-0">
+                                                <span class="break-words">{{ $application->subdivision->name }}</span>
                                                 @if($application->needsCustomEquipmentOrder())
                                                     <span class="inline-flex w-fit items-center rounded-full border border-amber-400/80 bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                                                         К заказу
@@ -334,99 +359,78 @@
                                                 @endif
                                             </div>
                                         </td>
-                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
+                                        <td class="text-black dark:text-white break-words">
                                             @if($application->responsibleUser)
                                                 {{ $application->responsibleUser->surname }} {{ $application->responsibleUser->name }}
                                             @else
                                                 —
                                             @endif
                                         </td>
-                                        <td class="px-4 py-3 text-xs text-black dark:text-white align-top max-w-[11rem]">
+                                        <td class="text-black dark:text-white min-w-0">
                                             @if($application->user)
-                                                <span class="font-medium text-sm">{{ $application->user->surname }} {{ $application->user->name }}</span>
-                                                <span class="block text-[11px] opacity-75 mt-0.5 whitespace-nowrap">{{ $application->created_at->format('d.m.Y H:i') }}</span>
+                                                <span class="font-medium break-words">{{ $application->user->surname }} {{ $application->user->name }}</span>
+                                                <span class="block text-xs opacity-75 mt-0.5">{{ $application->created_at->format('d.m.Y H:i') }}</span>
                                             @else
                                                 <span class="opacity-50">—</span>
                                             @endif
                                         </td>
-                                        <td class="px-4 py-3 text-xs text-black dark:text-white align-top max-w-[11rem]">
+                                        <td class="text-black dark:text-white min-w-0">
                                             @if($application->approvedBy)
-                                                <span class="font-medium text-sm">{{ $application->approvedBy->surname }} {{ $application->approvedBy->name }}</span>
+                                                <span class="font-medium break-words">{{ $application->approvedBy->surname }} {{ $application->approvedBy->name }}</span>
+                                                @if($application->approvedBy->role?->name)
+                                                    <span class="block text-xs opacity-75 mt-0.5 leading-snug break-words">{{ $application->approvedBy->role->name }}</span>
+                                                @endif
                                             @else
                                                 <span class="opacity-50">—</span>
                                             @endif
                                         </td>
-                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top min-w-[14rem] max-w-md">
+                                        <td class="text-black dark:text-white min-w-0">
                                             @include('applications.partials.index-equipment-collapsible', ['application' => $application])
                                         </td>
-                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top">
-                                            @if($application->transportOption)
-                                                <span class="line-clamp-2" title="{{ $application->transportOption->name }}">{{ $application->transportOption->name }}</span>
+                                        <td class="text-black dark:text-white min-w-0">
+                                            @if($line = $application->transportAndVehicleLine())
+                                                <span class="line-clamp-2 break-words" title="{{ $line }}">{{ $line }}</span>
                                             @else
                                                 —
                                             @endif
                                         </td>
-                                        <td class="px-4 py-3 text-sm text-black dark:text-white align-top whitespace-nowrap">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
-                                        <td class="px-4 py-3 text-sm align-top">
-                                            @if($application->items->isEmpty())
-                                                <span class="text-black dark:text-white opacity-50">—</span>
-                                            @elseif($application->isLifecycleCompleted())
-                                                <span class="inline-flex items-center rounded-full border border-emerald-300/90 bg-emerald-50/90 px-2.5 py-0.5 text-xs font-medium text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
-                                                    Выполнена
-                                                </span>
-                                            @elseif($application->isStatusApproved())
-                                                <span class="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white">
-                                                    Согласована
-                                                </span>
-                                            @elseif($application->isStatusPartial())
-                                                <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">
-                                                    Частично
-                                                </span>
-                                            @elseif($application->needsBoilerChiefReviewBeforeManagement())
-                                                <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
-                                                    У котельной
-                                                </span>
-                                            @elseif($application->awaitsManagementEquipmentApproval())
-                                                <span class="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">
-                                                    У руководства
-                                                </span>
-                                            @elseif($application->isStatusRejected())
-                                                <span class="inline-flex items-center rounded-full bg-stone-300/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/70 dark:text-white">
-                                                    Не согласована
-                                                </span>
-                                            @else
-                                                <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white">
-                                                    На согласовании
-                                                </span>
-                                            @endif
+                                        <td class="text-black dark:text-white tabular-nums">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
+                                        <td class="align-top min-w-0">
+                                            @include('applications.partials.index-approval-status-badge', ['application' => $application])
                                         </td>
-                                        <td class="px-4 py-3 text-right align-top w-[1%]">
-                                            @if(Auth::user()->hasRoleId(3))
+                                        <td class="text-right align-top">
+                                            @if($isAccountant)
                                                 @php
                                                     $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                         || (int) ($application->installation_act_photos_count ?? 0) > 0;
                                                 @endphp
-                                                <div class="inline-flex flex-col gap-2 items-end">
-                                                    <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap">
+                                                <div class="applications-index-actions ms-auto">
+                                                    <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary">
                                                         Просмотр
                                                     </a>
                                                     @if($hasInstallationDocs)
-                                                        <a href="{{ route('applications.installation-act.browse', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary whitespace-nowrap">
+                                                        <a href="{{ route('applications.installation-act.browse', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary">
                                                             Акт и фото
                                                         </a>
                                                     @endif
                                                 </div>
+                                            @elseif(Auth::user()->hasAnyRoleId([4, 7]))
+                                                <div class="ms-auto min-w-0 max-w-full">
+                                                    @include('applications.partials.index-row-actions', ['application' => $application, 'tableCompact' => true])
+                                                </div>
                                             @else
-                                                <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap">
-                                                    Просмотр
-                                                </a>
+                                                <div class="applications-index-actions ms-auto">
+                                                    <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary">
+                                                        Просмотр
+                                                    </a>
+                                                </div>
                                             @endif
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="9" class="px-4 py-6 text-center text-sm text-black dark:text-white">
-                                            @if($search !== '' || $equipmentFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                                        <td colspan="10" class="px-4 py-6 text-center text-sm text-black dark:text-white">
+                                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                                 По заданным условиям заявок не найдено.
                                             @else
                                                 Заявок пока нет.

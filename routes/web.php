@@ -89,6 +89,8 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/{application}/issue-delivered-warehouse-stock', [ApplicationController::class, 'issueDeliveredWarehouseStock'])->name('issue-delivered-warehouse-stock');
     Route::get('/{application}/responsible', [ApplicationController::class, 'editResponsible'])->name('responsible.edit');
     Route::patch('/{application}/responsible', [ApplicationController::class, 'updateResponsible'])->name('responsible.update');
+    Route::post('/{application}/submit-to-boiler-chief', [ApplicationController::class, 'submitToBoilerChief'])->name('submit-to-boiler-chief');
+    Route::post('/{application}/submit-for-management', [ApplicationController::class, 'submitForManagement'])->name('submit-for-management');
     Route::get('/{application}', [ApplicationController::class, 'show'])->name('show');
     Route::get('/{application}/edit', [ApplicationController::class, 'edit'])->name('edit');
     Route::put('/{application}', [ApplicationController::class, 'update'])->name('update');
@@ -124,7 +126,7 @@ Route::middleware(['auth', 'layout_application_reports'])->prefix('boiler-chief/
     Route::delete('/submissions/{submission}', [BoilerChiefLayoutApplicationController::class, 'destroy'])->name('destroy');
 });
 
-Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/document-header-layouts')->name('boiler-chief.document-header-layouts.')->group(function () {
+Route::middleware(['auth', 'report_layout_designer'])->prefix('boiler-chief/document-header-layouts')->name('boiler-chief.document-header-layouts.')->group(function () {
     Route::get('/', [BoilerChiefDocumentHeaderLayoutController::class, 'index'])->name('index');
     Route::get('/create', [BoilerChiefDocumentHeaderLayoutController::class, 'create'])->name('create');
     Route::post('/', [BoilerChiefDocumentHeaderLayoutController::class, 'store'])->name('store');
@@ -133,8 +135,12 @@ Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/document-heade
     Route::delete('/{documentHeaderLayout}', [BoilerChiefDocumentHeaderLayoutController::class, 'destroy'])->name('destroy');
 });
 
-Route::middleware(['auth', 'boiler_chief'])->prefix('boiler-chief/request-layouts')->name('boiler-chief.request-layouts.')->group(function () {
+Route::middleware(['auth', 'report_layout_catalog'])->prefix('boiler-chief/request-layouts')->name('boiler-chief.request-layouts.')->group(function () {
     Route::get('/', [BoilerChiefRequestLayoutController::class, 'index'])->name('index');
+    Route::get('/{requestLayout}/fill-schema-json', [BoilerChiefRequestLayoutController::class, 'layoutFillSchemaJsonForCatalog'])->name('fill-schema-json');
+});
+
+Route::middleware(['auth', 'report_layout_designer'])->prefix('boiler-chief/request-layouts')->name('boiler-chief.request-layouts.')->group(function () {
     Route::get('/create', [BoilerChiefRequestLayoutController::class, 'create'])->name('create');
     Route::get('/{requestLayout}/schema-json', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJson'])->name('schema-json');
     Route::post('/', [BoilerChiefRequestLayoutController::class, 'store'])->name('store');

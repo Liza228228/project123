@@ -171,8 +171,12 @@
             
         </div>
 
+        @if (! empty($returnTo))
+            <input type="hidden" name="return" value="{{ $returnTo }}">
+        @endif
+
         <div class="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-4 border-t border-orange-100/90 dark:border-orange-900/40">
-            <a href="{{ route('boiler-chief.document-header-layouts.index') }}"
+            <a href="{{ $backHref ?? route('boiler-chief.document-header-layouts.index') }}"
                class="ui-btn ui-btn--secondary w-full sm:w-auto justify-center">
                 Отмена
             </a>

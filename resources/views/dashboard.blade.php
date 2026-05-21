@@ -42,25 +42,25 @@
                         <p class="mt-1.5 flex-1 text-[10px] sm:text-[11px] leading-snug text-stone-500 dark:text-stone-400">Все заявки которые находятся в работе.</p>
                         <span class="mt-3 text-[11px] font-medium text-orange-800/90 transition group-hover:text-orange-950 dark:text-orange-300 dark:group-hover:text-orange-200">Перейти →</span>
                     </a>
-                    <a href="{{ route('applications.index', ['equipment_filter' => 'on_approval', 'archive' => 'active']) }}" class="dash-stat-card group">
+                    <a href="{{ route('applications.index', ['approval_filter' => 'pending', 'archive' => 'active']) }}" class="dash-stat-card group">
                         <span class="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-3xl">{{ (int) $applicationAnalytics['pending'] }}</span>
                         <span class="mt-1 text-[11px] sm:text-xs font-semibold leading-tight text-stone-800 dark:text-stone-100">На согласовании</span>
                         <p class="mt-1.5 flex-1 text-[10px] sm:text-[11px] leading-snug text-stone-500 dark:text-stone-400">Статус заявок, которые отправленны на согласование.</p>
                         <span class="mt-3 text-[11px] font-medium text-orange-800/90 transition group-hover:text-orange-950 dark:text-orange-300 dark:group-hover:text-orange-200">Перейти →</span>
                     </a>
-                    <a href="{{ route('applications.index', ['equipment_filter' => 'fully_approved', 'archive' => 'active']) }}" class="dash-stat-card group">
+                    <a href="{{ route('applications.index', ['approval_filter' => 'approved', 'archive' => 'active']) }}" class="dash-stat-card group">
                         <span class="text-2xl font-bold tabular-nums text-teal-800 dark:text-teal-100 sm:text-3xl">{{ (int) $applicationAnalytics['approved'] }}</span>
                         <span class="mt-1 text-[11px] sm:text-xs font-semibold leading-tight text-stone-800 dark:text-stone-100">Согласованы</span>
                         <p class="mt-1.5 flex-1 text-[10px] sm:text-[11px] leading-snug text-stone-500 dark:text-stone-400">Статус заявки, которые согласованы.</p>
                         <span class="mt-3 text-[11px] font-medium text-orange-800/90 transition group-hover:text-orange-950 dark:text-orange-300 dark:group-hover:text-orange-200">Перейти →</span>
                     </a>
-                    <a href="{{ route('applications.index', ['archive' => 'active']) }}" class="dash-stat-card group">
+                    <a href="{{ route('applications.index', ['approval_filter' => 'partial', 'archive' => 'active']) }}" class="dash-stat-card group">
                         <span class="text-2xl font-bold tabular-nums text-amber-900 dark:text-amber-100 sm:text-3xl">{{ (int) $applicationAnalytics['partial'] }}</span>
                         <span class="mt-1 text-[11px] sm:text-xs font-semibold leading-tight text-stone-800 dark:text-stone-100">Частично согласованы</span>
                         <p class="mt-1.5 flex-1 text-[10px] sm:text-[11px] leading-snug text-stone-500 dark:text-stone-400">Статус заявки, которые согласованы частично.</p>
                         <span class="mt-3 text-[11px] font-medium text-orange-800/90 transition group-hover:text-orange-950 dark:text-orange-300 dark:group-hover:text-orange-200">Перейти →</span>
                     </a>
-                    <a href="{{ route('applications.index', ['equipment_filter' => 'has_not_approved', 'archive' => 'active']) }}" class="dash-stat-card group">
+                    <a href="{{ route('applications.index', ['approval_filter' => 'rejected', 'archive' => 'active']) }}" class="dash-stat-card group">
                         <span class="text-2xl font-bold tabular-nums text-rose-800 dark:text-rose-100 sm:text-3xl">{{ (int) $applicationAnalytics['rejected'] }}</span>
                         <span class="mt-1 text-[11px] sm:text-xs font-semibold leading-tight text-stone-800 dark:text-stone-100">Не согласованы</span>
                         <p class="mt-1.5 flex-1 text-[10px] sm:text-[11px] leading-snug text-stone-500 dark:text-stone-400">Заявки, которые не прошли согласование.</p>

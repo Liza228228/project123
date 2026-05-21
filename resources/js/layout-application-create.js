@@ -2,6 +2,31 @@
  * Форма «Новая заявка по макету»: выбор макета, поля с contenteditable и PDF.
  */
 export function registerLayoutApplicationCreate(Alpine) {
+    Alpine.data('requestLayoutTableFill', (config) => ({
+        columns: Array.isArray(config?.columns) ? config.columns : ['Столбец 1'],
+        savedRows: Array.isArray(config?.savedRows) ? config.savedRows : [],
+        rowCount: Math.max(1, Math.min(30, Number(config?.initialRowCount) || 1)),
+        maxRows: 30,
+        minRows: 1,
+        clampRowCount() {
+            const n = Number(this.rowCount);
+            this.rowCount = Math.max(this.minRows, Math.min(this.maxRows, Number.isFinite(n) ? n : this.minRows));
+        },
+        rowIndices() {
+            this.clampRowCount();
+
+            return Array.from({ length: this.rowCount }, (_, i) => i);
+        },
+        colIndices() {
+            return this.columns.map((_, i) => i);
+        },
+        cellValue(rowIdx, colIdx) {
+            const row = this.savedRows[rowIdx];
+
+            return row && row[colIdx] !== undefined && row[colIdx] !== null ? String(row[colIdx]) : '';
+        },
+    }));
+
     Alpine.data('layoutApplicationCreate', (cfg) => ({
         layouts: cfg.layouts || [],
         users: cfg.users || [],
@@ -42,6 +67,8 @@ export function registerLayoutApplicationCreate(Alpine) {
         insertEquipmentFormat: 'list',
         activeEditorFieldKey: '',
         fields: [],
+        /** Число строк таблицы при заполнении отчёта (ключ поля → 1…30). */
+        tableFillRowCounts: {},
         loading: false,
         fontFamily: 'Times New Roman',
         fontSizePt: 11,
@@ -83,11 +110,43 @@ export function registerLayoutApplicationCreate(Alpine) {
         },
         resetLayoutSchemaState() {
             this.fields = [];
+            this.tableFillRowCounts = {};
             this.footerPreset = 'one_signer_author';
             this.signatureSlotsCount = 1;
             this.signatureRoles = {};
             this.signatureRoleNames = {};
             this.signerSelections = { 1: '', 2: '', 3: '' };
+        },
+        resetTableFillRowCounts() {
+            const counts = {};
+            for (const f of this.fields) {
+                if (f.type === 'table' && f.key) {
+                    counts[String(f.key)] = 1;
+                }
+            }
+            this.tableFillRowCounts = counts;
+        },
+        getTableRowCount(fieldKey) {
+            const n = Number(this.tableFillRowCounts[fieldKey]);
+            if (!Number.isFinite(n) || n < 1) {
+                return 1;
+            }
+
+            return Math.min(30, Math.floor(n));
+        },
+        setTableRowCount(fieldKey, value) {
+            const n = Math.max(1, Math.min(30, Number(value) || 1));
+            this.tableFillRowCounts = { ...this.tableFillRowCounts, [String(fieldKey)]: n };
+        },
+        tableRowIndicesForField(field) {
+            const key = field?.key != null ? String(field.key) : '';
+
+            return Array.from({ length: this.getTableRowCount(key) }, (_, i) => i);
+        },
+        tableColumnIndices(field) {
+            const cols = field && Array.isArray(field.table_columns) ? field.table_columns : [];
+
+            return cols.map((_, i) => i);
         },
         getEmbeddedLayoutSchema() {
             const id = this.layoutId;
@@ -110,18 +169,25 @@ export function registerLayoutApplicationCreate(Alpine) {
             this.signatureRoleNames =
                 d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
             const raw = Array.isArray(d.fields) ? d.fields : [];
-            const allowedTypes = new Set(['text', 'number', 'textarea', 'date']);
+            const allowedTypes = new Set(['text', 'number', 'textarea', 'date', 'table']);
             this.fields = raw.map((f, idx) => {
                 const t = String(f.type || 'text');
                 const type = allowedTypes.has(t) ? t : 'text';
-
-                return {
+                const base = {
                     key: f.key,
                     label: f.label || f.key,
                     type,
                     slug: `f${idx}_${this.slugify(String(f.key))}`,
                 };
+                if (type === 'table') {
+                    const cols = Array.isArray(f.table_columns) ? f.table_columns.map((c) => String(c || '')) : ['Столбец 1'];
+                    const filtered = cols.map((c) => c.trim()).filter((c) => c !== '');
+                    base.table_columns = filtered.length ? filtered : ['Столбец 1'];
+                }
+
+                return base;
             });
+            this.resetTableFillRowCounts();
         },
         async loadFields() {
             if (!this.layoutId) {
@@ -464,6 +530,36 @@ export function registerLayoutApplicationCreate(Alpine) {
                     continue;
                 }
                 const raw = data[key];
+                if (f.type === 'table') {
+                    let rows = [];
+                    if (typeof raw === 'string' && raw !== '') {
+                        try {
+                            const parsed = JSON.parse(raw);
+                            if (Array.isArray(parsed)) {
+                                rows = parsed;
+                            }
+                        } catch (_e) {
+                            rows = [];
+                        }
+                    } else if (Array.isArray(raw)) {
+                        rows = raw;
+                    }
+                    const colCount = Array.isArray(f.table_columns) ? f.table_columns.length : 0;
+                    const rowCount = Math.max(1, Math.min(30, rows.length || 1));
+                    this.tableFillRowCounts = { ...this.tableFillRowCounts, [key]: rowCount };
+                    const root = this.$root && this.$root.querySelectorAll ? this.$root : document;
+                    for (let r = 0; r < rowCount; r += 1) {
+                        for (let c = 0; c < colCount; c += 1) {
+                            const cell = rows[r]?.[c] ?? rows[r]?.[String(c)] ?? '';
+                            const sel = `input[name="values[${key}][${r}][${c}]"]`;
+                            const node = root.querySelector(sel);
+                            if (node && 'value' in node) {
+                                node.value = cell !== null && cell !== undefined ? String(cell) : '';
+                            }
+                        }
+                    }
+                    continue;
+                }
                 const val = raw !== null && raw !== undefined && typeof raw !== 'object' ? String(raw) : '';
                 if (f.type === 'text' || f.type === 'textarea') {
                     const el = document.getElementById(`editor-${f.slug}`);

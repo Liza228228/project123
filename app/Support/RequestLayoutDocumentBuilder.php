@@ -351,6 +351,19 @@ final class RequestLayoutDocumentBuilder
             if ($k === '') {
                 continue;
             }
+            if (($field['type'] ?? '') === 'table') {
+                $def = RequestLayoutTableField::definitionFromField($field);
+                $raw = $values[$k] ?? '';
+                $rowCount = RequestLayoutTableField::rowCountFromRaw($raw);
+                $rows = RequestLayoutTableField::decodeValues(
+                    $raw,
+                    $rowCount,
+                    count($def['columns'])
+                );
+                $map[$k] = RequestLayoutTableField::toPdfHtml($field, $rows);
+
+                continue;
+            }
             $raw = $values[$k] ?? '';
             $map[$k] = is_scalar($raw) || $raw === null ? (string) $raw : '';
         }
@@ -386,7 +399,7 @@ final class RequestLayoutDocumentBuilder
             $map['signer_'.$i.'_name'] = $rawSignerName;
             $shortSignerName = $this->formatSignerShortName($rawSignerName);
             $noBreakSignerName = preg_replace('/\s+/u', "\u{00A0}", $shortSignerName) ?? $shortSignerName;
-            $signatureLine = '__________';
+            $signatureLine = RequestLayoutSignatureLine::mark();
             $signatureDelimiter = "\u{00A0}\u{00A0}\u{00A0}";
             $map['signer_'.$i.'_signature'] = $rawSignerName !== '' ? $signatureLine.$signatureDelimiter.$noBreakSignerName : '';
             $map['signer_'.$i.'_fio'] = $map['signer_'.$i.'_signature'];
@@ -490,13 +503,13 @@ final class RequestLayoutDocumentBuilder
             function (array $m): string {
                 $name = trim((string) ($m[1] ?? ''));
                 if ($name === '') {
-                    return '__________';
+                    return RequestLayoutSignatureLine::mark();
                 }
 
                 $short = $this->formatSignerShortName($name);
                 $shortNoBreak = preg_replace('/\s+/u', "\u{00A0}", $short) ?? $short;
 
-                return '__________'."\u{00A0}\u{00A0}\u{00A0}".$shortNoBreak;
+                return RequestLayoutSignatureLine::withLabel($shortNoBreak);
             },
             $normalized
         ) ?? $normalized;
@@ -530,7 +543,7 @@ final class RequestLayoutDocumentBuilder
                 continue;
             }
             $noBreak = preg_replace('/\s+/u', "\u{00A0}", $short) ?? $short;
-            $lines[] = '__________'."\u{00A0}\u{00A0}\u{00A0}".$noBreak;
+            $lines[] = RequestLayoutSignatureLine::withLabel($noBreak);
         }
 
         if ($lines === []) {
@@ -584,7 +597,7 @@ final class RequestLayoutDocumentBuilder
             $seen[$short] = true;
 
             $shortNoBreak = preg_replace('/\s+/u', "\u{00A0}", $short) ?? $short;
-            $lines[] = '__________'."\u{00A0}\u{00A0}\u{00A0}".$shortNoBreak;
+            $lines[] = RequestLayoutSignatureLine::withLabel($shortNoBreak);
         }
 
         $recipientRaw = trim((string) ($values['recipient_name'] ?? $values['получатель'] ?? ''));
@@ -592,7 +605,7 @@ final class RequestLayoutDocumentBuilder
             $recipientShort = $this->formatSignerShortName($recipientRaw);
             if ($recipientShort !== '' && ! isset($seen[$recipientShort])) {
                 $recipientNoBreak = preg_replace('/\s+/u', "\u{00A0}", $recipientShort) ?? $recipientShort;
-                $lines[] = '__________'."\u{00A0}\u{00A0}\u{00A0}".$recipientNoBreak;
+                $lines[] = RequestLayoutSignatureLine::withLabel($recipientNoBreak);
             }
         }
 
@@ -670,7 +683,7 @@ final class RequestLayoutDocumentBuilder
         $lines = [];
         foreach ($uniqueNames as $name) {
             $noBreakName = preg_replace('/\s+/u', "\u{00A0}", $name) ?? $name;
-            $lines[] = '__________'."\u{00A0}\u{00A0}\u{00A0}".$noBreakName;
+            $lines[] = RequestLayoutSignatureLine::withLabel($noBreakName);
         }
 
         $result = implode("\n", $lines);

@@ -1,3 +1,9 @@
+import {
+    bindPieceQuantityTextInput,
+    isPieceMeasurementType,
+    sanitizePieceQuantityValue,
+} from './quantity-piece-input';
+
 document.addEventListener('alpine:init', () => {
     Alpine.data('materialsReceiptEquipmentPicker', () => {
         const cfg = window.__materialsReceiptPicker;
@@ -22,6 +28,8 @@ document.addEventListener('alpine:init', () => {
             init() {
                 this.syncSearchFromSelection();
                 this.sanitizeReceiptQuantityField();
+                const qtyEl = document.getElementById('quantity');
+                bindPieceQuantityTextInput(qtyEl, () => this.selectedUnitTypeCode);
             },
 
             syncSearchFromSelection() {
@@ -108,7 +116,10 @@ document.addEventListener('alpine:init', () => {
                 if (!el || !this.receiptQuantityNumericOnly) {
                     return;
                 }
-                const cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
+                let cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
+                if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                    cleaned = sanitizePieceQuantityValue(cleaned);
+                }
                 if (cleaned !== el.value) {
                     el.value = cleaned;
                 }
@@ -119,7 +130,10 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 const el = e.target;
-                const cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
+                let cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
+                if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                    cleaned = sanitizePieceQuantityValue(cleaned);
+                }
                 if (cleaned !== el.value) {
                     el.value = cleaned;
                 }
@@ -137,6 +151,17 @@ document.addEventListener('alpine:init', () => {
                     if (!sel || String(sel.value || '').trim() === '') {
                         e.preventDefault();
                         this.receiptVariantError = true;
+                        return;
+                    }
+                } else if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                    const qtyEl = document.getElementById('quantity');
+                    const raw = qtyEl ? String(qtyEl.value || '').trim() : '';
+                    const normalized = raw.replace(',', '.');
+                    const num = Number(normalized);
+                    if (raw === '' || !Number.isFinite(num) || num < 1 || Math.abs(num - Math.round(num)) > 0.000001) {
+                        e.preventDefault();
+                        qtyEl?.focus();
+                        window.alert('Для учёта в штуках укажите целое число без дробной части.');
                         return;
                     }
                 }

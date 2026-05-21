@@ -61,7 +61,6 @@ final class FunctionalScenarioFixture
 
         $warehouse = Warehouse::query()->create([
             'name' => 'Склад Администрация (тест)',
-            'code' => 'FN'.substr(preg_replace('/\D/', '', uniqid()), -6),
             'subdivision_id' => $subdivision->id,
             'is_primary' => true,
         ]);
@@ -94,7 +93,6 @@ final class FunctionalScenarioFixture
 
         return Warehouse::query()->create([
             'name' => 'Администрация (основной склад тест)',
-            'code' => 'AD'.substr(preg_replace('/\D/', '', uniqid()), -6),
             'subdivision_id' => $subdivision->id,
             'is_primary' => true,
         ]);

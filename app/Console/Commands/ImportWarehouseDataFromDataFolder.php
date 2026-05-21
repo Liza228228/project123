@@ -24,7 +24,7 @@ class ImportWarehouseDataFromDataFolder extends Command
   ]
 }
 Корневые поля name/code в JSON опциональны (для подписи в логе).
-Поля warehouse: name, code (уникален в системе), is_primary (опционально), warehouse_type_id, comment — опционально.
+Поля warehouse: name, is_primary (опционально), warehouse_type_id, comment — опционально.
 TXT;
 
     public function handle(): int
@@ -112,16 +112,12 @@ TXT;
                     continue;
                 }
 
-                $code = trim((string) ($whRow['code'] ?? ''));
-                if ($code === '') {
-                    $code = 'S'.$subdivision->id.'-W'.($idx + 1);
-                }
-
                 Warehouse::query()->updateOrCreate(
-                    ['code' => $code],
                     [
-                        'name' => $whName,
                         'subdivision_id' => $subdivision->id,
+                        'name' => $whName,
+                    ],
+                    [
                         'is_primary' => (bool) ($whRow['is_primary'] ?? false),
                         'warehouse_type_id' => $whRow['warehouse_type_id'] ?? null,
                         'comment' => isset($whRow['comment']) ? (string) $whRow['comment'] : null,

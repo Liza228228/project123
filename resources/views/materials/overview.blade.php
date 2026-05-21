@@ -69,10 +69,17 @@
                                     @endif
                                     <div class="min-w-0">
                                         <label for="overview_subdivision_id" class="app-form-label">Подразделение</label>
+                                        <input
+                                            id="overview_subdivision_search"
+                                            type="search"
+                                            class="app-input mb-2 min-h-0 mt-1.5 w-full"
+                                            placeholder="Поиск по названию подразделения"
+                                            autocomplete="off"
+                                        />
                                         <select
                                             id="overview_subdivision_id"
                                             name="subdivision_id"
-                                            class="app-select mt-1.5 w-full"
+                                            class="app-select w-full"
                                             autocomplete="organization"
                                         >
                                             <option value="">Выберите подразделение…</option>
@@ -99,9 +106,6 @@
                                                 <option value="">Выберите склад…</option>
                                                 @foreach($warehouses as $warehouse)
                                                     <option value="{{ $warehouse->id }}" @selected((int) ($selectedWarehouse?->id ?? 0) === (int) $warehouse->id)>
-                                                        @if(filled(trim((string) ($warehouse->code ?? ''))))
-                                                            {{ $warehouse->code }} —
-                                                        @endif
                                                         {{ $warehouse->name }}
                                                     </option>
                                                 @endforeach
@@ -218,5 +222,9 @@
                 });
             })();
         </script>
+        @include('partials.js-filterable-select', [
+            'searchInputId' => 'overview_subdivision_search',
+            'selectInputId' => 'overview_subdivision_id',
+        ])
     @endonce
 </x-app-layout>

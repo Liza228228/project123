@@ -17,20 +17,21 @@
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8 space-y-8 sm:space-y-10">
                 <p class="rounded-xl border border-stone-200/80 bg-stone-50/60 px-4 py-3 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-800/35 dark:text-stone-100">
-                    Выберите заявку.
+                    Выберите заявку с загруженным актом или фотографиями.
                 </p>
-
-                <div class="flex flex-wrap gap-2">
-                    <a href="{{ route('applications.installation-act.layout-fill.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
-                        Заполнить макет заявки (только поля)
-                    </a>
-                </div>
 
                 <form method="get" action="{{ route('applications.installation-act.browse') }}" class="space-y-4">
                     <section class="space-y-4" aria-labelledby="browse-act-select">
                         <h3 id="browse-act-select" class="app-section-title">Заявка</h3>
                         <div>
-                            <label for="browse-application-id" class="app-form-label">Выберите заявку</label>
+                            <label for="browse-application-search" class="app-form-label">Выберите заявку</label>
+                            <input
+                                id="browse-application-search"
+                                type="search"
+                                class="app-input mb-2 min-h-0"
+                                placeholder="Поиск по номеру, подразделению или дате"
+                                autocomplete="off"
+                            />
                             <select
                                 id="browse-application-id"
                                 name="application_id"
@@ -73,16 +74,8 @@
                             </p>
                             <div class="app-actions-row">
                                 <a
-                                    href="{{ route('applications.installation-act.view', $selectedApplication) }}"
-                                    target="_blank"
-                                    rel="noopener"
-                                    class="ui-btn ui-btn--primary ui-btn--sm"
-                                >
-                                    Открыть в браузере
-                                </a>
-                                <a
                                     href="{{ route('applications.installation-act.download', $selectedApplication) }}"
-                                    class="ui-btn ui-btn--secondary ui-btn--sm"
+                                    class="ui-btn ui-btn--primary ui-btn--sm"
                                 >
                                     Скачать
                                 </a>
@@ -103,4 +96,50 @@
             </div>
         </div>
     </div>
+    <script>
+        (function () {
+            const searchInput = document.getElementById('browse-application-search');
+            const select = document.getElementById('browse-application-id');
+            if (!searchInput || !select) {
+                return;
+            }
+
+            const initialOptions = Array.from(select.options).map((option) => ({
+                value: option.value,
+                text: option.textContent || '',
+                selected: option.selected,
+            }));
+            const placeholder = initialOptions[0] ?? { value: '', text: '— Заявка не выбрана —', selected: true };
+
+            const rebuildOptions = (query) => {
+                const q = String(query || '').trim().toLowerCase();
+                const currentValue = select.value;
+                const matched = initialOptions
+                    .slice(1)
+                    .filter((opt) => q === '' || opt.text.toLowerCase().includes(q));
+
+                select.innerHTML = '';
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = placeholder.value;
+                placeholderOption.textContent = placeholder.text;
+                select.appendChild(placeholderOption);
+
+                matched.forEach((opt) => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.text;
+                    if (opt.value === currentValue) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+
+                if (currentValue !== '' && !matched.some((opt) => opt.value === currentValue)) {
+                    select.value = '';
+                }
+            };
+
+            searchInput.addEventListener('input', () => rebuildOptions(searchInput.value));
+        })();
+    </script>
 </x-app-layout>

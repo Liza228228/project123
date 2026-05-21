@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\RequestLayoutTableField;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -61,16 +62,17 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
         }
         if (is_array($this->input('fields'))) {
             $fields = [];
-            foreach ($this->input('fields') as $i => $row) {
+            foreach ($this->input('fields') as $row) {
                 if (! is_array($row)) {
-                    $fields[$i] = $row;
-
                     continue;
                 }
                 if (array_key_exists('key', $row)) {
                     $row['key'] = $this->sanitizeRequestLayoutFieldKey((string) $row['key']);
                 }
-                $fields[$i] = $row;
+                if (trim((string) ($row['key'] ?? '')) === '') {
+                    continue;
+                }
+                $fields[] = $row;
             }
             $merge['fields'] = $fields;
         }
@@ -126,7 +128,9 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'fields' => ['required', 'array', 'min:1'],
             'fields.*.key' => ['required', 'string', 'max:64', 'regex:/^[\p{L}\p{N}_][\p{L}\p{N}_\s]*$/u'],
             'fields.*.label' => ['nullable', 'string', 'max:255'],
-            'fields.*.type' => ['required', 'string', 'in:text,number,textarea,date,address'],
+            'fields.*.type' => ['required', 'string', 'in:text,number,textarea,date,address,table'],
+            'fields.*.table_columns' => ['nullable', 'array', 'max:'.RequestLayoutTableField::MAX_COLUMNS],
+            'fields.*.table_columns.*' => ['nullable', 'string', 'max:120'],
             'needs_statement_header' => ['sometimes', 'boolean'],
             'presentation_heading_size_pt' => ['nullable', 'integer', 'min:8', 'max:36'],
             'presentation_subtitle_size_pt' => ['nullable', 'integer', 'min:8', 'max:28'],
@@ -278,11 +282,18 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             if ($label === '') {
                 $label = $key;
             }
-            $fields[] = [
+            $type = (string) $row['type'];
+            $entry = [
                 'key' => $key,
                 'label' => $label,
-                'type' => $row['type'],
+                'type' => $type,
             ];
+            if ($type === 'table') {
+                $entry['table_columns'] = RequestLayoutTableField::sanitizeColumns(
+                    is_array($row['table_columns'] ?? null) ? $row['table_columns'] : []
+                );
+            }
+            $fields[] = $entry;
         }
 
         $version = max(1, (int) ($validated['layout_version'] ?? 1));

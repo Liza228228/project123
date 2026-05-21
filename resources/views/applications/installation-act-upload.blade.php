@@ -15,8 +15,8 @@
 
                 @if(Auth::user()->hasAnyRoleId([1, 2, 3, 4, 6, 7]))
                     <div class="flex flex-wrap gap-2">
-                        <a href="{{ route('applications.installation-act.layout-fill.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
-                            Заполнить макет отчета 
+                        <a href="{{ route('boiler-chief.layout-applications.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
+                            Заполнить макет отчета
                         </a>
                     </div>
                 @endif
@@ -71,6 +71,20 @@
                                     <p class="mt-1 text-xs text-stone-600 dark:text-stone-300">
                                         Отметьте позиции для списания. Списание выбранного оборудования выполняется вместе с сохранением акта.
                                     </p>
+                                    @if($deliveredWarehouseIssueCandidates->isNotEmpty())
+                                        <div class="mt-3 flex md:hidden items-center gap-2 rounded-lg border border-orange-200/80 bg-white/80 px-3 py-2 dark:border-orange-800/50 dark:bg-stone-900/50">
+                                            <input
+                                                type="checkbox"
+                                                id="installation-act-issue-select-all-mobile"
+                                                class="js-installation-act-issue-select-all h-5 w-5 shrink-0 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                                                aria-describedby="installation-act-issue-select-all-hint"
+                                            >
+                                            <label for="installation-act-issue-select-all-mobile" class="text-xs font-medium text-stone-800 dark:text-stone-200 cursor-pointer select-none">
+                                                Выбрать всё доступное к списанию
+                                            </label>
+                                        </div>
+                                        <p id="installation-act-issue-select-all-hint" class="sr-only">Отмечает все позиции, по которым ещё не выполнено списание со склада получателя.</p>
+                                    @endif
 
                                     @error('issue_item_ids')
                                         <div class="mt-3 rounded-lg border border-red-200/80 bg-red-50/80 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
@@ -92,7 +106,7 @@
                                                                 type="checkbox"
                                                                 name="issue_item_ids[]"
                                                                 value="{{ $item->id }}"
-                                                                class="mt-0.5 h-5 w-5 shrink-0 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                                                                class="js-installation-act-issue-item mt-0.5 h-5 w-5 shrink-0 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
                                                                 @checked($checkedIssue)
                                                             >
                                                             <span class="text-xs text-black dark:text-white">Списать</span>
@@ -128,7 +142,22 @@
                                         <table class="text-xs sm:text-sm">
                                             <thead class="bg-orange-100/70 dark:bg-orange-900/35">
                                                 <tr>
-                                                    <th class="px-3 py-2 text-left font-semibold">Списать</th>
+                                                    <th class="px-3 py-2 text-left font-semibold align-top">
+                                                        <div class="flex flex-col gap-1.5">
+                                                            <span>Списать</span>
+                                                            @if($deliveredWarehouseIssueCandidates->isNotEmpty())
+                                                                <label for="installation-act-issue-select-all-desktop" class="inline-flex cursor-pointer select-none items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300" title="Отметить все позиции, доступные к списанию">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id="installation-act-issue-select-all-desktop"
+                                                                        class="js-installation-act-issue-select-all rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                                                                        aria-label="Выбрать все доступные к списанию"
+                                                                    >
+                                                                    Все
+                                                                </label>
+                                                            @endif
+                                                        </div>
+                                                    </th>
                                                     <th class="px-3 py-2 text-left font-semibold">Оборудование</th>
                                                     <th class="px-3 py-2 text-left font-semibold">Склад получателя</th>
                                                     <th class="px-3 py-2 text-right font-semibold">Кол-во в заявке</th>
@@ -148,7 +177,7 @@
                                                                         type="checkbox"
                                                                         name="issue_item_ids[]"
                                                                         value="{{ $item->id }}"
-                                                                        class="rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                                                                        class="js-installation-act-issue-item rounded border-orange-300 text-orange-600 focus:ring-orange-500"
                                                                         @checked($checkedIssue)
                                                                     >
                                                                 </label>
@@ -286,6 +315,39 @@
             };
 
             searchInput.addEventListener('input', () => rebuildOptions(searchInput.value));
+        })();
+
+        (function () {
+            const masters = document.querySelectorAll('.js-installation-act-issue-select-all');
+            const items = document.querySelectorAll('.js-installation-act-issue-item');
+            if (!masters.length || !items.length) {
+                return;
+            }
+
+            const syncMasters = () => {
+                const total = items.length;
+                const checked = Array.from(items).filter((c) => c.checked).length;
+                masters.forEach((m) => {
+                    m.checked = total > 0 && checked === total;
+                    m.indeterminate = checked > 0 && checked < total;
+                });
+            };
+
+            masters.forEach((master) => {
+                master.addEventListener('change', () => {
+                    const on = master.checked;
+                    items.forEach((c) => {
+                        c.checked = on;
+                    });
+                    masters.forEach((m) => {
+                        m.checked = on;
+                        m.indeterminate = false;
+                    });
+                });
+            });
+
+            items.forEach((c) => c.addEventListener('change', syncMasters));
+            syncMasters();
         })();
     </script>
 </x-app-layout>

@@ -60,6 +60,66 @@
         @apply min-w-full border-collapse text-sm;
     }
 
+    /* Список заявок: без горизонтальной прокрутки, колонки вписываются в ширину экрана */
+    .applications-index-table-shell {
+        @apply overflow-x-hidden;
+    }
+
+    .applications-index-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .applications-index-table > tbody > tr > td {
+        @apply px-3 py-3.5 align-top text-[0.9375rem] leading-normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
+    .applications-index-table > thead > tr > th {
+        @apply px-3 py-3.5 text-sm font-semibold leading-normal tracking-wide;
+        overflow-wrap: break-word;
+    }
+
+    .applications-index-status-badge {
+        @apply inline-flex max-w-full items-center rounded-full px-3 py-1 text-sm font-medium leading-snug;
+    }
+
+    .applications-index-status-badge--submit {
+        @apply bg-indigo-100 text-indigo-950 ring-1 ring-inset ring-indigo-300/70 dark:bg-indigo-950/50 dark:text-indigo-100 dark:ring-indigo-700/60;
+    }
+
+    .applications-index-actions {
+        @apply flex w-full min-w-0 max-w-full flex-col items-stretch justify-end gap-2;
+    }
+
+    .applications-index-actions .ui-btn {
+        @apply w-full min-h-0 whitespace-normal px-3 py-2 text-sm leading-snug;
+    }
+
+    .applications-index-actions form {
+        @apply w-full min-w-0;
+    }
+
+    @media (min-width: 1280px) {
+        .applications-index-actions {
+            @apply flex-row flex-wrap items-center justify-end gap-2;
+        }
+
+        .applications-index-actions .ui-btn,
+        .applications-index-actions form {
+            @apply w-auto flex-none;
+        }
+
+        .applications-index-actions .ui-btn {
+            @apply min-w-[5.5rem] max-w-[11rem];
+        }
+    }
+
+    .applications-index-table .application-index-equipment-details > summary {
+        @apply px-2.5 py-2 text-sm;
+    }
+
     /* Список заявок: свёрнутый блок «Оборудование» (<details>) */
     .application-index-equipment-details > summary .application-index-equipment-expand-label--expanded {
         display: none;
@@ -247,5 +307,10 @@
      */
     .layout-field-toolbar > button {
         @apply min-h-9;
+    }
+
+    /* Госномер на форме «В пути»: одно поле с пробелами между группами */
+    .delivery-plate-input {
+        @apply tracking-[0.35em];
     }
 }

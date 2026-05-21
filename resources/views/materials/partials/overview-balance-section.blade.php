@@ -28,24 +28,34 @@
                 $qtyOut = (float) ($row->qty_out ?? 0);
                 $balance = (float) ($row->balance ?? 0);
                 $unitCode = trim((string) ($row->unit_code ?? '')) ?: 'шт';
+                $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
             @endphp
             <article class="rounded-xl border border-stone-200/90 bg-stone-50/40 px-4 py-3 dark:border-stone-600 dark:bg-stone-900/40">
                 <p class="text-sm font-medium text-black dark:text-white leading-snug">
-                    {{ $row->equipment_name }}
-                    <span class="text-xs font-normal text-black/55 dark:text-white/55">({{ $row->unit_code }})</span>
+                    @include('materials.partials.balance-equipment-title', [
+                        'equipmentName' => $row->equipment_name,
+                        'unitCode' => $unitCode,
+                        'measurementTypeCode' => $measurementTypeCode,
+                    ])
                 </p>
                 <dl class="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                     <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
                         <dt class="font-medium uppercase tracking-wide text-black/50 dark:text-white/50">Приход</dt>
-                        <dd class="mt-1 tabular-nums text-sm font-medium text-black dark:text-white">{{ number_format($qtyIn, 3, '.', ' ') }} {{ $unitCode }}</dd>
+                        <dd class="mt-1 text-sm font-medium text-black dark:text-white">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyIn, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </dd>
                     </div>
                     <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
                         <dt class="font-medium uppercase tracking-wide text-black/50 dark:text-white/50">Списано</dt>
-                        <dd class="mt-1 tabular-nums text-sm font-medium text-red-700 dark:text-red-300/90">{{ number_format($qtyOut, 3, '.', ' ') }} {{ $unitCode }}</dd>
+                        <dd class="mt-1 text-sm font-medium text-red-700 dark:text-red-300/90">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </dd>
                     </div>
                     <div class="rounded-lg bg-emerald-50/90 px-2 py-2 dark:bg-emerald-950/35">
                         <dt class="font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Остаток</dt>
-                        <dd class="mt-1 tabular-nums text-sm font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/50 dark:text-white/50 @else text-emerald-900 dark:text-emerald-100 @endif">{{ number_format($balance, 3, '.', ' ') }} {{ $unitCode }}</dd>
+                        <dd class="mt-1 text-sm font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/50 dark:text-white/50 @else text-emerald-900 dark:text-emerald-100 @endif">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </dd>
                     </div>
                 </dl>
             </article>
@@ -71,15 +81,25 @@
                         $qtyOut = (float) ($row->qty_out ?? 0);
                         $balance = (float) ($row->balance ?? 0);
                         $unitCode = trim((string) ($row->unit_code ?? '')) ?: 'шт';
+                        $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
                     @endphp
                     <tr>
                         <td class="py-3 px-4">
-                            {{ $row->equipment_name }}
-                            <span class="text-black/55 dark:text-white/55">({{ $row->unit_code }})</span>
+                            @include('materials.partials.balance-equipment-title', [
+                                'equipmentName' => $row->equipment_name,
+                                'unitCode' => $unitCode,
+                                'measurementTypeCode' => $measurementTypeCode,
+                            ])
                         </td>
-                        <td class="py-3 px-4 text-right tabular-nums">{{ number_format($qtyIn, 3, '.', ' ') }} {{ $unitCode }}</td>
-                        <td class="py-3 px-4 text-right tabular-nums text-red-700 dark:text-red-300/90">{{ number_format($qtyOut, 3, '.', ' ') }} {{ $unitCode }}</td>
-                        <td class="py-3 px-4 text-right tabular-nums font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/55 dark:text-white/55 @endif">{{ number_format($balance, 3, '.', ' ') }} {{ $unitCode }}</td>
+                        <td class="py-3 px-4 text-right">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyIn, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </td>
+                        <td class="py-3 px-4 text-right text-red-700 dark:text-red-300/90">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </td>
+                        <td class="py-3 px-4 text-right font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/55 dark:text-white/55 @endif">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </td>
                     </tr>
                 @empty
                     <tr>

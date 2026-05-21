@@ -98,12 +98,19 @@ class RequestLayout extends Model
             if (! is_array($row) || empty($row['key'])) {
                 continue;
             }
-            $fields[] = [
+            $type = (string) ($row['type'] ?? 'text');
+            $fieldPayload = [
                 'key' => (string) $row['key'],
                 'label' => (string) ($row['label'] ?? $row['key']),
-                'type' => (string) ($row['type'] ?? 'text'),
+                'type' => $type,
                 'choices' => isset($row['choices']) && is_array($row['choices']) ? array_values($row['choices']) : [],
             ];
+            if ($type === 'table') {
+                $fieldPayload['table_columns'] = is_array($row['table_columns'] ?? null)
+                    ? array_values($row['table_columns'])
+                    : ['Столбец 1'];
+            }
+            $fields[] = $fieldPayload;
         }
 
         $preset = isset($schema['pdf_footer_preset']) ? trim((string) $schema['pdf_footer_preset']) : '';

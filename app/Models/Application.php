@@ -20,6 +20,7 @@ class Application extends Model
         'act_of_installation',
         'desired_delivery_date',
         'approved_by_user_id',
+        'management_supply_items_saved_at',
         'user_id',
         'source_application_id',
         'transport_option_id',
@@ -33,7 +34,15 @@ class Application extends Model
         return [
             'desired_delivery_date' => 'date',
             'archived_at' => 'datetime',
+            'management_supply_items_saved_at' => 'datetime',
         ];
+    }
+
+    public function isForemanCreatedApplication(): bool
+    {
+        $this->loadMissing('user:id,role_id');
+
+        return (int) ($this->user?->role_id ?? 0) === 4;
     }
 
     public function applicationStatus(): BelongsTo
@@ -93,6 +102,93 @@ class Application extends Model
     public function transportOption(): BelongsTo
     {
         return $this->belongsTo(TransportOption::class);
+    }
+
+    /**
+     * Для формы «В пути»: id способа (строка без госномера), если на заявке выбран вариант с заполненным plate.
+     */
+    public function transportMethodOptionIdForDeliveryForm(): ?int
+    {
+        if (! Schema::hasColumn('transport_options', 'plate')) {
+            return $this->transport_option_id !== null ? (int) $this->transport_option_id : null;
+        }
+
+        $this->loadMissing('transportOption');
+        if ($this->transport_option_id === null || ! $this->transportOption) {
+            return null;
+        }
+
+        $plate = trim((string) ($this->transportOption->plate ?? ''));
+        if ($plate === '') {
+            return (int) $this->transport_option_id;
+        }
+
+        return TransportOption::query()
+            ->whereNull('plate')
+            ->where('name', $this->transportOption->name)
+            ->orderBy('id')
+            ->value('id');
+    }
+
+    /**
+     * Строка для списка заявок: способ и госномер из справочника transport_options.
+     */
+    public function transportAndVehicleLine(): ?string
+    {
+        $this->loadMissing('transportOption');
+        $opt = $this->transportOption;
+        if (! $opt) {
+            return null;
+        }
+
+        $name = trim((string) ($opt->name ?? ''));
+        $plate = Schema::hasColumn('transport_options', 'plate')
+            ? trim((string) ($opt->plate ?? ''))
+            : '';
+
+        if ($name === '' && $plate === '') {
+            return null;
+        }
+
+        if ($name !== '' && $plate !== '') {
+            return $name.' — '.$plate;
+        }
+
+        return $name !== '' ? $name : $plate;
+    }
+
+    /**
+     * Все согласованные позиции находятся в «В пути» (поставка своего оборудования или доставка на объект).
+     */
+    public function isApprovedDeliveryFullyInTransit(): bool
+    {
+        if ($this->archived_at !== null) {
+            return false;
+        }
+
+        if ($this->approved_by_user_id === null) {
+            return false;
+        }
+
+        if (Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
+            && ! $this->needsBoilerChiefReviewBeforeManagement()
+            && $this->management_supply_items_saved_at === null) {
+            return false;
+        }
+
+        $this->loadMissing('items');
+        $checked = $this->items->where('is_checked', true);
+        if ($checked->isEmpty()) {
+            return false;
+        }
+
+        foreach ($checked as $item) {
+            if (! $item->isInShipmentTransitState()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function isStatusApproved(): bool
@@ -166,10 +262,117 @@ class Application extends Model
     }
 
     /**
+     * Заявка мастера участка по подразделению с начальником котельной, ещё не отправлена на согласование.
+     */
+    public function isForemanDraftBeforeBoilerChief(): bool
+    {
+        $this->loadMissing('user:id,role_id');
+        if ((int) ($this->user?->role_id ?? 0) !== 4) {
+            return false;
+        }
+        if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
+            return false;
+        }
+
+        return (int) $this->application_status_id === ApplicationStatus::idForDraft();
+    }
+
+    /**
+     * Заявка начальника котельной, ещё не отправлена на согласование руководству / снабжению.
+     */
+    public function isBoilerChiefDraftBeforeManagement(): bool
+    {
+        $this->loadMissing('user:id,role_id');
+
+        return (int) ($this->user?->role_id ?? 0) === 7
+            && (int) $this->application_status_id === ApplicationStatus::idForDraft();
+    }
+
+    public function isCreatorDraftApplication(): bool
+    {
+        return $this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement();
+    }
+
+    /**
+     * Директор, ТД или начальник снабжения сохранили согласование по позициям.
+     */
+    public function managementHasSavedApproval(): bool
+    {
+        if ($this->approved_by_user_id === null) {
+            return false;
+        }
+        $this->loadMissing('approvedBy:id,role_id');
+        if (! in_array((int) ($this->approvedBy?->role_id ?? 0), User::MANAGEMENT_EDITOR_ROLE_IDS, true)) {
+            return false;
+        }
+        if ($this->usesBoilerChiefSubdivisionWorkflow()) {
+            return $this->management_supply_items_saved_at !== null;
+        }
+
+        return true;
+    }
+
+    /**
+     * Мастер участка может редактировать заявку (черновик или подразделение без этапа котельной).
+     */
+    public function foremanCanEditApplication(): bool
+    {
+        if ($this->managementHasSavedApproval()) {
+            return false;
+        }
+        $this->loadMissing('user:id,role_id');
+        if ((int) ($this->user?->role_id ?? 0) !== 4) {
+            return true;
+        }
+        if ($this->isStatusApproved()) {
+            return false;
+        }
+        if (Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
+            && ! $this->isForemanDraftBeforeBoilerChief()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Начальник котельной может редактировать свою заявку, пока она не отправлена на согласование руководству.
+     */
+    public function boilerChiefCanEditApplication(): bool
+    {
+        if ($this->managementHasSavedApproval()) {
+            return false;
+        }
+        $this->loadMissing('user:id,role_id');
+        $creatorRoleId = (int) ($this->user?->role_id ?? 0);
+        if ($creatorRoleId !== 7) {
+            if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+                return false;
+            }
+            if ($this->boilerChiefReleasedToManagement()) {
+                return false;
+            }
+
+            return $this->needsBoilerChiefReviewBeforeManagement();
+        }
+        if ($this->isStatusApproved()) {
+            return false;
+        }
+        if (! $this->isBoilerChiefDraftBeforeManagement()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * По подразделению назначен начальник котельной, но этап его согласования ещё не завершён.
      */
     public function needsBoilerChiefReviewBeforeManagement(): bool
     {
+        if ($this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement()) {
+            return false;
+        }
         if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
             return false;
         }
@@ -183,6 +386,83 @@ class Application extends Model
         );
     }
 
+    public function usesBoilerChiefSubdivisionWorkflow(): bool
+    {
+        return Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id);
+    }
+
+    /**
+     * Заявка мастера передана руководству и снабжению (после «Отправить на согласование» начальником котельной).
+     */
+    public function boilerChiefReleasedToManagement(): bool
+    {
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return true;
+        }
+        if (! $this->isForemanCreatedApplication()) {
+            return true;
+        }
+
+        return $this->approved_by_user_id !== null;
+    }
+
+    /**
+     * Начальник котельной может отправить заявку директору / ТД / снабжению (свой черновик или после согласования заявки мастера).
+     */
+    public function boilerChiefCanSubmitToManagement(): bool
+    {
+        if ($this->archived_at !== null) {
+            return false;
+        }
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return false;
+        }
+        if ($this->isBoilerChiefDraftBeforeManagement()) {
+            return $this->items()->exists();
+        }
+        if (! $this->isForemanCreatedApplication()) {
+            return false;
+        }
+        if ($this->needsBoilerChiefReviewBeforeManagement() || $this->boilerChiefReleasedToManagement()) {
+            return false;
+        }
+
+        return $this->items()->exists();
+    }
+
+    /**
+     * Мастер участка или начальник котельной должен отправить заявку на следующий этап согласования.
+     */
+    public function needsSubmitToApprovalBy(?User $user): bool
+    {
+        if ($user === null || $this->archived_at !== null) {
+            return false;
+        }
+        if ($user->hasRoleId(4)) {
+            return $this->isForemanDraftBeforeBoilerChief();
+        }
+        if ($user->hasRoleId(7)) {
+            return $this->boilerChiefCanSubmitToManagement();
+        }
+
+        return false;
+    }
+
+    /**
+     * Руководство и снабжение могут согласовывать позиции после этапа котельной.
+     */
+    public function managementMayReviewAfterBoilerChief(): bool
+    {
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return true;
+        }
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+
+        return $this->boilerChiefReleasedToManagement();
+    }
+
     /**
      * Этап котельной пройден, ожидается согласование позиций директором / ТД / снабжением (ещё ни одной позиции не отмечено).
      */
@@ -192,6 +472,9 @@ class Application extends Model
             return false;
         }
         if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+        if (! $this->boilerChiefReleasedToManagement()) {
             return false;
         }
 
@@ -209,6 +492,48 @@ class Application extends Model
         );
 
         return ! $hasMgmtReason;
+    }
+
+    /**
+     * Снабжение (директор / ТД / нач. снабжения) сохранило согласование по позициям настолько,
+     * что можно открывать «Своё оборудование к заказу» и вести заказ (в т.ч. после этапа котельной).
+     */
+    public function isSupplyApprovedForCustomEquipmentWorkflow(): bool
+    {
+        if ($this->approved_by_user_id === null) {
+            return false;
+        }
+        if (! Schema::hasTable('boiler_chief_subdivision_user')) {
+            return true;
+        }
+        if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
+            return true;
+        }
+        if (! Schema::hasColumn('applications', 'management_supply_items_saved_at')) {
+            return false;
+        }
+
+        return $this->management_supply_items_saved_at !== null;
+    }
+
+    /**
+     * @param  Builder<Application>  $query
+     */
+    public function scopeWhereSupplyApprovedForCustomEquipmentWorkflow(Builder $query): void
+    {
+        $query->whereNotNull('approved_by_user_id');
+        if (! Schema::hasTable('boiler_chief_subdivision_user')) {
+            return;
+        }
+        $query->where(function (Builder $w): void {
+            $w->whereNotExists(function ($e): void {
+                $e->from('boiler_chief_subdivision_user')
+                    ->whereColumn('boiler_chief_subdivision_user.subdivision_id', 'applications.subdivision_id');
+            });
+            if (Schema::hasColumn('applications', 'management_supply_items_saved_at')) {
+                $w->orWhereNotNull('management_supply_items_saved_at');
+            }
+        });
     }
 
     public function itemLineIsApproved(int $itemId): bool
@@ -288,6 +613,46 @@ class Application extends Model
     }
 
     /**
+     * Заявки в списке / в селекторах для мастера участка: только в назначенных ему подразделениях и
+     * закреплённые за ним как ответственный (в том числе после переназначения с другого мастера).
+     * Если ответственный не задан (старые данные), видна заявка только если её автор — этот мастер.
+     *
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeForSiteForemanAccess(Builder $query, User $foreman): Builder
+    {
+        $assignedSubdivisionIds = $foreman->assignedSubdivisions()
+            ->pluck('subdivisions.id')
+            ->map(fn ($id): int => (int) $id);
+
+        return $query
+            ->whereIn('subdivision_id', $assignedSubdivisionIds)
+            ->where(function (Builder $outer) use ($foreman): void {
+                $outer->where('responsible_user_id', $foreman->id)
+                    ->orWhere(function (Builder $inner) use ($foreman): void {
+                        $inner->whereNull('responsible_user_id')
+                            ->where('user_id', $foreman->id);
+                    });
+            });
+    }
+
+    /** Может ли мастер участка открыть заявку (согласовано с {@see scopeForSiteForemanAccess}). */
+    public function isVisibleToSiteForeman(User $foreman): bool
+    {
+        $ids = $foreman->assignedSubdivisions()->pluck('subdivisions.id');
+        if (! $ids->contains((int) $this->subdivision_id)) {
+            return false;
+        }
+
+        if ($this->responsible_user_id !== null && (int) $this->responsible_user_id === (int) $foreman->id) {
+            return true;
+        }
+
+        return $this->responsible_user_id === null && (int) $this->user_id === (int) $foreman->id;
+    }
+
+    /**
      * Та же выборка, что и в списке заявок: поиск и фильтр по статусу согласования.
      *
      * @return Builder<Application>
@@ -295,11 +660,9 @@ class Application extends Model
     public static function listingQuery(Request $request): Builder
     {
         $search = trim((string) $request->input('q', ''));
-        $equipmentFilter = (string) $request->input('equipment_filter', 'all');
-        $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval', 'needs_custom_equipment_order'];
-        if (! in_array($equipmentFilter, $allowedFilters, true)) {
-            $equipmentFilter = 'all';
-        }
+        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalize(
+            $request->input('approval_filter', $request->input('equipment_filter', 'all'))
+        );
 
         $applications = static::query();
 
@@ -337,28 +700,7 @@ class Application extends Model
             });
         }
 
-        $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
-
-        match ($equipmentFilter) {
-            'has_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', true)),
-            'has_not_approved' => $applications->whereHas('items', fn ($q) => $q->where('is_checked', false)),
-            'fully_approved' => $applications
-                ->whereHas('items')
-                ->whereDoesntHave('items', fn ($q) => $q->where('is_checked', false)),
-            'on_approval' => $applications->where(function ($q) use ($pendingId) {
-                $q->where('application_status_id', $pendingId)
-                    ->orWhereNull('application_status_id');
-            }),
-            'needs_custom_equipment_order' => $applications->whereHas('items', function ($q) {
-                $q->whereNull('equipment_id')
-                    ->where('is_checked', true)
-                    ->where(function ($w) {
-                        $w->where('custom_equipment_supply_status_id', ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID)
-                            ->orWhereNull('custom_equipment_supply_status_id');
-                    });
-            }),
-            default => null,
-        };
+        \App\Support\ApplicationApprovalListingFilter::apply($applications, $approvalFilter);
 
         return $applications;
     }
@@ -601,9 +943,15 @@ class Application extends Model
 
     public static function archiveFilterFromRequest(Request $request): string
     {
-        $value = trim((string) $request->input('archive', 'active'));
+        if ($request->has('archive')) {
+            $value = trim((string) $request->input('archive'));
 
-        return in_array($value, ['active', 'archived', 'all'], true) ? $value : 'active';
+            return in_array($value, ['active', 'archived', 'all'], true) ? $value : 'active';
+        }
+
+        $user = $request->user();
+
+        return ($user instanceof User && $user->hasRoleId(User::ACCOUNTANT_ROLE_ID)) ? 'all' : 'active';
     }
 
     /**

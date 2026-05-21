@@ -12,7 +12,6 @@ return new class extends Migration
             $table->id();
             $table->boolean('is_primary')->default(false); // приоритет да нет
             $table->string('name', 150);
-            $table->string('code', 10);
             $table->string('address_postal_code', 20)->nullable();
             $table->string('address_region', 150)->nullable();
             $table->string('address_city', 150)->nullable();
@@ -25,7 +24,6 @@ return new class extends Migration
             $table->foreignId('warehouse_type_id')->nullable()->constrained('warehouse_types')->nullOnDelete();
             $table->text('comment')->nullable();
             $table->timestamps();
-            $table->unique('code');
         });
     }
 

@@ -11,7 +11,6 @@ class Warehouse extends Model
     protected $fillable = [
         'is_primary',
         'name',
-        'code',
         'address_postal_code',
         'address_region',
         'address_city',

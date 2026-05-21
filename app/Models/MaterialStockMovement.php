@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
 
 class MaterialStockMovement extends Model
 {
@@ -19,7 +20,17 @@ class MaterialStockMovement extends Model
         'unit_price',
         'counterparty',
         'comment',
+        'created_by_user_id',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $movement): void {
+            if ($movement->created_by_user_id === null && Auth::id()) {
+                $movement->created_by_user_id = (int) Auth::id();
+            }
+        });
+    }
 
     protected function casts(): array
     {
@@ -36,6 +47,48 @@ class MaterialStockMovement extends Model
         $body = trim($body);
 
         return $body === '' ? $prefix : $prefix."\n".$body;
+    }
+
+    /**
+     * Текст комментария для интерфейса: без служебного префикса {@see self::CORR_PREFIX} и ключа идемпотентности.
+     */
+    public static function commentBodyForDisplay(?string $comment): ?string
+    {
+        if ($comment === null) {
+            return null;
+        }
+        $comment = trim($comment);
+        if ($comment === '') {
+            return null;
+        }
+        if (! str_starts_with($comment, self::CORR_PREFIX)) {
+            return $comment;
+        }
+
+        $rest = trim(substr($comment, strlen(self::CORR_PREFIX)));
+        if ($rest === '') {
+            return null;
+        }
+
+        if (str_contains($rest, "\n")) {
+            $parts = explode("\n", $rest, 2);
+            $body = trim((string) ($parts[1] ?? ''));
+
+            return $body !== '' ? $body : null;
+        }
+
+        // Одна строка: ключ и (опционально) пояснение через пробел
+        $stripped = preg_replace('#^APP:\d+:ITEM:\d+(?::[A-Za-z0-9-]+)*(?::WH:\d+)?\s+#u', '', $rest);
+        $stripped = trim((string) $stripped);
+        if ($stripped !== '' && $stripped !== $rest) {
+            return $stripped;
+        }
+
+        if (preg_match('#^APP:\d+:ITEM:\d+(?::[A-Za-z0-9-]+)*(?::WH:\d+)?$#u', $rest)) {
+            return null;
+        }
+
+        return $rest;
     }
 
     /**
@@ -66,6 +119,18 @@ class MaterialStockMovement extends Model
         return $this->belongsTo(MaterialStockMovementType::class, 'material_stock_movement_type_id');
     }
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function performerDisplayName(): string
+    {
+        $this->loadMissing('creator');
+
+        return $this->creator?->fullName() ?? '—';
+    }
+
     public function signedQuantity(): float
     {
         $quantity = (float) $this->quantity;
@@ -78,5 +143,18 @@ class MaterialStockMovement extends Model
         }
 
         return $quantity;
+    }
+
+    /**
+     * Подпись к числу в журнале (например «M» вместо «разм» для спецодежды).
+     */
+    public function quantityDisplaySuffix(): string
+    {
+        $eq = $this->equipment;
+        if (! $eq) {
+            return 'шт';
+        }
+
+        return $eq->quantitySuffixForMovement($this->receipt_variant);
     }
 }

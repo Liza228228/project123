@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApplicationStatus extends Model
 {
+    /** Черновик мастера участка до отправки начальнику котельной. */
+    public const NAME_DRAFT = 'Черновик';
+
     public const NAME_PENDING = 'На согласовании';
 
     public const NAME_APPROVED = 'Согласована';
@@ -48,5 +51,13 @@ class ApplicationStatus extends Model
     public static function forgetIdCache(): void
     {
         self::$idByNameCache = null;
+    }
+
+    public static function idForDraft(): int
+    {
+        $status = static::query()->firstOrCreate(['name' => self::NAME_DRAFT]);
+        self::forgetIdCache();
+
+        return (int) $status->id;
     }
 }

@@ -1,9 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="Auth::user()->hasAnyRoleId(\App\Models\User::REPORT_GENERATOR_ROLE_IDS) ? route('boiler-chief.request-layouts.index') : route('boiler-chief.layout-applications.index')">
-                {{ Auth::user()->hasAnyRoleId(\App\Models\User::REPORT_GENERATOR_ROLE_IDS) ? 'Макеты отчетов (PDF)' : 'Отчеты по макетам' }}
-            </x-page-header-nav>
+            @if (Auth::user()->hasAnyRoleId(\App\Models\User::REPORT_LAYOUT_DESIGNER_ROLE_IDS))
+                <x-page-header-nav :href="route('boiler-chief.request-layouts.index')">
+                    Макеты отчетов (PDF)
+                </x-page-header-nav>
+            @endif
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
                 <h2 class="font-semibold text-xl text-stone-900 dark:text-white leading-tight min-w-0 break-words">
                     Отчеты по макетам
@@ -23,6 +25,16 @@
                     @if($submissions->isEmpty())
                         <p class="py-12 text-center text-sm text-stone-500 dark:text-stone-400">Отчетов нет.</p>
                     @else
+                        <form method="GET" action="{{ route('boiler-chief.layout-applications.index') }}" class="mb-4 flex flex-wrap items-end gap-3" data-auto-submit="filter">
+                            <div class="min-w-0">
+                                <label for="layout-apps-per-page" class="app-form-label">На странице</label>
+                                <select id="layout-apps-per-page" name="per_page" class="app-select min-w-[10rem]">
+                                    @foreach($allowedPerPage as $size)
+                                        <option value="{{ $size }}" @selected((int) ($perPage ?? 0) === (int) $size)>{{ $size }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </form>
                         <div class="hidden md:block overflow-x-auto">
                             <table class="min-w-full text-sm">
                                 <thead>
@@ -46,16 +58,19 @@
                                                    class="ui-btn ui-btn--secondary ui-btn--sm inline-flex rounded-lg px-3 py-1.5 text-xs ml-2">
                                                     Редактировать
                                                 </a>
-                                                <form method="POST"
+                                                <form id="delete-layout-app-{{ $row->id }}"
+                                                      method="POST"
                                                       action="{{ route('boiler-chief.layout-applications.destroy', $row) }}"
-                                                      class="inline-block ml-2"
-                                                      onsubmit="return confirm('Удалить этот отчет по макету?');">
+                                                      class="hidden"
+                                                      aria-hidden="true">
                                                     @csrf
                                                     @method('DELETE')
-                                                    <button type="submit" class="ui-btn ui-btn--danger ui-btn--sm inline-flex rounded-lg px-3 py-1.5 text-xs">
-                                                        Удалить
-                                                    </button>
                                                 </form>
+                                                <button type="button"
+                                                        class="ui-btn ui-btn--danger ui-btn--sm inline-flex rounded-lg px-3 py-1.5 text-xs ml-2"
+                                                        onclick="window.__pendingLayoutAppDeleteFormId='delete-layout-app-{{ $row->id }}'; openAppModal('confirm-delete-layout-application')">
+                                                    Удалить
+                                                </button>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -71,13 +86,19 @@
                                        class="ui-btn ui-btn--primary inline-flex w-full justify-center rounded-lg px-3 py-2 text-sm">PDF</a>
                                     <a href="{{ route('boiler-chief.layout-applications.edit', $row) }}"
                                        class="ui-btn ui-btn--secondary inline-flex w-full justify-center rounded-lg px-3 py-2 text-sm">Редактировать</a>
-                                    <form method="POST"
+                                    <form id="delete-layout-app-mobile-{{ $row->id }}"
+                                          method="POST"
                                           action="{{ route('boiler-chief.layout-applications.destroy', $row) }}"
-                                          onsubmit="return confirm('Удалить этот отчет по макету?');">
+                                          class="hidden"
+                                          aria-hidden="true">
                                         @csrf
                                         @method('DELETE')
-                                        <button type="submit" class="ui-btn ui-btn--danger inline-flex w-full justify-center rounded-lg px-3 py-2 text-sm">Удалить</button>
                                     </form>
+                                    <button type="button"
+                                            class="ui-btn ui-btn--danger inline-flex w-full justify-center rounded-lg px-3 py-2 text-sm"
+                                            onclick="window.__pendingLayoutAppDeleteFormId='delete-layout-app-mobile-{{ $row->id }}'; openAppModal('confirm-delete-layout-application')">
+                                        Удалить
+                                    </button>
                                 </article>
                             @endforeach
                         </div>
@@ -86,5 +107,16 @@
                 </div>
             </div>
         </div>
+
+        <x-confirm-action-modal
+            name="confirm-delete-layout-application"
+            title="Удалить отчет по макету?"
+            confirm-label="Да, удалить"
+            cancel-label="Отмена"
+            variant="danger"
+            confirm-handler="var id = window.__pendingLayoutAppDeleteFormId; if (id) { document.getElementById(id)?.requestSubmit(); }"
+        >
+            Отчет будет удалён без возможности восстановления. Продолжить?
+        </x-confirm-action-modal>
     </div>
 </x-app-layout>

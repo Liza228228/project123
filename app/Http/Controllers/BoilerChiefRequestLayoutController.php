@@ -15,6 +15,7 @@ use App\Models\RequestSubmission;
 use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
+use App\Support\ListingPerPage;
 use App\Support\RequestLayoutDocumentBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +34,9 @@ class BoilerChiefRequestLayoutController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('boiler-chief.request-layouts.index', compact('layouts'));
+        $canDesignReportLayouts = $request->user()?->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS) ?? false;
+
+        return view('boiler-chief.request-layouts.index', compact('layouts', 'canDesignReportLayouts'));
     }
 
     public function create(Request $request): View
@@ -62,7 +65,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function edit(Request $request, RequestLayout $requestLayout): View
     {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertReportLayoutDesigner($requestLayout, $request->user());
 
         return view('boiler-chief.request-layouts.edit', array_merge(
             ['layout' => $requestLayout],
@@ -72,7 +75,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function update(UpdateBoilerChiefRequestLayoutRequest $request, RequestLayout $requestLayout): RedirectResponse
     {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertReportLayoutDesigner($requestLayout, $request->user());
         $payload = $request->layoutPayload();
         $requestLayout->update([
             'title' => $payload['title'],
@@ -92,7 +95,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function destroy(Request $request, RequestLayout $requestLayout): RedirectResponse
     {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertReportLayoutDesigner($requestLayout, $request->user());
         $requestLayout->delete();
 
         return redirect()
@@ -104,6 +107,7 @@ class BoilerChiefRequestLayoutController extends Controller
     {
         $this->assertLayoutReportPdfFill($request->user());
         $user = $request->user();
+        $isDesigner = $user instanceof User && $user->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
         $isBoilerChief = $user instanceof User && $user->hasRoleId(7);
 
         return view('boiler-chief.request-layouts.fill', [
@@ -111,15 +115,15 @@ class BoilerChiefRequestLayoutController extends Controller
             'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'applications' => $this->reportEquipmentApplications($request->user()),
             'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
-            'allowEditLayout' => $isBoilerChief,
-            'backRoute' => $isBoilerChief
+            'allowEditLayout' => $isDesigner,
+            'backRoute' => ($isDesigner || $isBoilerChief)
                 ? route('boiler-chief.request-layouts.index')
                 : route('boiler-chief.layout-applications.index'),
-            'backLabel' => $isBoilerChief ? 'К списку макетов отчетов' : 'Отчеты по макетам',
-            'closeRoute' => $isBoilerChief
+            'backLabel' => ($isDesigner || $isBoilerChief) ? 'К списку макетов отчетов' : 'Отчеты по макетам',
+            'closeRoute' => ($isDesigner || $isBoilerChief)
                 ? route('boiler-chief.request-layouts.index')
                 : route('boiler-chief.layout-applications.index'),
-            'cancelRoute' => $isBoilerChief
+            'cancelRoute' => ($isDesigner || $isBoilerChief)
                 ? route('boiler-chief.request-layouts.index')
                 : route('boiler-chief.layout-applications.index'),
             'formAction' => route('boiler-chief.request-layouts.filled-pdf', $requestLayout),
@@ -142,7 +146,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function layoutSchemaJson(Request $request, RequestLayout $requestLayout): JsonResponse
     {
-        $this->assertOwner($requestLayout, $request->user());
+        $this->assertReportLayoutDesigner($requestLayout, $request->user());
 
         return response()->json($requestLayout->clientFillPayload());
     }
@@ -153,6 +157,17 @@ class BoilerChiefRequestLayoutController extends Controller
     public function layoutSchemaJsonForReportFillers(Request $request, RequestLayout $requestLayout): JsonResponse
     {
         $this->assertSiteForeman($request->user());
+
+        return response()->json($requestLayout->clientFillPayload());
+    }
+
+    /** JSON схемы для модального «Новый отчёт» в каталоге макетов (роли каталога, без middleware «Заявки»). */
+    public function layoutFillSchemaJsonForCatalog(Request $request, RequestLayout $requestLayout): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user instanceof User || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS)) {
+            abort(403, 'Загрузка схемы макета вам недоступна.');
+        }
 
         return response()->json($requestLayout->clientFillPayload());
     }
@@ -187,16 +202,21 @@ class BoilerChiefRequestLayoutController extends Controller
             ? $this->installationActParentLink($user)
             : ['href' => route('dashboard'), 'label' => 'Главная'];
 
+        $pagination = ListingPerPage::fromRequest($request);
         $submissions = RequestSubmission::query()
             ->with(['requestLayout:id,title'])
             ->where('created_by', (int) ($user?->id ?? 0))
             ->orderByDesc('id')
-            ->paginate(20);
+            ->paginate($pagination['perPage'])
+            ->withQueryString();
 
         return view('applications.installation-act-layout-fill-submissions', [
             'submissions' => $submissions,
             'layoutFillParentHref' => $parent['href'],
             'layoutFillParentLabel' => $parent['label'],
+            'perPage' => $pagination['perPage'],
+            'allowedPerPage' => $pagination['allowedPerPage'],
+            'defaultPerPage' => $pagination['defaultPerPage'],
         ]);
     }
 
@@ -404,26 +424,24 @@ class BoilerChiefRequestLayoutController extends Controller
         }
     }
 
-    private function assertOwner(RequestLayout $layout, ?User $user): void
+    private function assertReportLayoutDesigner(RequestLayout $layout, ?User $user): void
     {
-        if (! $user || ! $user->hasRoleId(7)) {
+        if (! $user || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS)) {
             abort(403);
         }
     }
 
-    /** PDF «Новая заявка» по макету: начальник котельной и бухгалтер (как в middleware layout_application_reports). */
+    /** PDF и формы заполнения отчёта по макету — все роли. */
     private function assertLayoutReportPdfFill(?User $user): void
     {
-        if (! $user || ! $user->hasAnyRoleId(User::LAYOUT_APPLICATION_REPORT_ROLE_IDS)) {
-            abort(403, 'Заполнение этой формы доступно только начальнику котельной и бухгалтеру.');
+        if (! $user || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_FILL_ROLE_IDS)) {
+            abort(403, 'Заполнение отчётов недоступно для вашей роли.');
         }
     }
 
     private function assertSiteForeman(?User $user): void
     {
-        if (! $user || ! $user->hasAnyRoleId([1, 2, 3, 4, 6, 7])) {
-            abort(403, 'Доступ разрешён только мастеру участка, начальнику котельной, директору, техническому директору, начальнику отдела снабжения или бухгалтеру.');
-        }
+        $this->assertLayoutReportPdfFill($user);
     }
 
     /**
@@ -467,8 +485,7 @@ class BoilerChiefRequestLayoutController extends Controller
             ->limit(300);
 
         if ($user->hasRoleId(4)) {
-            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
-            $query->whereIn('subdivision_id', $subdivisionIds);
+            $query->forSiteForemanAccess($user);
         } elseif ($user->hasRoleId(7)) {
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $query->whereIn('subdivision_id', $subdivisionIds);
@@ -525,7 +542,10 @@ class BoilerChiefRequestLayoutController extends Controller
             ->map(function ($group) {
                 $first = $group->first();
                 $equipment = $group->map(function ($row) {
-                    $quantity = number_format((float) ($row->balance ?? 0), 3, '.', ' ');
+                    $quantity = \App\Support\PieceQuantity::formatForDisplay(
+                        (float) ($row->balance ?? 0),
+                        (string) ($row->unit_code ?? 'шт')
+                    );
                     $line = trim(((string) ($row->equipment_name ?? '')).' x '.$quantity.' '.((string) ($row->unit_code ?? 'шт')));
 
                     return [

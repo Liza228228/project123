@@ -17,19 +17,51 @@ class User extends Authenticatable
     /** Директор, технический директор, начальник снабжения — согласование заявок, списания, материалы и т.д. */
     public const MANAGEMENT_EDITOR_ROLE_IDS = [1, 6, 2];
 
+    /**
+     * Справочник оборудования и приход/операции на складе (маршрут «Учёт оборудования», POST каталога и движений).
+     * Бухгалтер (роль 3) по-прежнему может открыть /materials для просмотра без этих прав — см. middleware {@see \App\Http\Middleware\EnsureUserIsSupplyHead}.
+     *
+     * @var list<int>
+     */
+    public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = [1, 2];
+
+    /**
+     * Директор и начальник отдела снабжения — одинаковый набор действий по заявкам и складу
+     * (заказ своего оборудования, пункты меню и т.п.).
+     *
+     * @var list<int>
+     */
+    public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = [1, 2];
+
+    /** Прямая ссылка «Подразделения» в верхнем меню (каталог подразделений и складов). */
+    public const SUBDIVISION_DIRECTORY_TOP_NAV_ROLE_IDS = [1, 2, 6, 3, 5];
+
     /** Директор и начальник снабжения — заказ нестандартного («своего») оборудования и приход на основной склад по нему. */
-    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = [1, 2];
+    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS;
 
-    /** Начальник котельной, бухгалтер и администратор — раздел «Заявки по макетам» (PDF) и JSON схемы для формы. */
-    public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = [7, 3, 5];
+    /**
+     * Заполнение отчётов по макету, каталог макетов для заполнения, «Отчеты по макетам» — все роли.
+     *
+     * @var list<int>
+     */
+    public const REPORT_LAYOUT_FILL_ROLE_IDS = [1, 2, 3, 4, 5, 6, 7];
 
-    /** Начальник котельной и администратор — полный доступ к генератору отчётов. */
-    public const REPORT_GENERATOR_ROLE_IDS = [7, 5];
+    /** @var list<int> */
+    public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
+
+    /** Директор и технический директор — макеты шапок и конструктор макетов отчётов (PDF). */
+    public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [1, 6];
+
+    /** @var list<int> */
+    public const REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
 
     /** Списание со склада «Администрация» по согласованным позициям из справочника. */
     public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = [1, 2, 6];
 
-    /** Администратор — пользователи, блокировки, макеты отчётов. */
+    /** Бухгалтер — просмотр всех заявок и актов установки. */
+    public const ACCOUNTANT_ROLE_ID = 3;
+
+    /** Администратор — пользователи и блокировки. */
     public const ADMINISTRATOR_ROLE_ID = 5;
 
     /**

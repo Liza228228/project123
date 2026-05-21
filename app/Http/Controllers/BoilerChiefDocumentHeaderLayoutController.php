@@ -6,6 +6,7 @@ use App\Http\Requests\StoreDocumentHeaderLayoutRequest;
 use App\Http\Requests\UpdateDocumentHeaderLayoutRequest;
 use App\Models\DocumentHeaderLayout;
 use App\Models\User;
+use App\Support\RequestLayoutDocumentHeaderReturn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -23,16 +24,29 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
 
     public function create(Request $request): View
     {
-        return view('boiler-chief.document-header-layouts.create');
+        $returnTo = RequestLayoutDocumentHeaderReturn::fromRequest($request);
+
+        return view('boiler-chief.document-header-layouts.create', [
+            'returnTo' => $returnTo,
+            'backHref' => $returnTo ?? route('boiler-chief.document-header-layouts.index'),
+            'backLabel' => RequestLayoutDocumentHeaderReturn::backLabel($returnTo),
+        ]);
     }
 
     public function store(StoreDocumentHeaderLayoutRequest $request): RedirectResponse
     {
         $payload = $request->payload();
-        DocumentHeaderLayout::query()->create([
+        $layout = DocumentHeaderLayout::query()->create([
             'title' => $payload['title'],
             'schema' => $payload['schema'],
         ]);
+
+        $returnTo = RequestLayoutDocumentHeaderReturn::fromRequest($request);
+        if ($returnTo !== null) {
+            return redirect()->to($returnTo.'?'.http_build_query([
+                'document_header_layout_id' => $layout->id,
+            ]))->with('status', 'Макет шапки сохранён. Он выбран в форме макета отчёта.');
+        }
 
         return redirect()
             ->route('boiler-chief.document-header-layouts.index')
@@ -41,10 +55,14 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
 
     public function edit(Request $request, DocumentHeaderLayout $documentHeaderLayout): View
     {
-        $this->assertOwner($documentHeaderLayout, $request->user());
+        $this->assertReportLayoutDesigner($documentHeaderLayout, $request->user());
+        $returnTo = RequestLayoutDocumentHeaderReturn::fromRequest($request);
 
         return view('boiler-chief.document-header-layouts.edit', [
             'layout' => $documentHeaderLayout,
+            'returnTo' => $returnTo,
+            'backHref' => $returnTo ?? route('boiler-chief.document-header-layouts.index'),
+            'backLabel' => RequestLayoutDocumentHeaderReturn::backLabel($returnTo),
         ]);
     }
 
@@ -52,12 +70,18 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
         UpdateDocumentHeaderLayoutRequest $request,
         DocumentHeaderLayout $documentHeaderLayout
     ): RedirectResponse {
-        $this->assertOwner($documentHeaderLayout, $request->user());
+        $this->assertReportLayoutDesigner($documentHeaderLayout, $request->user());
         $payload = $request->payload();
         $documentHeaderLayout->update([
             'title' => $payload['title'],
             'schema' => $payload['schema'],
         ]);
+
+        $returnTo = RequestLayoutDocumentHeaderReturn::fromRequest($request);
+        if ($returnTo !== null) {
+            return redirect()->to($returnTo)
+                ->with('status', 'Макет шапки обновлён.');
+        }
 
         return redirect()
             ->route('boiler-chief.document-header-layouts.index')
@@ -66,7 +90,7 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
 
     public function destroy(Request $request, DocumentHeaderLayout $documentHeaderLayout): RedirectResponse
     {
-        $this->assertOwner($documentHeaderLayout, $request->user());
+        $this->assertReportLayoutDesigner($documentHeaderLayout, $request->user());
         $documentHeaderLayout->delete();
 
         return redirect()
@@ -74,9 +98,9 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
             ->with('status', 'Макет шапки удалён.');
     }
 
-    private function assertOwner(DocumentHeaderLayout $layout, ?User $user): void
+    private function assertReportLayoutDesigner(DocumentHeaderLayout $layout, ?User $user): void
     {
-        if (! $user || ! $user->hasRoleId(7)) {
+        if (! $user || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS)) {
             abort(403);
         }
     }

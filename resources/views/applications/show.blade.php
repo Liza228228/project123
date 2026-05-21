@@ -12,10 +12,16 @@
                     <span class="inline-flex items-center rounded-full border border-emerald-300/90 bg-emerald-50/90 px-2.5 py-0.5 text-xs font-medium text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100 shrink-0" title="Акт и фото загружены, оборудование списано со складов">
                         Выполнена
                     </span>
+                @elseif($application->isApprovedDeliveryFullyInTransit())
+                    <span class="inline-flex items-center rounded-full border border-orange-300/90 bg-orange-50/90 px-2.5 py-0.5 text-xs font-medium text-orange-950 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-100 shrink-0" title="Все согласованные позиции в пути">
+                        В пути
+                    </span>
                 @elseif($application->isStatusApproved())
                     <span class="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/60 dark:text-white shrink-0">Согласована</span>
                 @elseif($application->isStatusPartial())
                     <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2.5 py-0.5 text-xs font-medium text-black dark:bg-stone-900/50 dark:text-white shrink-0">Частично согласована</span>
+                @elseif($application->isCreatorDraftApplication())
+                    <span class="inline-flex items-center rounded-full bg-stone-200/90 px-2.5 py-0.5 text-xs font-medium text-stone-800 dark:bg-stone-800/60 dark:text-stone-200 shrink-0">Черновик</span>
                 @elseif($application->needsBoilerChiefReviewBeforeManagement())
                     <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 shrink-0">У начальника котельной</span>
                 @elseif($application->awaitsManagementEquipmentApproval())
@@ -28,11 +34,32 @@
             </div>
             <div class="app-actions-row">
                 @if (! $application->archived_at
+                    && ! $application->managementHasSavedApproval()
                     && Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7])
-                    && ! $application->items->contains(fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true)))
+                    && ! $application->items->contains(fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true))
+                    && (! Auth::user()->hasRoleId(4) || $application->foremanCanEditApplication())
+                    && (! Auth::user()->hasRoleId(7) || $application->boilerChiefCanEditApplication()))
                     <a href="{{ route('applications.edit', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0">
                         Изменить
                     </a>
+                @endif
+                @if ($canForemanSubmitToBoilerChief ?? false)
+                    <button
+                        type="button"
+                        class="ui-btn ui-btn--primary whitespace-nowrap shrink-0"
+                        data-app-open-modal="confirm-submit-boiler-chief"
+                    >
+                        Отправить на согласование
+                    </button>
+                @endif
+                @if ($canBoilerChiefSubmitForManagement ?? false)
+                    <button
+                        type="button"
+                        class="ui-btn ui-btn--primary whitespace-nowrap shrink-0"
+                        data-app-open-modal="confirm-submit-for-management"
+                    >
+                        Отправить на согласование
+                    </button>
                 @endif
                 @if($canChangeApplicationResponsible ?? false)
                     <a href="{{ route('applications.responsible.edit', $application) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0">
@@ -45,11 +72,20 @@
                     </a>
                 @endif
                 @if (Auth::user()->hasAnyRoleId([4, 7]))
-                    <a href="{{ route('applications.repeat', $application) }}"
-                       class="ui-btn ui-btn--primary whitespace-nowrap shrink-0"
-                       onclick="return window.confirm('Вы уверены, что хотите создать повторную заявку?');">
+                    <a
+                        id="application-repeat-link"
+                        href="{{ route('applications.repeat', $application) }}"
+                        class="sr-only"
+                        tabindex="-1"
+                        aria-hidden="true"
+                    >Создать повторную</a>
+                    <button
+                        type="button"
+                        class="ui-btn ui-btn--primary whitespace-nowrap shrink-0"
+                        data-app-open-modal="confirm-repeat-application"
+                    >
                         Создать повторную
-                    </a>
+                    </button>
                 @endif
             </div>
         </div>
@@ -61,6 +97,11 @@
                     {{ session('status') }}
                 </div>
             @endif
+            @error('submit')
+                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                    {{ $message }}
+                </div>
+            @enderror
             @if($application->archived_at)
                 <div class="mb-4 rounded-xl border border-emerald-200/90 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100 space-y-2">
                     <p>Заявка находится в архиве выполненных (актуальные документы и списания по складу зафиксированы). Дата архивации: {{ $application->archived_at->format('d.m.Y H:i') }}.</p>
@@ -95,6 +136,11 @@
                 </div>
             @enderror
             @error('transport_option_id')
+                <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                    {{ $message }}
+                </div>
+            @enderror
+            @error('vehicle_plate')
                 <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                     {{ $message }}
                 </div>
@@ -192,7 +238,11 @@
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
                                     @if($application->approvedBy)
                                         {{ $application->approvedBy->surname }} {{ $application->approvedBy->name }}
-                            
+                                        @if($application->approvedBy->role?->name)
+                                            <span class="block text-xs font-normal opacity-80 mt-0.5">{{ $application->approvedBy->role->name }}</span>
+                                        @endif
+                                    @else
+                                        —
                                     @endif
                                 </dd>
                             </div>
@@ -283,16 +333,42 @@
                         $approvalLockedAfterTransit = $application->items->contains(
                             fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true)
                         );
-                        $canManagementApprove = Auth::user()->hasAnyRoleId([1, 6, 2]) && ! $application->needsBoilerChiefReviewBeforeManagement();
+                        $canManagementApprove = Auth::user()->hasAnyRoleId([1, 6, 2])
+                            && ! $application->needsBoilerChiefReviewBeforeManagement()
+                            && $application->managementMayReviewAfterBoilerChief()
+                            && ! $application->managementHasSavedApproval();
                         if ($approvalLockedAfterTransit) {
                             $canManagementApprove = false;
                         }
-                        $canBoilerChiefApprove = Auth::user()->hasRoleId(7) && $application->needsBoilerChiefReviewBeforeManagement();
+                        $canBoilerChiefApprove = Auth::user()->hasRoleId(7)
+                            && $application->needsBoilerChiefReviewBeforeManagement()
+                            && ! $application->boilerChiefReleasedToManagement();
                         $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id));
                         $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id));
                         $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked);
+                        $subdivisionHasBoilerChiefForReadonly = \App\Models\Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id);
+                        $postBoilerChiefFrozenUncheckedReadonly = $subdivisionHasBoilerChiefForReadonly
+                            && ! $application->needsBoilerChiefReviewBeforeManagement();
+                        $itemsRejectedByBoilerChiefReadonly = $postBoilerChiefFrozenUncheckedReadonly
+                            ? $boilerUncheckedItems
+                            : collect();
+                        $rejectedByBoilerChiefReadonlyIds = $itemsRejectedByBoilerChiefReadonly->pluck('id')->all();
+                        $uncheckedItemsForDisplay = $rejectedByBoilerChiefReadonlyIds === []
+                            ? $uncheckedItems
+                            : $uncheckedItems->reject(fn ($i) => in_array($i->id, $rejectedByBoilerChiefReadonlyIds, true));
+                        $awaitingBoilerChiefApprovalList = $application->needsBoilerChiefReviewBeforeManagement()
+                            && $boilerUncheckedItems->isNotEmpty();
+                        if ($awaitingBoilerChiefApprovalList) {
+                            $boilerPendingItemIds = $boilerUncheckedItems->pluck('id')->all();
+                            $uncheckedItemsForDisplay = $uncheckedItemsForDisplay->reject(
+                                fn ($i) => in_array($i->id, $boilerPendingItemIds, true)
+                            );
+                        }
                         $canManageDeliveryTransit = Auth::user()->hasAnyRoleId([1, 6, 2]);
                         $inTransitCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryInTransit());
+                        $showCatalogDeliveryInTransitForm = $canManageDeliveryTransit
+                            && $application->managementHasSavedApproval()
+                            && $inTransitCandidates->isNotEmpty();
                         $chiefCanMarkDelivered = Auth::user()->hasAnyRoleId([7, 4]);
                         $chiefDeliveryCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryDeliveredByBoilerChief());
                     @endphp
@@ -307,9 +383,7 @@
                         @if($application->items->isEmpty())
                             <p class="text-sm text-stone-600 dark:text-stone-400 py-2">Позиций нет.</p>
                         @elseif($canBoilerChiefApprove)
-                            <p class="mb-3 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
-                                Согласуйте позиции по подразделению. После сохранения заявка станет видна директору, техническому директору и начальнику отдела снабжения для согласования и заказа оборудования. Заказывать оборудование и отмечать поставки может только снабжение / руководство.
-                            </p>
+
                             <form method="POST" action="{{ route('applications.boiler-chief-approval', $application) }}" id="boiler-chief-approval-form" class="space-y-4">
                                 @csrf
                                 <div class="flex flex-wrap gap-2">
@@ -436,8 +510,66 @@
                                 })();
                             </script>
                         @elseif($canManagementApprove)
+                            @php
+                                $subdivisionHasBoilerChief = \App\Models\Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id);
+                                $supplyManagementItems = $application->items;
+                                $stockByItem = $catalogStockOnMainWarehouseByItemId ?? [];
+                                $supplyAwaitingPostBoilerManagementSave = $subdivisionHasBoilerChief
+                                    && ! $application->needsBoilerChiefReviewBeforeManagement()
+                                    && $application->management_supply_items_saved_at === null;
+                                $splitSupplyFormForBoilerFrozen = $subdivisionHasBoilerChief
+                                    && ! $application->needsBoilerChiefReviewBeforeManagement();
+                                if ($splitSupplyFormForBoilerFrozen) {
+                                    $itemsFrozenAsBoilerRejectedForSupply = $supplyManagementItems->filter(
+                                        fn ($i) => ! (bool) $i->is_checked
+                                    );
+                                    $supplyManagementItemsInteractive = $supplyManagementItems->filter(
+                                        fn ($i) => (bool) $i->is_checked
+                                    );
+                                } else {
+                                    $itemsFrozenAsBoilerRejectedForSupply = collect();
+                                    $supplyManagementItemsInteractive = $supplyManagementItems;
+                                }
+                            @endphp
+                            @if($supplyAwaitingPostBoilerManagementSave)
+                                
+                            @elseif(! $application->approved_by_user_id)
+                                <div class="mb-4 rounded-xl border border-stone-200/90 bg-stone-50/80 p-3 text-xs text-black dark:border-stone-600 dark:bg-stone-800/35 dark:text-white">
+                                    Сохраните согласование по позициям — после этого станут доступны доставка («В пути») и форма заказа своего оборудования.
+                                </div>
+                            @endif
                             <form method="POST" action="{{ route('applications.approval', $application) }}" id="approval-form" class="space-y-4">
                                 @csrf
+
+                                @if($itemsFrozenAsBoilerRejectedForSupply->isNotEmpty())
+                                    <div class="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/20">
+                                        <h4 class="app-form-label !normal-case !mb-0">Не согласовано</h4>
+                                        <p class="text-xs text-black/80 dark:text-white/75">
+                                            Эти позиции уже не в согласовании снабжения на этом шаге — только просмотр. Ниже отмечайте и сохраняйте согласование только по остальным позициям.
+                                        </p>
+                                        <ul class="divide-y divide-amber-200/80 overflow-hidden rounded-lg border border-amber-200/70 dark:divide-amber-800/40 dark:border-amber-800/40">
+                                            @foreach($itemsFrozenAsBoilerRejectedForSupply->sortBy('id') as $item)
+                                                <li class="space-y-1 bg-white/90 px-3 py-2.5 dark:bg-stone-900/50">
+                                                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                                        <span class="text-sm font-medium text-black dark:text-white">
+                                                            {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
+                                                        </span>
+                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-amber-900/90 dark:text-amber-100/90">не в согласовании снабжения</span>
+                                                    </div>
+                                                    @if($application->itemLineRejectionReason($item->id))
+                                                        <p class="text-xs text-black dark:text-white">
+                                                            <span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}
+                                                        </p>
+                                                    @endif
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                        @foreach($itemsFrozenAsBoilerRejectedForSupply->sortBy('id') as $item)
+                                            <input type="hidden" name="items[{{ $item->id }}][is_checked]" value="0">
+                                            <input type="hidden" name="items[{{ $item->id }}][reason_not_selected]" value="{{ old('items.'.$item->id.'.reason_not_selected', $item->reason_not_selected ?? '') }}">
+                                        @endforeach
+                                    </div>
+                                @endif
 
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" id="approval-check-all" class="ui-btn ui-btn--secondary ui-btn--sm">
@@ -464,11 +596,20 @@
                                         </button>
                                     </div>
                                 </div>
+                                @if($supplyManagementItemsInteractive->isEmpty())
+                                    <p class="rounded-lg border border-stone-200/90 bg-stone-50/80 px-3 py-2 text-xs text-black dark:border-stone-600 dark:bg-stone-800/35 dark:text-white">
+                                        Нет позиций для согласования снабжением на этом шаге — все строки уже не согласованы. Нажмите «Сохранить согласование», чтобы зафиксировать состояние заявки.
+                                    </p>
+                                @else
                                 <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
-                                    @foreach($application->items->sortBy('id') as $item)
+                                    @foreach($supplyManagementItemsInteractive->sortBy('id') as $item)
                                         @php
-                                            $oldChecked = old("items.{$item->id}.is_checked", $application->itemLineIsApproved($item->id) ? '1' : '0');
+                                            $legacyDefaultChecked = $application->itemLineIsApproved($item->id) ? '1' : '0';
+                                            $defaultChecked = ($supplyAwaitingPostBoilerManagementSave && $application->itemLineIsApproved($item->id)) ? '0' : $legacyDefaultChecked;
+                                            $oldChecked = old("items.{$item->id}.is_checked", $defaultChecked);
                                             $isCheckedOld = (string) $oldChecked === '1';
+                                            $stockMain = $stockByItem[(int) $item->id] ?? null;
+                                            $unitLabel = $item->quantityUnitLabelForDisplay();
                                         @endphp
                                         <li class="approval-row space-y-2 bg-white px-4 py-3 dark:bg-stone-900/40">
                                             <div class="flex items-start gap-3">
@@ -483,6 +624,23 @@
                                                     <span class="text-sm font-medium text-black dark:text-white">
                                                         {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                     </span>
+                                                    @if($stockMain !== null && ($mainWarehouse ?? null))
+                                                        @php
+                                                            $reqQty = (float) $item->quantity;
+                                                            $toOrder = max(0.0, $reqQty - (float) $stockMain);
+                                                            $fmt = static function (float $v): string {
+                                                                if (abs($v - round($v)) < 0.0005) {
+                                                                    return (string) (int) round($v);
+                                                                }
+
+                                                                return rtrim(rtrim(number_format($v, 3, ',', ' '), '0'), ',');
+                                                            };
+                                                        @endphp
+                                                        <p class="text-xs text-black/80 dark:text-white/75">
+                                                            Доступно на основном складе «{{ $mainWarehouse->name }}» (с учётом резерва других заявок): {{ $fmt((float) $stockMain) }} {{ $unitLabel }}.
+                                                            К дозаказу: {{ $fmt($toOrder) }} {{ $unitLabel }} (по заявке {{ $fmt($reqQty) }} {{ $unitLabel }}).
+                                                        </p>
+                                                    @endif
                                                     @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
                                                 </div>
                                             </div>
@@ -503,6 +661,7 @@
                                         </li>
                                     @endforeach
                                 </ul>
+                                @endif
                                 <div>
                                     <button type="submit" class="ui-btn ui-btn--primary">
                                         Сохранить согласование
@@ -569,7 +728,7 @@
                                     return $i->usesFreeTextEquipment() && $i->is_checked && $i->equipment_id === null;
                                 });
                             @endphp
-                            @if($hasCustomEquipmentOrderForm && Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
+                            @if($hasCustomEquipmentOrderForm && $application->approved_by_user_id && ! $supplyAwaitingPostBoilerManagementSave && Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
                                 <div class="space-y-2 rounded-xl border border-stone-200/90 bg-stone-50/80 p-4 dark:border-stone-600 dark:bg-stone-800/35">
                                     <p class="text-xs text-black dark:text-white">
                                         Позиции со <span class="font-medium">своим названием</span>: заказ и приход на основной склад оформляются в одной форме — выбор строк и кнопки «Заказано» / «На складе».
@@ -581,46 +740,12 @@
                                     </div>
                                 </div>
                             @endif
-
-                            @if($canManageDeliveryTransit && $inTransitCandidates->isNotEmpty())
-                                <div class="space-y-3 rounded-xl border border-orange-200/80 bg-orange-50/60 p-4 dark:border-orange-800/50 dark:bg-orange-950/25">
-                                    <p class="text-xs text-black dark:text-white">
-                                        После подготовки отгрузки отметьте <span class="font-medium">«В пути»</span> — статус сразу проставится для всех подходящих позиций этой заявки. После фактической доставки начальник котельной отметит подразделение и склад поступления.
-                                    </p>
-                                    <form method="POST" action="{{ route('applications.delivery-in-transit', $application) }}" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end">
-                                        @csrf
-                                        <div class="w-full sm:w-auto sm:min-w-[17rem]">
-                                            <label for="delivery-transport-option-id" class="app-form-label !normal-case">Способ доставки</label>
-                                            <select id="delivery-transport-option-id" name="transport_option_id" class="app-select text-sm" required>
-                                                <option value="" disabled @selected(! old('transport_option_id', $application->transport_option_id))>Выберите способ доставки</option>
-                                                @foreach(($transportOptions ?? collect()) as $transportOption)
-                                                    <option value="{{ $transportOption->id }}" @selected((string) old('transport_option_id', $application->transport_option_id) === (string) $transportOption->id)>
-                                                        {{ $transportOption->name }}
-                                                    </option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
-                                            Отметить всё как «В пути»
-                                        </button>
-                                    </form>
-                                    <ul class="space-y-2">
-                                        @foreach($inTransitCandidates->sortBy('id') as $deliveryItem)
-                                            <li class="flex flex-col gap-2 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 px-3 py-2">
-                                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                    <span class="text-sm text-black dark:text-white">
-                                                        {{ $deliveryItem->equipment_display_name }} × {{ $deliveryItem->quantity_with_unit }}
-                                                    </span>
-                                                    @include('applications.partials.custom-equipment-supply-badge', ['item' => $deliveryItem])
-                                                </div>
-                                            </li>
-                                        @endforeach
-                                    </ul>
-                                </div>
-                            @endif
                         @else
-                            @if($boilerUncheckedItems->isNotEmpty() && $application->needsBoilerChiefReviewBeforeManagement())
-                                <h4 class="app-form-label !normal-case !mb-2">Не согласовано начальником котельной</h4>
+                            @if($awaitingBoilerChiefApprovalList)
+                                <h4 class="app-form-label !normal-case !mb-2">Не согласовано</h4>
+                                <p class="mb-2 text-xs text-black/80 dark:text-white/75">
+                                    Ожидается согласование начальником котельной.
+                                </p>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
                                     @foreach($boilerUncheckedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-amber-50/50 dark:bg-amber-950/20 space-y-1">
@@ -633,11 +758,32 @@
                                         </li>
                                     @endforeach
                                 </ul>
+                            @elseif($itemsRejectedByBoilerChiefReadonly->isNotEmpty())
+                                <h4 class="app-form-label !normal-case !mb-2">Не согласовано</h4>
+                                <p class="mb-2 text-xs text-black/80 dark:text-white/75">
+                                    @if(Auth::user()->hasRoleId(7))
+                                        Эти позиции уже зафиксированы как не согласованные; изменить отметку на этом этапе нельзя. Дальнейшее согласование по остальным строкам — у директора, технического директора и снабжения (кнопка «Сохранить согласование»).
+                                    @else
+                                        По этим позициям согласование не оформлено; в списке для снабжения они не участвуют. Остальные строки согласуют директор, технический директор и снабжение после «Сохранить согласование».
+                                    @endif
+                                </p>
+                                <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
+                                    @foreach($itemsRejectedByBoilerChiefReadonly->sortBy('id') as $item)
+                                        <li class="px-4 py-3 bg-amber-50/50 dark:bg-amber-950/20 space-y-1">
+                                            <span class="text-sm font-medium text-black dark:text-white">
+                                                {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
+                                            </span>
+                                            @if($application->itemLineRejectionReason($item->id))
+                                                <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
+                                            @endif
+                                        </li>
+                                    @endforeach
+                                </ul>
                             @endif
-                            @if($uncheckedItems->isNotEmpty())
+                            @if($uncheckedItemsForDisplay->isNotEmpty())
                                 <h4 class="app-form-label !normal-case !mb-2">Не согласовано</h4>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
-                                    @foreach($uncheckedItems->sortBy('id') as $item)
+                                    @foreach($uncheckedItemsForDisplay->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25 space-y-1">
                                             <span class="text-sm font-medium text-black dark:text-white">
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
@@ -667,9 +813,7 @@
 
                             @if($chiefCanMarkDelivered && $chiefDeliveryCandidates->isNotEmpty())
                                 <div class="mt-4 space-y-3 rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-emerald-800/50 dark:bg-emerald-950/25">
-                                    <p class="text-xs text-black dark:text-white">
-                                        Для позиций <span class="font-medium">«В пути»</span> подразделение получения задано заявкой — выберите только <span class="font-medium">склад</span> этого подразделения, на который фактически поступило оборудование. После «Доставлено» количество отображается на остатках склада; списание выполняется отдельно (при сохранении акта установки или через операцию списания со склада поступления).
-                                    </p>
+                                   
                                     @php
                                         $deliveryGroups = $chiefDeliveryCandidates
                                             ->sortBy('id')
@@ -698,7 +842,7 @@
                                                             <option value="" disabled @selected(! old('delivery_bulk_warehouse_id'))>Выберите склад</option>
                                                             @foreach($groupSubdivision->warehouses->sortBy('name') as $warehouse)
                                                                 <option value="{{ $warehouse->id }}" @selected((string) old('delivery_bulk_warehouse_id') === (string) $warehouse->id)>
-                                                                    {{ $warehouse->code }} — {{ $warehouse->name }}
+                                                                    {{ $warehouse->name }}
                                                                 </option>
                                                             @endforeach
                                                         </select>
@@ -740,7 +884,7 @@
                                                                         value="{{ $warehouse->id }}"
                                                                         @selected((string) old('delivery_warehouse_id', (string) $deliveryItem->delivery_warehouse_id) === (string) $warehouse->id)
                                                                     >
-                                                                        {{ $warehouse->code }} — {{ $warehouse->name }}
+                                                                        {{ $warehouse->name }}
                                                                     </option>
                                                                 @endforeach
                                                             </select>
@@ -766,9 +910,313 @@
                             @endif
                         @endif
 
+                        @if($showCatalogDeliveryInTransitForm)
+                            <div class="mt-4 space-y-3 rounded-xl border border-orange-200/80 bg-orange-50/60 p-4 dark:border-orange-800/50 dark:bg-orange-950/25">
+                                @php
+                                    $bulkMethodId = $application->transportMethodOptionIdForDeliveryForm();
+                                    $bulkPlate = trim((string) ($application->transportOption?->plate ?? ''));
+                                @endphp
+                                <form method="POST" action="{{ route('applications.delivery-in-transit', $application) }}" id="delivery-in-transit-form" class="flex flex-col gap-4">
+                                    @csrf
+
+                                    @if($inTransitCandidates->count() > 1)
+                                        <div class="rounded-xl border border-stone-200/90 bg-white/90 p-3 dark:border-stone-600 dark:bg-stone-950/50 space-y-3" data-delivery-transport-block id="delivery-bulk-block">
+                                            <p class="text-xs font-medium text-black dark:text-white">Для всех позиций сразу</p>
+                                            @include('applications.partials.delivery-transport-fields', [
+                                                'fieldUid' => 'delivery-bulk',
+                                                'selectedMethodId' => $bulkMethodId,
+                                                'vehiclePlateValue' => $bulkPlate,
+                                                'transportOptions' => $transportOptions,
+                                                'serviceVehiclePlateOptions' => $serviceVehiclePlateOptions,
+                                            ])
+                                            <div class="flex flex-wrap gap-2">
+                                                <button type="button" id="delivery-apply-bulk" class="ui-btn ui-btn--secondary ui-btn--sm">
+                                                    Применить ко всем позициям
+                                                </button>
+                                            </div>
+                                        </div>
+                                    @endif
+
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        @if($inTransitCandidates->count() > 1)
+                                            <label class="inline-flex items-center gap-2 text-sm text-black dark:text-white cursor-pointer">
+                                                <input type="checkbox" id="delivery-select-all" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500" checked>
+                                                Выбрать все позиции
+                                            </label>
+                                        @endif
+                                    </div>
+
+                                    <ul class="space-y-3">
+                                        @foreach($inTransitCandidates->sortBy('id') as $deliveryItem)
+                                            @php
+                                                $itemId = (int) $deliveryItem->id;
+                                                $oldRow = old("items.{$itemId}", []);
+                                                $itemMarked = array_key_exists('mark', $oldRow) ? filled($oldRow['mark']) : true;
+                                                $itemMethodId = $oldRow['transport_option_id'] ?? $deliveryItem->transportMethodOptionIdForDeliveryForm() ?? $bulkMethodId;
+                                                $itemPlate = $oldRow['vehicle_plate'] ?? trim((string) ($deliveryItem->transportOption?->plate ?? $bulkPlate));
+                                            @endphp
+                                            <li class="delivery-in-transit-row rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 p-3 space-y-3" data-delivery-transport-block data-item-id="{{ $itemId }}">
+                                                @if($inTransitCandidates->count() === 1)
+                                                    <input type="hidden" name="items[{{ $itemId }}][mark]" value="1">
+                                                    <p class="text-sm font-medium text-black dark:text-white">
+                                                        {{ $deliveryItem->equipment_display_name }} × {{ $deliveryItem->quantity_with_unit }}
+                                                    </p>
+                                                @else
+                                                    <label class="flex items-start gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="delivery-item-mark mt-0.5 rounded border-stone-300 text-orange-600 focus:ring-orange-500"
+                                                            name="items[{{ $itemId }}][mark]"
+                                                            value="1"
+                                                            @checked($itemMarked)
+                                                        >
+                                                        <span class="text-sm font-medium text-black dark:text-white">
+                                                            {{ $deliveryItem->equipment_display_name }} × {{ $deliveryItem->quantity_with_unit }}
+                                                        </span>
+                                                    </label>
+                                                @endif
+                                                @include('applications.partials.delivery-transport-fields', [
+                                                    'fieldUid' => 'delivery-item-'.$itemId,
+                                                    'nameTransport' => "items[{$itemId}][transport_option_id]",
+                                                    'namePlate' => "items[{$itemId}][vehicle_plate]",
+                                                    'selectedMethodId' => $itemMethodId,
+                                                    'vehiclePlateValue' => $itemPlate,
+                                                    'transportOptions' => $transportOptions,
+                                                    'serviceVehiclePlateOptions' => $serviceVehiclePlateOptions,
+                                                ])
+                                                @if($errors->has("items.{$itemId}.transport_option_id") || $errors->has("items.{$itemId}.vehicle_plate"))
+                                                    <ul class="text-xs text-red-700 dark:text-red-300 space-y-0.5">
+                                                        @foreach($errors->get("items.{$itemId}.transport_option_id") as $message)
+                                                            <li>{{ $message }}</li>
+                                                        @endforeach
+                                                        @foreach($errors->get("items.{$itemId}.vehicle_plate") as $message)
+                                                            <li>{{ $message }}</li>
+                                                        @endforeach
+                                                    </ul>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ul>
+
+                                    <p class="text-xs text-black/70 dark:text-white/70">
+                                        Для каждой позиции можно указать свой способ доставки и машину. Госномер вводится с пробелами, например <span class="font-medium">А 123 ВС 77</span>.
+                                    </p>
+
+                                    <div class="flex flex-wrap justify-end">
+                                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm whitespace-nowrap">
+                                            @if($inTransitCandidates->count() > 1)
+                                                Отметить выбранные как «В пути»
+                                            @else
+                                                Отметить как «В пути»
+                                            @endif
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <script>
+                                    (function () {
+                                        const form = document.getElementById('delivery-in-transit-form');
+                                        if (!form) {
+                                            return;
+                                        }
+                                        const selfPickup = @json(\App\Models\TransportOption::NAME_SELF_PICKUP);
+                                        const serviceVehicle = @json(\App\Models\TransportOption::NAME_SERVICE_VEHICLE);
+                                        const plateLetters = @json(\App\Support\RussianVehiclePlate::CYRILLIC_LETTERS);
+                                        const latinToCyr = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
+
+                                        function normalizePlateLetter(ch) {
+                                            const upper = String(ch ?? '').toUpperCase();
+                                            return latinToCyr[upper] ?? upper;
+                                        }
+
+                                        function filterRussianPlateInput(raw) {
+                                            let out = '';
+                                            const s = String(raw ?? '').toUpperCase().replace(/[\s\-]+/g, '');
+                                            for (const ch of s) {
+                                                const c = normalizePlateLetter(ch);
+                                                const len = out.length;
+                                                if (len === 0) {
+                                                    if (plateLetters.includes(c)) {
+                                                        out += c;
+                                                    }
+                                                } else if (len <= 3) {
+                                                    if (/\d/.test(c)) {
+                                                        out += c;
+                                                    }
+                                                } else if (len <= 5) {
+                                                    if (plateLetters.includes(c)) {
+                                                        out += c;
+                                                    }
+                                                } else if (len <= 8) {
+                                                    if (/\d/.test(c)) {
+                                                        out += c;
+                                                    }
+                                                }
+                                                if (out.length >= 9) {
+                                                    break;
+                                                }
+                                            }
+                                            return out;
+                                        }
+
+                                        function formatPlateWithSpaces(compact) {
+                                            const p = filterRussianPlateInput(compact);
+                                            if (!p) {
+                                                return '';
+                                            }
+                                            return [p.slice(0, 1), p.slice(1, 4), p.slice(4, 6), p.slice(6)].filter(Boolean).join(' ');
+                                        }
+
+                                        function initTransportBlock(block) {
+                                            const methodSelect = block.querySelector('[data-delivery-method]');
+                                            const plateField = block.querySelector('[data-delivery-plate-field]');
+                                            const plateText = block.querySelector('[data-delivery-plate-text]');
+                                            const plateSelect = block.querySelector('[data-delivery-plate-select]');
+                                            if (!methodSelect) {
+                                                return;
+                                            }
+
+                                            function syncPlateField() {
+                                                if (!plateField || !plateText || !plateSelect) {
+                                                    return;
+                                                }
+                                                const name = methodSelect.selectedOptions[0]?.dataset?.transportName?.trim() ?? '';
+                                                const plateName = plateText.getAttribute('name') || plateSelect.getAttribute('name');
+                                                if (name === selfPickup) {
+                                                    plateField.classList.add('hidden');
+                                                    plateText.required = false;
+                                                    plateText.disabled = true;
+                                                    plateText.removeAttribute('name');
+                                                    plateSelect.required = false;
+                                                    plateSelect.disabled = true;
+                                                    plateSelect.removeAttribute('name');
+                                                    return;
+                                                }
+                                                plateField.classList.remove('hidden');
+                                                if (name === serviceVehicle) {
+                                                    plateText.classList.add('hidden');
+                                                    plateText.required = false;
+                                                    plateText.disabled = true;
+                                                    plateText.removeAttribute('name');
+                                                    plateSelect.classList.remove('hidden');
+                                                    if (plateName) {
+                                                        plateSelect.setAttribute('name', plateName);
+                                                    }
+                                                    plateSelect.required = true;
+                                                    plateSelect.disabled = false;
+                                                    return;
+                                                }
+                                                plateSelect.classList.add('hidden');
+                                                plateSelect.required = false;
+                                                plateSelect.disabled = true;
+                                                plateSelect.removeAttribute('name');
+                                                plateText.classList.remove('hidden');
+                                                if (plateName) {
+                                                    plateText.setAttribute('name', plateName);
+                                                }
+                                                plateText.required = true;
+                                                plateText.disabled = false;
+                                                plateText.value = formatPlateWithSpaces(plateText.value);
+                                            }
+
+                                            methodSelect.addEventListener('change', syncPlateField);
+                                            if (plateText) {
+                                                plateText.addEventListener('input', function () {
+                                                    plateText.value = formatPlateWithSpaces(plateText.value);
+                                                });
+                                                plateText.addEventListener('paste', function (event) {
+                                                    event.preventDefault();
+                                                    const pasted = (event.clipboardData || window.clipboardData)?.getData('text') ?? '';
+                                                    plateText.value = formatPlateWithSpaces(plateText.value + pasted);
+                                                });
+                                            }
+                                            syncPlateField();
+                                        }
+
+                                        form.querySelectorAll('[data-delivery-transport-block]').forEach(initTransportBlock);
+
+                                        const selectAll = document.getElementById('delivery-select-all');
+                                        if (selectAll) {
+                                            selectAll.addEventListener('change', function () {
+                                                form.querySelectorAll('.delivery-item-mark').forEach(function (cb) {
+                                                    cb.checked = selectAll.checked;
+                                                });
+                                            });
+                                        }
+
+                                        const applyBulk = document.getElementById('delivery-apply-bulk');
+                                        const bulkBlock = document.getElementById('delivery-bulk-block');
+                                        if (applyBulk && bulkBlock) {
+                                            applyBulk.addEventListener('click', function () {
+                                                const bulkMethod = bulkBlock.querySelector('[data-delivery-method]');
+                                                const bulkPlateText = bulkBlock.querySelector('[data-delivery-plate-text]');
+                                                const bulkPlateSelect = bulkBlock.querySelector('[data-delivery-plate-select]');
+                                                form.querySelectorAll('.delivery-in-transit-row').forEach(function (row) {
+                                                    const method = row.querySelector('[data-delivery-method]');
+                                                    const plateText = row.querySelector('[data-delivery-plate-text]');
+                                                    const plateSelect = row.querySelector('[data-delivery-plate-select]');
+                                                    if (method && bulkMethod) {
+                                                        method.value = bulkMethod.value;
+                                                        method.dispatchEvent(new Event('change', { bubbles: true }));
+                                                    }
+                                                    if (bulkPlateSelect && !bulkPlateSelect.classList.contains('hidden') && plateSelect) {
+                                                        plateSelect.value = bulkPlateSelect.value;
+                                                    } else if (bulkPlateText && plateText) {
+                                                        plateText.value = bulkPlateText.value;
+                                                        plateText.dispatchEvent(new Event('input', { bubbles: true }));
+                                                    }
+                                                });
+                                            });
+                                        }
+                                    })();
+                                </script>
+                            </div>
+                        @endif
+
                     </section>
 
                 </div>
             </div>
     </div>
+
+    @if ($canForemanSubmitToBoilerChief ?? false)
+        <form id="submit-to-boiler-chief-form" method="POST" action="{{ route('applications.submit-to-boiler-chief', $application) }}" class="hidden" aria-hidden="true">
+            @csrf
+            <button type="submit" tabindex="-1">Отправить на согласование</button>
+        </form>
+        <x-confirm-action-modal
+            name="confirm-submit-boiler-chief"
+            title="Отправить на согласование?"
+            confirm-label="Да, отправить"
+            form-id="submit-to-boiler-chief-form"
+        >
+            После отправки редактирование заявки будет недоступно. Продолжить?
+        </x-confirm-action-modal>
+    @endif
+
+    @if ($canBoilerChiefSubmitForManagement ?? false)
+        <form id="submit-for-management-form" method="POST" action="{{ route('applications.submit-for-management', $application) }}" class="hidden" aria-hidden="true">
+            @csrf
+            <button type="submit" tabindex="-1">Отправить на согласование</button>
+        </form>
+        <x-confirm-action-modal
+            name="confirm-submit-for-management"
+            title="Отправить на согласование?"
+            confirm-label="Да, отправить"
+            form-id="submit-for-management-form"
+        >
+            Заявка будет отправлена руководству и снабжению. После отправки редактирование будет недоступно. Продолжить?
+        </x-confirm-action-modal>
+    @endif
+
+    @if (Auth::user()->hasAnyRoleId([4, 7]))
+        <x-confirm-action-modal
+            name="confirm-repeat-application"
+            title="Создать повторную заявку?"
+            confirm-label="Да, создать"
+            link-id="application-repeat-link"
+        >
+            Будет открыта форма новой заявки с копией позиций из текущей.
+        </x-confirm-action-modal>
+    @endif
 </x-app-layout>

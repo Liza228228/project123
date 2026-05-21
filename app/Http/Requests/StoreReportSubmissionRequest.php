@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\RequestLayout;
 use App\Models\User;
+use App\Support\RequestLayoutTableField;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -21,7 +22,6 @@ class StoreReportSubmissionRequest extends FormRequest
     {
         return [
             'values' => ['required', 'array'],
-            'values.*' => ['nullable', 'string', 'max:20000'],
             'signer_1_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'signer_2_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'signer_3_user_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -112,11 +112,14 @@ class StoreReportSubmissionRequest extends FormRequest
      */
     public function fieldValues(RequestLayout $layout): array
     {
-        $allowed = [];
+        $fieldsByKey = [];
         foreach ($layout->schema['fields'] ?? [] as $field) {
+            if (! is_array($field)) {
+                continue;
+            }
             $fk = isset($field['key']) ? trim((string) $field['key']) : '';
             if ($fk !== '') {
-                $allowed[$fk] = true;
+                $fieldsByKey[$fk] = $field;
             }
         }
 
@@ -126,8 +129,13 @@ class StoreReportSubmissionRequest extends FormRequest
         }
 
         $out = [];
-        foreach ($allowed as $key => $_) {
+        foreach ($fieldsByKey as $key => $field) {
             $v = $raw[$key] ?? '';
+            if (($field['type'] ?? '') === 'table') {
+                $out[$key] = RequestLayoutTableField::normalizeFieldValueFromRequest($field, $v);
+
+                continue;
+            }
             $out[$key] = is_string($v) ? $v : (is_scalar($v) ? (string) $v : '');
         }
 

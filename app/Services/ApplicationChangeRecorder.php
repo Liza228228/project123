@@ -7,6 +7,7 @@ use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 final class ApplicationChangeRecorder
 {
@@ -74,8 +75,8 @@ final class ApplicationChangeRecorder
         $oldTid = $before['transport_option_id'] !== null ? (int) $before['transport_option_id'] : null;
         $newTid = $after->transport_option_id !== null ? (int) $after->transport_option_id : null;
         if ($oldTid !== $newTid) {
-            $oldT = $oldTid ? TransportOption::find($oldTid)?->name ?? '—' : '—';
-            $newT = $after->transportOption?->name ?? '—';
+            $oldT = self::transportOptionSummaryLabel($oldTid);
+            $newT = self::transportOptionSummaryLabel($newTid);
             $lines[] = 'Транспорт / доставка: «'.$oldT.'» → «'.$newT.'»';
         }
 
@@ -128,6 +129,31 @@ final class ApplicationChangeRecorder
         }
 
         return $lines;
+    }
+
+    private static function transportOptionSummaryLabel(?int $id): string
+    {
+        if ($id === null) {
+            return '—';
+        }
+
+        $t = TransportOption::query()->find($id);
+        if (! $t) {
+            return '—';
+        }
+
+        $name = trim((string) ($t->name ?? ''));
+        if (Schema::hasColumn('transport_options', 'plate')) {
+            $plate = trim((string) ($t->plate ?? ''));
+            if ($name !== '' && $plate !== '') {
+                return $name.' — '.$plate;
+            }
+            if ($plate !== '') {
+                return $plate;
+            }
+        }
+
+        return $name !== '' ? $name : '—';
     }
 
     /**

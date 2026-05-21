@@ -16,7 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'site_foreman' => \App\Http\Middleware\EnsureUserIsSiteForeman::class,
             'applications' => \App\Http\Middleware\EnsureUserCanAccessApplications::class,
             'supply_head' => \App\Http\Middleware\EnsureUserIsSupplyHead::class,
-            'boiler_chief' => \App\Http\Middleware\EnsureUserIsBoilerChief::class,
+            'report_layout_designer' => \App\Http\Middleware\EnsureUserIsReportLayoutDesigner::class,
+            'report_layout_catalog' => \App\Http\Middleware\EnsureUserCanViewReportLayoutCatalog::class,
             'layout_application_reports' => \App\Http\Middleware\EnsureUserCanLayoutApplicationReports::class,
         ]);
     })

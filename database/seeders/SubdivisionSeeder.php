@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
+use App\Support\AdministrationWarehouse;
 use Illuminate\Database\Seeder;
 
 /**
@@ -18,6 +19,7 @@ class SubdivisionSeeder extends Seeder
     public static function definitionNames(): array
     {
         return [
+            AdministrationWarehouse::SUBDIVISION_NAME,
             'Район тепловых сетей Северный',
             'Район тепловых сетей Южный',
             'Район тепловых сетей Центральный',

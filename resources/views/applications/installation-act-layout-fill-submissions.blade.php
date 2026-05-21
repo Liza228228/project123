@@ -21,6 +21,16 @@
                 @if(($submissions ?? collect())->isEmpty())
                     <p class="text-sm text-stone-600 dark:text-stone-400">Пока нет сохраненных отчетов.</p>
                 @else
+                    <form method="GET" action="{{ route('applications.installation-act.layout-fill.submissions') }}" class="mb-4 flex flex-wrap items-end gap-3" data-auto-submit="filter">
+                        <div class="min-w-0">
+                            <label for="layout-fill-submissions-per-page" class="app-form-label">На странице</label>
+                            <select id="layout-fill-submissions-per-page" name="per_page" class="app-select min-w-[10rem]">
+                                @foreach($allowedPerPage as $size)
+                                    <option value="{{ $size }}" @selected((int) ($perPage ?? 0) === (int) $size)>{{ $size }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </form>
                     <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
                         @foreach($submissions as $submission)
                             <li class="bg-white px-4 py-3 dark:bg-stone-900/40">

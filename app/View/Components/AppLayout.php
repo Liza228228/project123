@@ -7,8 +7,12 @@ use Illuminate\View\View;
 
 class AppLayout extends Component
 {
+    public function __construct(
+        public bool $wide = false,
+    ) {}
+
     /**
-     * Get the view / contents that represents the component.
+     * Get the view / contents that represents the layout.
      */
     public function render(): View
     {

@@ -8,15 +8,15 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * PDF «Заявки по макетам»: начальник котельной, бухгалтер и администратор.
+ * PDF «Заявки по макетам» и заполнение отчётов — все роли приложения.
  */
 class EnsureUserCanLayoutApplicationReports
 {
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
-        if (! $user instanceof User || ! $user->hasAnyRoleId(User::LAYOUT_APPLICATION_REPORT_ROLE_IDS)) {
-            abort(403, 'Раздел доступен только начальнику котельной, бухгалтеру и администратору.');
+        if (! $user instanceof User || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_FILL_ROLE_IDS)) {
+            abort(403, 'Заполнение отчётов недоступно для вашей роли.');
         }
 
         return $next($request);

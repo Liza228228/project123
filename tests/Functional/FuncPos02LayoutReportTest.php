@@ -323,6 +323,66 @@ test('site foreman can view own saved pdf list and reopen pdf', function (): voi
     $forbidden->assertForbidden();
 });
 
+test('layout applications index shows only submissions created by current user', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $foreman = User::query()->create([
+        'surname' => 'Козлов',
+        'name' => 'Алексей',
+        'patronymic' => 'Тест',
+        'email' => 'foreman-layout-apps-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 4,
+    ]);
+    $other = User::query()->create([
+        'surname' => 'Другой',
+        'name' => 'Мастер',
+        'patronymic' => 'Тест',
+        'email' => 'other-foreman-layout-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 4,
+    ]);
+    $layout = RequestLayout::query()->create([
+        'title' => 'Акт установки оборудования',
+        'schema' => [
+            'document_title' => 'Акт',
+            'body_template' => '{{pole}}',
+            'fields' => [
+                ['key' => 'pole', 'label' => 'Поле', 'type' => 'textarea'],
+            ],
+            'signature_slots_count' => 0,
+            'signature_roles' => [],
+        ],
+        'has_header' => false,
+        'type' => 'pdf',
+        'version' => 1,
+    ]);
+    $ownSubmission = RequestSubmission::query()->create([
+        'data' => ['pole' => 'Свой отчет'],
+        'created_by' => $foreman->id,
+        'layout_structure_id' => $layout->id,
+    ]);
+    $otherSubmission = RequestSubmission::query()->create([
+        'data' => ['pole' => 'Чужой отчет'],
+        'created_by' => $other->id,
+        'layout_structure_id' => $layout->id,
+    ]);
+
+    $index = $this->actingAs($foreman)->get(route('boiler-chief.layout-applications.index'));
+    $index->assertOk();
+    $index->assertSee('Акт установки оборудования', false);
+    $index->assertSee($foreman->fullName(), false);
+    $index->assertDontSee($other->fullName(), false);
+
+    $forbiddenPdf = $this->actingAs($foreman)->get(route('boiler-chief.layout-applications.pdf', $otherSubmission));
+    $forbiddenPdf->assertForbidden();
+
+    $forbiddenEdit = $this->actingAs($foreman)->get(route('boiler-chief.layout-applications.edit', $otherSubmission));
+    $forbiddenEdit->assertForbidden();
+
+    expect($ownSubmission->id)->not->toBe($otherSubmission->id);
+});
+
 test('boiler chief can open edit form and update layout submission pdf', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
 

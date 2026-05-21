@@ -15,11 +15,16 @@ use App\Models\TransportOption;
 use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Support\ApplicationCatalogStockAvailability;
+use App\Support\ListingPerPage;
+use App\Support\PieceQuantity;
+use App\Support\RussianVehiclePlate;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -33,25 +38,20 @@ class ApplicationController extends Controller
 {
     private const BOILER_CHIEF_ROLE_ID = 7;
 
-    private const ACCOUNTANT_ROLE_ID = 3;
-
     public function index(Request $request): View
     {
         $user = $request->user();
-        $this->syncCompletionArchiveForEligibleApplications();
+        defer(fn () => $this->syncCompletionArchiveForEligibleApplications());
         $isSiteForeman = $user?->hasRoleId(4) ?? false;
         $isBoilerChief = $user?->hasRoleId(self::BOILER_CHIEF_ROLE_ID) ?? false;
         $search = trim((string) $request->input('q', ''));
-        $allowedPerPage = [10, 15, 20, 25, 30, 35, 40, 45, 50];
-        $perPage = (int) $request->integer('per_page', 20);
-        if (! in_array($perPage, $allowedPerPage, true)) {
-            $perPage = 20;
-        }
-        $equipmentFilter = (string) $request->input('equipment_filter', 'all');
-        $allowedFilters = ['all', 'has_approved', 'has_not_approved', 'fully_approved', 'on_approval', 'needs_custom_equipment_order'];
-        if (! in_array($equipmentFilter, $allowedFilters, true)) {
-            $equipmentFilter = 'all';
-        }
+        $pagination = ListingPerPage::fromRequest($request);
+        $perPage = $pagination['perPage'];
+        $allowedPerPage = $pagination['allowedPerPage'];
+        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalize(
+            $request->input('approval_filter', $request->input('equipment_filter', 'all'))
+        );
+        $approvalFilterOptions = \App\Support\ApplicationApprovalListingFilter::options();
 
         $foremen = User::query()
             ->where('role_id', 4)
@@ -70,11 +70,13 @@ class ApplicationController extends Controller
 
         $applicationsQuery = Application::listingQuery($request);
 
-        if ($user?->hasRoleId(self::ACCOUNTANT_ROLE_ID)) {
+        if ($user?->hasRoleId(User::ACCOUNTANT_ROLE_ID)) {
             $applicationsQuery->withCount('installationActPhotos');
         }
 
         if ($user?->hasAnyRoleId($this->managementEditorRoleIds())) {
+            $draftStatusId = ApplicationStatus::idForDraft();
+            $applicationsQuery->where('application_status_id', '!=', $draftStatusId);
             $applicationsQuery->where(function ($outer) {
                 $outer->whereDoesntHave('user', function ($q) {
                     $q->where('role_id', 4);
@@ -92,13 +94,15 @@ class ApplicationController extends Controller
         if ($isBoilerChief && $user) {
             $chiefSubIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $applicationsQuery->whereIn('subdivision_id', $chiefSubIds);
+            $draftStatusId = ApplicationStatus::idForDraft();
+            $applicationsQuery->where(function (Builder $outer) use ($draftStatusId): void {
+                $outer->where('application_status_id', '!=', $draftStatusId)
+                    ->orWhereDoesntHave('user', fn (Builder $q) => $q->where('role_id', 4));
+            });
         }
 
         if ($isSiteForeman && $user) {
-            $assignedSubdivisionIds = $user->assignedSubdivisions()
-                ->pluck('subdivisions.id')
-                ->map(fn ($id): int => (int) $id);
-            $applicationsQuery->whereIn('subdivision_id', $assignedSubdivisionIds);
+            $applicationsQuery->forSiteForemanAccess($user);
         } elseif ($selectedForemanId !== null) {
             $applicationsQuery->where('user_id', $selectedForemanId);
         }
@@ -113,7 +117,7 @@ class ApplicationController extends Controller
                 'items.equipment.measurementUnit.unitType',
                 'items.manualDetail',
                 'user',
-                'approvedBy',
+                'approvedBy.role',
                 'sourceApplication',
                 'transportOption',
                 'applicationStatus',
@@ -126,7 +130,21 @@ class ApplicationController extends Controller
             $customEquipmentPendingOrderCount = ApplicationItem::queryPendingCustomEquipmentOrder()->count();
         }
 
-        return view('applications.index', compact('applications', 'search', 'equipmentFilter', 'isSiteForeman', 'isBoilerChief', 'foremen', 'selectedForemanId', 'perPage', 'sortState', 'archiveFilter', 'customEquipmentPendingOrderCount'));
+        return view('applications.index', compact(
+            'applications',
+            'search',
+            'approvalFilter',
+            'approvalFilterOptions',
+            'isSiteForeman',
+            'isBoilerChief',
+            'foremen',
+            'selectedForemanId',
+            'perPage',
+            'allowedPerPage',
+            'sortState',
+            'archiveFilter',
+            'customEquipmentPendingOrderCount'
+        ));
     }
 
     /**
@@ -145,6 +163,7 @@ class ApplicationController extends Controller
 
         $applicationsQuery = Application::query()
             ->whereNull('archived_at')
+            ->whereSupplyApprovedForCustomEquipmentWorkflow()
             ->whereHas('items', function ($q): void {
                 $q->whereNull('equipment_id')
                     ->where('is_checked', true)
@@ -165,11 +184,19 @@ class ApplicationController extends Controller
             $applicationsQuery->orderByDesc('created_at')->orderByDesc('id');
         }
 
+        $pagination = ListingPerPage::fromRequest($request);
+
         $applications = $applicationsQuery
-            ->paginate(30)
+            ->paginate($pagination['perPage'])
             ->withQueryString();
 
-        return view('applications.custom-equipment-to-order', compact('applications', 'sortDate'));
+        return view('applications.custom-equipment-to-order', [
+            'applications' => $applications,
+            'sortDate' => $sortDate,
+            'perPage' => $pagination['perPage'],
+            'allowedPerPage' => $pagination['allowedPerPage'],
+            'defaultPerPage' => $pagination['defaultPerPage'],
+        ]);
     }
 
     /**
@@ -185,6 +212,10 @@ class ApplicationController extends Controller
 
         if ($application->archived_at !== null) {
             abort(404);
+        }
+
+        if (! $application->isSupplyApprovedForCustomEquipmentWorkflow()) {
+            abort(403, 'Раздел «Своё оборудование к заказу» доступен после сохранения согласования снабжения по заявке (и повторного сохранения после этапа котельной, если он есть).');
         }
 
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'subdivision', 'user']);
@@ -206,6 +237,11 @@ class ApplicationController extends Controller
         if ($application->archived_at !== null) {
             return redirect()->route('applications.custom-equipment-order', $application)
                 ->withErrors(['custom_supply' => 'Заявка в архиве.']);
+        }
+
+        if (! $application->isSupplyApprovedForCustomEquipmentWorkflow()) {
+            return redirect()->route('applications.custom-equipment-to-order')
+                ->withErrors(['custom_supply' => 'Сначала сохраните согласование снабжения по заявке (после этапа котельной — повторное «Сохранить согласование»).']);
         }
 
         $validated = $request->validate([
@@ -248,6 +284,11 @@ class ApplicationController extends Controller
         if ($application->archived_at !== null) {
             return redirect()->route('applications.custom-equipment-order', $application)
                 ->withErrors(['custom_supply' => 'Заявка в архиве.']);
+        }
+
+        if (! $application->isSupplyApprovedForCustomEquipmentWorkflow()) {
+            return redirect()->route('applications.custom-equipment-to-order')
+                ->withErrors(['custom_supply' => 'Сначала сохраните согласование снабжения по заявке (после этапа котельной — повторное «Сохранить согласование»).']);
         }
 
         $validated = $request->validate([
@@ -320,8 +361,27 @@ class ApplicationController extends Controller
 
         return TransportOption::query()
             ->whereNotNull('plate')
+            ->where('name', '!=', TransportOption::NAME_SERVICE_VEHICLE)
             ->orderBy('plate')
             ->get(['id', 'plate', 'label']);
+    }
+
+    /**
+     * Служебные машины 777 / 888 для выбора при способе «Служебная машина».
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
+     */
+    private function serviceVehiclePlateOptionsForForms(): Collection
+    {
+        if (! Schema::hasColumn('transport_options', 'plate')) {
+            return new Collection;
+        }
+
+        return TransportOption::query()
+            ->where('name', TransportOption::NAME_SERVICE_VEHICLE)
+            ->whereNotNull('plate')
+            ->orderBy('plate')
+            ->get(['id', 'plate']);
     }
 
     /**
@@ -404,7 +464,7 @@ class ApplicationController extends Controller
         $this->authorizeCanCreateApplications($request);
 
         $subdivisions = $this->availableSubdivisionsForCreate($request);
-        $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
+        $equipment = $this->catalogEquipmentForForms();
         $users = User::query()
             ->where('role_id', 4)
             ->where('is_blocked', false)
@@ -417,8 +477,10 @@ class ApplicationController extends Controller
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
         $measurementMeta = $this->measurementMetaForUi();
+        $measurementMeta['catalogById'] = $this->catalogEquipmentMeasurementMetaById($equipment);
+        $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
 
-        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman', 'measurementMeta'));
+        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman', 'measurementMeta', 'usesDraftSubmitFlow'));
     }
 
     public function createInstallationActUpload(Request $request): View
@@ -458,7 +520,7 @@ class ApplicationController extends Controller
     public function browseInstallationActs(Request $request): View
     {
         $user = $request->user();
-        if (! $user || ! $user->hasRoleId(self::ACCOUNTANT_ROLE_ID)) {
+        if (! $user || ! $user->hasRoleId(User::ACCOUNTANT_ROLE_ID)) {
             abort(403, 'Раздел доступен только бухгалтеру.');
         }
 
@@ -649,7 +711,7 @@ class ApplicationController extends Controller
 
         $application->load(['items']);
         $subdivisions = $this->availableSubdivisionsForCreate($request);
-        $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
+        $equipment = $this->catalogEquipmentForForms();
         $users = User::query()
             ->where('role_id', 4)
             ->where('is_blocked', false)
@@ -676,8 +738,11 @@ class ApplicationController extends Controller
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
         $measurementMeta = $this->measurementMetaForUi();
+        $measurementMeta['catalogById'] = $this->catalogEquipmentMeasurementMetaById($equipment);
 
-        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman', 'measurementMeta'));
+        $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
+
+        return view('applications.create', compact('subdivisions', 'equipment', 'users', 'prefill', 'transportOptions', 'warehousesBySubdivision', 'subdivisionIdsByForeman', 'measurementMeta', 'usesDraftSubmitFlow'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -685,9 +750,12 @@ class ApplicationController extends Controller
         $this->authorizeCanCreateApplications($request);
 
         $isSiteForemanLike = $request->user()->hasAnyRoleId([4, self::BOILER_CHIEF_ROLE_ID]);
+        $isSiteForeman = $request->user()->hasRoleId(4);
+        $isBoilerChiefCreator = $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
 
         $validated = $request->validate([
+            'submit_action' => ['nullable', Rule::in(['save', 'submit_to_boiler_chief', 'submit_for_management'])],
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
             'source_application_id' => ['nullable', 'exists:applications,id'],
             'responsible_user_id' => [
@@ -701,13 +769,13 @@ class ApplicationController extends Controller
             'items.*.size_value' => ['nullable', 'string', 'max:120'],
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
             'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
-            'commercial_offer' => ['nullable', 'file', 'mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png', 'max:10240'],
+            'commercial_offer' => ['nullable', 'file', 'mimes:pdf,docx', 'max:10240'],
         ], [
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
-            'commercial_offer.mimes' => 'Поддерживаемые форматы: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG.',
+            'commercial_offer.mimes' => 'Коммерческое предложение можно прикрепить только в формате PDF или DOCX.',
             'commercial_offer.max' => 'Максимальный размер файла: 10 МБ.',
         ]);
 
@@ -722,15 +790,35 @@ class ApplicationController extends Controller
                 'subdivision_id' => 'Вы не можете создать заявку для этого подразделения.',
             ]);
         }
+
+        $subdivisionId = (int) $validated['subdivision_id'];
+        $hasBoilerChief = Subdivision::hasBoilerChiefAssigned($subdivisionId);
+        if ($isSiteForeman && $hasBoilerChief) {
+            $submitAction = (string) $request->input('submit_action', '');
+            if (! in_array($submitAction, ['save', 'submit_to_boiler_chief'], true)) {
+                throw ValidationException::withMessages([
+                    'submit_action' => 'Укажите: сохранить черновик или отправить заявку на согласование.',
+                ]);
+            }
+        }
+        if ($isBoilerChiefCreator) {
+            $submitAction = (string) $request->input('submit_action', '');
+            if (! in_array($submitAction, ['save', 'submit_for_management'], true)) {
+                throw ValidationException::withMessages([
+                    'submit_action' => 'Укажите: сохранить черновик или отправить заявку на согласование.',
+                ]);
+            }
+        }
+
         $this->validateSubdivisionAllowedForResponsibleUser(
             (int) $validated['subdivision_id'],
             isset($validated['responsible_user_id']) ? (int) $validated['responsible_user_id'] : null
         );
 
+        $this->validateCustomEquipmentRowsHaveMeasurementType($validated['items']);
+        $this->validateSubstantiveEquipmentItemQuantities($validated['items']);
         $this->validateMeasurementPairs($validated['items']);
-        if ($isSiteForemanLike) {
-            $this->validateCatalogStockAvailabilityForRequestItems($validated['items']);
-        }
+        $this->validateUniqueEquipmentLines($validated['items']);
 
         $sourceId = isset($validated['source_application_id']) ? (int) $validated['source_application_id'] : null;
         if ($sourceId !== null && $sourceId > 0) {
@@ -769,6 +857,18 @@ class ApplicationController extends Controller
             $commercialOfferPath = $file->store($storageDir, $storageDisk);
         }
 
+        $applicationStatusId = $this->resolveApplicationStatusIdOnCreate(
+            $isSiteForeman,
+            $isBoilerChiefCreator,
+            $subdivisionId,
+            (string) ($request->input('submit_action') ?? '')
+        );
+        $submittedToBoilerChief = $applicationStatusId === ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING)
+            && $isSiteForeman
+            && Subdivision::hasBoilerChiefAssigned($subdivisionId);
+        $submittedForManagement = $applicationStatusId === ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING)
+            && $isBoilerChiefCreator;
+
         $application = Application::create([
             'subdivision_id' => $validated['subdivision_id'],
             'source_application_id' => $validated['source_application_id'] ?? null,
@@ -777,17 +877,19 @@ class ApplicationController extends Controller
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
             'commercial_offer' => $commercialOfferPath,
-            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
+            'application_status_id' => $applicationStatusId,
         ]);
 
-        foreach ($validated['items'] as $item) {
+        $itemsToSave = $this->expandCatalogRowsAgainstMainWarehouseVirtualStock($validated['items']);
+
+        foreach ($itemsToSave as $item) {
             $typeId = $item['equipment_id'] ?? null;
             $name = trim($item['equipment_name'] ?? '');
             if (empty($typeId) && $name === '') {
                 continue;
             }
             $normalized = $this->normalizeItemPayload($item, $typeId ? Equipment::query()->find((int) $typeId)?->name : null);
-            $application->items()->create([
+            $createdItem = $application->items()->create([
                 'equipment_id' => $typeId ?: null,
                 'equipment_name' => $typeId ? null : $normalized['equipment_name'],
                 'base_name' => $normalized['base_name'],
@@ -802,13 +904,84 @@ class ApplicationController extends Controller
                 'delivery_status_id' => null,
                 'delivery_warehouse_id' => null,
             ]);
+            $this->syncCatalogItemManualDetail($createdItem, $normalized);
         }
 
         $application->refresh();
         $this->applyBoilerChiefAutoGate($application);
 
+        $statusMessage = match (true) {
+            $application->isForemanDraftBeforeBoilerChief() => 'Заявка сохранена. Её можно изменить и отправить на согласование, когда будете готовы.',
+            $application->isBoilerChiefDraftBeforeManagement() => 'Заявка сохранена. Её можно изменить и отправить на согласование, когда будете готовы.',
+            $submittedToBoilerChief => 'Заявка создана и отправлена на согласование.',
+            $submittedForManagement => 'Заявка создана и отправлена на согласование руководству и снабжению.',
+            default => 'Заявка успешно создана.',
+        };
+
         return redirect()->route('applications.index')
-            ->with('status', 'Заявка успешно создана.');
+            ->with('status', $statusMessage);
+    }
+
+    public function submitToBoilerChief(Request $request, Application $application): RedirectResponse
+    {
+        $this->authorizeCanEditApplications($request);
+        $this->authorizeViewApplication($request, $application);
+        $this->authorizeForemanCanModifyApplication($request, $application);
+
+        if (! $application->isForemanDraftBeforeBoilerChief()) {
+            return redirect()
+                ->route('applications.show', $application)
+                ->withErrors(['submit' => 'Заявка уже отправлена или не требует отправки на согласование.']);
+        }
+
+        if ($application->items()->count() === 0) {
+            return redirect()
+                ->route('applications.show', $application)
+                ->withErrors(['submit' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.']);
+        }
+
+        $application->update([
+            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
+        ]);
+
+        return redirect()
+            ->route('applications.show', $application)
+            ->with('status', 'Заявка отправлена на согласование. Редактирование больше недоступно.');
+    }
+
+    public function submitForManagement(Request $request, Application $application): RedirectResponse
+    {
+        $this->authorizeCanEditApplications($request);
+        $this->authorizeViewApplication($request, $application);
+
+        if (! $request->user()?->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
+            abort(403, 'Отправка на согласование руководству доступна только начальнику котельной.');
+        }
+
+        if (! $application->boilerChiefCanSubmitToManagement()) {
+            return redirect()
+                ->route('applications.show', $application)
+                ->withErrors(['submit' => 'Заявка уже отправлена или не требует отправки на согласование.']);
+        }
+
+        if ($application->items()->count() === 0) {
+            return redirect()
+                ->route('applications.show', $application)
+                ->withErrors(['submit' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.']);
+        }
+
+        $update = [];
+        if ($application->isBoilerChiefDraftBeforeManagement()) {
+            $update['application_status_id'] = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+        } elseif ($application->isForemanCreatedApplication()
+            && ! $application->needsBoilerChiefReviewBeforeManagement()) {
+            $update['approved_by_user_id'] = $request->user()->id;
+        }
+        $application->update($update);
+
+        return redirect()
+            ->route('applications.show', $application)
+            ->with('status', 'Заявка отправлена на согласование руководству и снабжению. Редактирование больше недоступно.');
     }
 
     public function show(Request $request, Application $application): View|RedirectResponse
@@ -819,9 +992,10 @@ class ApplicationController extends Controller
             'subdivision.warehouses',
             'responsibleUser',
             'user',
-            'approvedBy',
+            'approvedBy.role',
             'items.equipment.measurementUnit.unitType',
             'items.manualDetail',
+            'items.transportOption',
             'items.deliveryWarehouse',
             'sourceApplication',
             'transportOption',
@@ -862,22 +1036,59 @@ class ApplicationController extends Controller
                 ->get();
         }
 
+        $catalogStockOnMainWarehouseByItemId = [];
+        if ($mainWarehouse) {
+            $reservedByEquipmentId = ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId(
+                (int) $application->id
+            );
+            foreach ($application->items as $item) {
+                if ($item->equipment_id) {
+                    $equipmentId = (int) $item->equipment_id;
+                    $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+                        ? ($item->storedSizeValue() ?? '')
+                        : '';
+                    $physical = $sizeVariant !== ''
+                        ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                            $equipmentId,
+                            (int) $mainWarehouse->id,
+                            $sizeVariant
+                        )
+                        : $this->warehouseEquipmentBalance($equipmentId, (int) $mainWarehouse->id);
+                    $stockKey = ApplicationCatalogStockAvailability::stockAggregateKey(
+                        $equipmentId,
+                        $sizeVariant !== '' ? $sizeVariant : null
+                    );
+                    $reserved = (float) ($reservedByEquipmentId[$stockKey] ?? 0.0);
+                    $catalogStockOnMainWarehouseByItemId[(int) $item->id] = max(0.0, $physical - $reserved);
+                }
+            }
+        }
+
         $deliveredWarehouseIssueCandidates = $this->deliveredWarehouseIssueCandidates($application);
         $transportOptions = $this->transportMethodOptionsForForms();
         $companyDeliveryVehicles = $this->transportOptionsWithPlateForDatalist();
+        $serviceVehiclePlateOptions = $this->serviceVehiclePlateOptionsForForms();
 
         $canChangeApplicationResponsible = $this->canOfferApplicationResponsibleChange($request, $application);
+        $canForemanSubmitToBoilerChief = $request->user()?->hasRoleId(4)
+            && $application->isForemanDraftBeforeBoilerChief();
+        $canBoilerChiefSubmitForManagement = $request->user()?->hasRoleId(self::BOILER_CHIEF_ROLE_ID)
+            && $application->boilerChiefCanSubmitToManagement();
 
         return view('applications.show', compact(
             'application',
             'mainWarehouse',
             'issuedByItemId',
             'remainingByItemId',
+            'catalogStockOnMainWarehouseByItemId',
             'boilerChiefDeliverySubdivisions',
             'deliveredWarehouseIssueCandidates',
             'transportOptions',
             'companyDeliveryVehicles',
-            'canChangeApplicationResponsible'
+            'serviceVehiclePlateOptions',
+            'canChangeApplicationResponsible',
+            'canForemanSubmitToBoilerChief',
+            'canBoilerChiefSubmitForManagement',
         ));
     }
 
@@ -1021,7 +1232,16 @@ class ApplicationController extends Controller
                     ]);
                 }
 
-                $warehouseBalance = $this->warehouseEquipmentBalance((int) $item->equipment_id, (int) $mainWarehouse->id);
+                $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+                    ? ($item->storedSizeValue() ?? '')
+                    : '';
+                $warehouseBalance = $sizeVariant !== ''
+                    ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                        (int) $item->equipment_id,
+                        (int) $mainWarehouse->id,
+                        $sizeVariant
+                    )
+                    : $this->warehouseEquipmentBalance((int) $item->equipment_id, (int) $mainWarehouse->id);
                 if ($warehouseBalance < $row['quantity'] - 0.0005) {
                     throw ValidationException::withMessages([
                         'stock' => 'Недостаточно остатка на складе "Администрация" для одной из позиций.',
@@ -1196,6 +1416,8 @@ class ApplicationController extends Controller
         $this->authorizeCanEditApplications($request);
         $this->authorizeViewApplication($request, $application);
         $this->authorizeForemanCanModifyApplication($request, $application);
+        $this->authorizeBoilerChiefCanModifyApplication($request, $application);
+        $this->authorizeApplicationNotLockedAfterManagementApproval($application);
         if ($this->approvalLockedByDeliveryProgress($application)) {
             return redirect()
                 ->route('applications.show', $application)
@@ -1211,7 +1433,7 @@ class ApplicationController extends Controller
         $subdivisions = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
             ? Subdivision::query()->orderBy('name')->get()
             : $this->availableSubdivisionsForCreate($request);
-        $equipment = $this->catalogEquipmentQuery()->orderBy('name')->get();
+        $equipment = $this->catalogEquipmentForForms();
 
         $transportOptions = $this->transportMethodOptionsForForms();
 
@@ -1220,6 +1442,15 @@ class ApplicationController extends Controller
         $warehousesBySubdivision = $this->warehousesBySubdivisionForUi();
         $subdivisionIdsByForeman = $this->subdivisionIdsByForemanForUi();
         $measurementMeta = $this->measurementMetaForUi();
+        $measurementMeta['catalogById'] = $this->catalogEquipmentMeasurementMetaById($equipment);
+
+        $managementMayEditBoilerApprovedEquipment = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
+            && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+            && ! $application->needsBoilerChiefReviewBeforeManagement()
+            && ! $application->managementHasSavedApproval();
+
+        $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
+        $isCreatorDraft = $application->isCreatorDraftApplication();
 
         return view('applications.edit', compact(
             'application',
@@ -1229,6 +1460,9 @@ class ApplicationController extends Controller
             'warehousesBySubdivision',
             'subdivisionIdsByForeman',
             'measurementMeta',
+            'managementMayEditBoilerApprovedEquipment',
+            'usesDraftSubmitFlow',
+            'isCreatorDraft',
         ));
     }
 
@@ -1237,6 +1471,8 @@ class ApplicationController extends Controller
         $this->authorizeCanEditApplications($request);
         $this->authorizeViewApplication($request, $application);
         $this->authorizeForemanCanModifyApplication($request, $application);
+        $this->authorizeBoilerChiefCanModifyApplication($request, $application);
+        $this->authorizeApplicationNotLockedAfterManagementApproval($application);
         if ($this->approvalLockedByDeliveryProgress($application)) {
             return redirect()
                 ->route('applications.show', $application)
@@ -1253,8 +1489,28 @@ class ApplicationController extends Controller
         $isBoilerChiefUser = $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID);
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
+        $wasCreatorDraftBeforeUpdate = $application->isCreatorDraftApplication();
+        $subdivisionIdForDraftRules = (int) ($request->input('subdivision_id') ?: $application->subdivision_id);
+
+        if ($wasCreatorDraftBeforeUpdate && $isSiteForeman && Subdivision::hasBoilerChiefAssigned($subdivisionIdForDraftRules)) {
+            $submitAction = (string) $request->input('submit_action', '');
+            if (! in_array($submitAction, ['save', 'submit_to_boiler_chief'], true)) {
+                throw ValidationException::withMessages([
+                    'submit_action' => 'Укажите: сохранить черновик или отправить заявку на согласование.',
+                ]);
+            }
+        }
+        if ($wasCreatorDraftBeforeUpdate && $isBoilerChiefUser) {
+            $submitAction = (string) $request->input('submit_action', '');
+            if (! in_array($submitAction, ['save', 'submit_for_management'], true)) {
+                throw ValidationException::withMessages([
+                    'submit_action' => 'Укажите: сохранить черновик или отправить заявку на согласование.',
+                ]);
+            }
+        }
 
         $rules = [
+            'submit_action' => ['nullable', Rule::in(['save', 'submit_to_boiler_chief', 'submit_for_management'])],
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
             'management_change_reason' => ['nullable', 'string', 'max:500'],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
@@ -1269,7 +1525,7 @@ class ApplicationController extends Controller
             'items.*.size_value' => ['nullable', 'string', 'max:120'],
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
             'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
         ];
 
@@ -1277,6 +1533,11 @@ class ApplicationController extends Controller
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ]);
+
+        $managementMayEditCheckedEquipmentLines = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
+            && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+            && ! $application->needsBoilerChiefReviewBeforeManagement()
+            && ! $application->managementHasSavedApproval();
 
         if (filled($request->input('transport_option_id'))) {
             throw ValidationException::withMessages([
@@ -1306,10 +1567,10 @@ class ApplicationController extends Controller
             );
         }
 
+        $this->validateCustomEquipmentRowsHaveMeasurementType($validated['items']);
+        $this->validateSubstantiveEquipmentItemQuantities($validated['items']);
         $this->validateMeasurementPairs($validated['items']);
-        if ($isSiteForeman) {
-            $this->validateCatalogStockAvailabilityForRequestItems($validated['items']);
-        }
+        $this->validateUniqueEquipmentLines($validated['items']);
 
         $itemIdsInRequest = collect($validated['items'])->pluck('item_id')->filter()->map(fn ($id) => (int) $id);
         if ($itemIdsInRequest->count() !== $itemIdsInRequest->unique()->count()) {
@@ -1326,7 +1587,6 @@ class ApplicationController extends Controller
             $typeId = $row['equipment_id'] ?? null;
             $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
             $name = trim((string) ($row['equipment_name'] ?? ''));
-            $qty = (int) ($row['quantity'] ?? 1);
 
             if ($itemId) {
                 $existing = $application->items->firstWhere('id', $itemId);
@@ -1337,16 +1597,20 @@ class ApplicationController extends Controller
                 }
 
                 if ($existing->is_checked) {
-                    $existingTypeId = $existing->equipment_id !== null ? (int) $existing->equipment_id : null;
-                    if (
-                        $typeId !== $existingTypeId
-                        || $name !== trim((string) ($existing->equipment_name ?? ''))
-                        || $qty !== (int) $existing->quantity
-                    ) {
+                    if ($this->applicationItemRowMatchesStored($existing, $row)) {
+                        continue;
+                    }
+                    if (! $managementMayEditCheckedEquipmentLines) {
                         throw ValidationException::withMessages([
                             'equipment' => 'Согласованное оборудование нельзя изменять.',
                         ]);
                     }
+                    if ($typeId === null && $name === '') {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.equipment_id" => 'Укажите оборудование или удалите строку.',
+                        ]);
+                    }
+                    $seenUnapprovedIds[] = $itemId;
 
                     continue;
                 }
@@ -1366,31 +1630,46 @@ class ApplicationController extends Controller
                 continue;
             }
 
-            $toCreate[] = [
-                'equipment_id' => $typeId,
-                'equipment_name' => $typeId ? null : $name,
-                'quantity' => $qty,
-            ];
+            $toCreate[] = $row;
+
+            continue;
         }
 
+        $toCreateExpanded = $this->expandCatalogRowsAgainstMainWarehouseVirtualStock($toCreate);
+
         $approvedCount = $application->items->where('is_checked', true)->count();
-        $linesWithEquipment = $approvedCount + count($seenUnapprovedIds) + count($toCreate);
+        $linesWithEquipment = $approvedCount + count($seenUnapprovedIds) + count($toCreateExpanded);
         if ($linesWithEquipment < 1) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
         $submittedItemIds = $itemIdsInRequest->values()->all();
 
+        if (! $managementMayEditCheckedEquipmentLines) {
+            foreach ($application->items as $item) {
+                if (! (bool) $item->is_checked) {
+                    continue;
+                }
+                if (! in_array((int) $item->id, $submittedItemIds, true)) {
+                    throw ValidationException::withMessages([
+                        'equipment' => 'Согласованную позицию нельзя убрать из заявки.',
+                    ]);
+                }
+            }
+        }
+
         $previousSubdivisionId = (int) $application->subdivision_id;
 
         DB::transaction(function () use (
             $application,
             $validated,
-            $toCreate,
+            $toCreateExpanded,
             $request,
             $isSiteForeman,
             $submittedItemIds,
             $previousSubdivisionId,
+            $managementMayEditCheckedEquipmentLines,
+            $wasCreatorDraftBeforeUpdate,
         ) {
             $nextUserId = (int) $application->user_id;
 
@@ -1412,10 +1691,16 @@ class ApplicationController extends Controller
                 // Boiler chief completion is derived from item-level approvals.
             }
 
-            $application->items()
-                ->where('is_checked', false)
-                ->whereNotIn('id', $submittedItemIds)
-                ->delete();
+            if ($managementMayEditCheckedEquipmentLines) {
+                $application->items()->whereNotIn('id', $submittedItemIds)->delete();
+            } else {
+                $application->items()
+                    ->where('is_checked', false)
+                    ->whereNotIn('id', $submittedItemIds)
+                    ->delete();
+            }
+
+            $clearedManagementSupplySavedAt = false;
 
             foreach ($validated['items'] as $row) {
                 $itemId = isset($row['item_id']) ? (int) $row['item_id'] : null;
@@ -1424,16 +1709,24 @@ class ApplicationController extends Controller
                 }
 
                 $existing = $application->items()->where('id', $itemId)->first();
-                if (! $existing || $existing->is_checked) {
+                if (! $existing) {
                     continue;
+                }
+                if ($existing->is_checked) {
+                    if (! $managementMayEditCheckedEquipmentLines) {
+                        continue;
+                    }
+                    if ($this->applicationItemRowMatchesStored($existing, $row)) {
+                        continue;
+                    }
                 }
 
                 $typeId = $row['equipment_id'] ?? null;
                 $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
-                $name = trim((string) ($row['equipment_name'] ?? ''));
                 $normalized = $this->normalizeItemPayload($row, $typeId ? Equipment::query()->find($typeId)?->name : null);
 
-                $existing->update([
+                $wasChecked = (bool) $existing->is_checked;
+                $payload = [
                     'equipment_id' => $typeId ?: null,
                     'equipment_name' => $typeId ? null : $normalized['equipment_name'],
                     'base_name' => $normalized['base_name'],
@@ -1445,12 +1738,21 @@ class ApplicationController extends Controller
                     'custom_equipment_supply_status_id' => $typeId ? null : ApplicationItem::CUSTOM_SUPPLY_PENDING_APPROVAL_ID,
                     'delivery_status_id' => null,
                     'delivery_warehouse_id' => null,
-                ]);
+                ];
+                if ($wasChecked && $managementMayEditCheckedEquipmentLines) {
+                    $payload['is_checked'] = false;
+                    $payload['reason_not_selected'] = null;
+                    if ($application->approved_by_user_id !== null) {
+                        $clearedManagementSupplySavedAt = true;
+                    }
+                }
+                $existing->update($payload);
+                $this->syncCatalogItemManualDetail($existing, $normalized);
             }
 
-            foreach ($toCreate as $payload) {
+            foreach ($toCreateExpanded as $payload) {
                 $normalized = $this->normalizeItemPayload($payload, $payload['equipment_id'] ? Equipment::query()->find((int) $payload['equipment_id'])?->name : null);
-                $application->items()->create([
+                $createdItem = $application->items()->create([
                     'equipment_id' => $payload['equipment_id'] ?: null,
                     'equipment_name' => $payload['equipment_id'] ? null : $normalized['equipment_name'],
                     'base_name' => $normalized['base_name'],
@@ -1465,25 +1767,74 @@ class ApplicationController extends Controller
                     'delivery_status_id' => null,
                     'delivery_warehouse_id' => null,
                 ]);
+                $this->syncCatalogItemManualDetail($createdItem, $normalized);
             }
+
+            if ($clearedManagementSupplySavedAt) {
+                $application->update([
+                    'approved_by_user_id' => null,
+                    'management_supply_items_saved_at' => null,
+                    'transport_option_id' => null,
+                ]);
+            }
+
+            $submitForApprovalOnUpdate = in_array((string) $request->input('submit_action'), ['submit_to_boiler_chief', 'submit_for_management'], true);
 
             $application->refresh();
             $application->load('items');
-            $approvalPayload = Application::aggregateApprovalPayloadFromItems($application->items);
-            $approvedStatusId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
 
-            $application->update([
-                'application_status_id' => $approvalPayload['application_status_id'],
-                'reason_for_refusal' => $approvalPayload['reason_for_refusal'],
-                'approved_by_user_id' => $approvalPayload['application_status_id'] === $approvedStatusId
-                    ? $existingApprovedByUserId
-                    : null,
-            ]);
+            if ($wasCreatorDraftBeforeUpdate) {
+                $application->update([
+                    'application_status_id' => $submitForApprovalOnUpdate
+                        ? ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING)
+                        : ApplicationStatus::idForDraft(),
+                    'reason_for_refusal' => null,
+                    'approved_by_user_id' => null,
+                ]);
+            } else {
+                $approvalPayload = Application::aggregateApprovalPayloadFromItems($application->items);
+                $approvedStatusId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
+
+                $application->update([
+                    'application_status_id' => $approvalPayload['application_status_id'],
+                    'reason_for_refusal' => $approvalPayload['reason_for_refusal'],
+                    'approved_by_user_id' => $approvalPayload['application_status_id'] === $approvedStatusId
+                        ? $existingApprovedByUserId
+                        : null,
+                ]);
+            }
 
             $application->refresh();
             $application->load('items');
             $this->refreshBoilerChiefGateAfterItemChanges($application);
         });
+
+        $application->refresh();
+
+        if ($application->isForemanDraftBeforeBoilerChief()) {
+            return redirect()->route('applications.edit', $application)
+                ->with('status', 'Изменения сохранены. Заявку можно отправить на согласование, когда будете готовы.');
+        }
+
+        if ($application->isBoilerChiefDraftBeforeManagement()) {
+            return redirect()->route('applications.edit', $application)
+                ->with('status', 'Изменения сохранены. Заявку можно отправить на согласование, когда будете готовы.');
+        }
+
+        if ($isSiteForeman
+            && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+            && (string) $request->input('submit_action') === 'submit_to_boiler_chief'
+            && ! $application->isForemanDraftBeforeBoilerChief()) {
+            return redirect()->route('applications.show', $application)
+                ->with('status', 'Заявка отправлена на согласование. Редактирование больше недоступно.');
+        }
+
+        if ($isBoilerChiefUser
+            && (string) $request->input('submit_action') === 'submit_for_management'
+            && ! $application->isBoilerChiefDraftBeforeManagement()) {
+            return redirect()->route('applications.show', $application)
+                ->with('status', 'Заявка отправлена на согласование руководству и снабжению. Редактирование больше недоступно.');
+        }
 
         return redirect()->to(route('applications.show', $application).'#approval-form')
             ->with('status', 'Заявка успешно обновлена.');
@@ -1569,11 +1920,16 @@ class ApplicationController extends Controller
             $application->refresh();
             $application->load('items');
             $payload = Application::aggregateApprovalPayloadFromItems($application->items);
-            $application->update([
+            $approvalUpdate = [
                 'application_status_id' => $payload['application_status_id'],
                 'reason_for_refusal' => $payload['reason_for_refusal'],
                 'approved_by_user_id' => $request->user()->id,
-            ]);
+            ];
+            if (Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+                && ! $application->needsBoilerChiefReviewBeforeManagement()) {
+                $approvalUpdate['management_supply_items_saved_at'] = now();
+            }
+            $application->update($approvalUpdate);
         });
 
         $application->refresh();
@@ -1665,9 +2021,17 @@ class ApplicationController extends Controller
         });
 
         $application->refresh();
+        $application->load('items');
+        if (! $application->needsBoilerChiefReviewBeforeManagement()) {
+            $application->update([
+                'approved_by_user_id' => null,
+                'management_supply_items_saved_at' => null,
+            ]);
+        }
+
         $statusMessage = ! $application->needsBoilerChiefReviewBeforeManagement()
-            ? 'Согласование начальника котельной завершено. Заявка доступна директору, техническому директору и начальнику отдела снабжения для дальнейшего согласования позиций.'
-            : 'Согласование начальника котельной сохранено. Пока не все позиции согласованы — заявка не передаётся на следующий этап.';
+            ? 'Согласование начальника котельной завершено.'
+            : 'Согласование начальника котельной сохранено. Есть не согласованные позиции.';
 
         return redirect()->route('applications.show', $application)
             ->with('status', $statusMessage);
@@ -1682,33 +2046,160 @@ class ApplicationController extends Controller
         $this->authorizeViewApplication($request, $application);
         $application->load('items');
 
-        $validated = $request->validate([
-            'transport_option_id' => $this->transportOptionIdRuleForDeliveryInTransit(),
-        ], [
-            'transport_option_id.required' => 'Перед отметкой «В пути» укажите способ доставки.',
-            'transport_option_id.exists' => 'Выбранный способ доставки не найден.',
-        ]);
-
-        $eligibleItems = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkDeliveryInTransit());
-
-        if ($eligibleItems->isEmpty()) {
+        if ($application->approved_by_user_id === null) {
             return redirect()->route('applications.show', $application)
-                ->withErrors(['delivery' => 'Нет позиций, которые можно массово отметить как «В пути».']);
+                ->withErrors(['delivery' => 'Сначала сохраните согласование снабжения по позициям.']);
         }
 
-        ApplicationItem::query()
-            ->whereIn('id', $eligibleItems->pluck('id'))
-            ->update([
-                'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
-                'delivery_warehouse_id' => null,
-            ]);
+        if (Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+            && ! $application->needsBoilerChiefReviewBeforeManagement()
+            && $application->management_supply_items_saved_at === null) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['delivery' => 'После этапа котельной сначала сохраните согласование снабжения по позициям.']);
+        }
+
+        $eligibleById = $application->items
+            ->filter(fn (ApplicationItem $i) => $i->canMarkDeliveryInTransit())
+            ->keyBy('id');
+
+        if ($eligibleById->isEmpty()) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['delivery' => 'Нет позиций, которые можно отметить как «В пути».']);
+        }
+
+        $itemsInput = $request->input('items', []);
+        $errors = [];
+        $resolved = [];
+
+        foreach ($eligibleById as $itemId => $item) {
+            $row = $itemsInput[(string) $itemId] ?? $itemsInput[$itemId] ?? null;
+            if (! is_array($row) || empty($row['mark'])) {
+                continue;
+            }
+
+            $methodId = isset($row['transport_option_id']) ? (int) $row['transport_option_id'] : 0;
+            if ($methodId <= 0) {
+                $errors["items.{$itemId}.transport_option_id"] = 'Укажите способ доставки.';
+
+                continue;
+            }
+
+            try {
+                $transportOptionId = $this->resolveDeliveryTransportOptionId(
+                    $methodId,
+                    isset($row['vehicle_plate']) ? (string) $row['vehicle_plate'] : null,
+                    "items.{$itemId}"
+                );
+            } catch (ValidationException $e) {
+                foreach ($e->errors() as $key => $messages) {
+                    $errors[$key] = $messages;
+                }
+
+                continue;
+            }
+
+            $resolved[] = [
+                'item_id' => (int) $itemId,
+                'transport_option_id' => $transportOptionId,
+            ];
+        }
+
+        if ($resolved === [] && $errors === []) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['delivery' => 'Отметьте хотя бы одну позицию и укажите для неё доставку.'])
+                ->withInput();
+        }
+
+        if ($errors !== []) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors($errors)
+                ->withInput();
+        }
+
+        DB::transaction(function () use ($resolved): void {
+            foreach ($resolved as $row) {
+                ApplicationItem::query()
+                    ->where('id', $row['item_id'])
+                    ->update([
+                        'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
+                        'delivery_warehouse_id' => null,
+                        'transport_option_id' => $row['transport_option_id'],
+                    ]);
+            }
+        });
 
         $application->update([
-            'transport_option_id' => (int) $validated['transport_option_id'],
+            'transport_option_id' => $resolved[0]['transport_option_id'],
         ]);
 
+        $count = count($resolved);
+        $status = $count === 1
+            ? 'Позиция отмечена как «В пути».'
+            : "Отмечено позиций «В пути»: {$count}.";
+
         return redirect()->route('applications.show', $application)
-            ->with('status', 'Все подходящие позиции заявки отмечены как «В пути».');
+            ->with('status', $status);
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function resolveDeliveryTransportOptionId(int $methodId, ?string $vehiclePlateRaw, string $errorKeyPrefix): int
+    {
+        $method = TransportOption::query()->find($methodId);
+        if ($method === null) {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.transport_option_id" => 'Выбранный способ доставки не найден.',
+            ]);
+        }
+
+        if (! Schema::hasColumn('transport_options', 'plate')) {
+            return (int) $method->id;
+        }
+
+        $methodPlate = trim((string) ($method->plate ?? ''));
+        if ($methodPlate !== '') {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.transport_option_id" => 'Выберите тип транспорта, а не конкретную машину по госномеру.',
+            ]);
+        }
+
+        $methodName = trim((string) $method->name);
+        if (! TransportOption::deliveryRequiresVehiclePlate($methodName)) {
+            return (int) $method->id;
+        }
+
+        if (TransportOption::deliveryUsesServiceVehiclePlatePicker($methodName)) {
+            $plate = mb_substr(trim((string) ($vehiclePlateRaw ?? '')), 0, 30);
+            $serviceVehicle = TransportOption::query()
+                ->where('name', TransportOption::NAME_SERVICE_VEHICLE)
+                ->where('plate', $plate)
+                ->first();
+            if ($serviceVehicle === null) {
+                throw ValidationException::withMessages([
+                    "{$errorKeyPrefix}.vehicle_plate" => 'Выберите служебную машину из списка.',
+                ]);
+            }
+
+            return (int) $serviceVehicle->id;
+        }
+
+        $plate = RussianVehiclePlate::normalize((string) ($vehiclePlateRaw ?? ''));
+        if ($plate === '' || ! RussianVehiclePlate::isValid($plate)) {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.vehicle_plate" => RussianVehiclePlate::validationMessage(),
+            ]);
+        }
+
+        $existingVehicle = TransportOption::query()->where('plate', $plate)->first();
+
+        return $existingVehicle !== null
+            ? (int) $existingVehicle->id
+            : (int) TransportOption::query()->create([
+                'name' => $method->name,
+                'plate' => $plate,
+                'label' => null,
+            ])->id;
     }
 
     public function markItemDeliveryDelivered(Request $request, Application $application, ApplicationItem $item): RedirectResponse
@@ -1983,10 +2474,7 @@ class ApplicationController extends Controller
             ->orderByDesc('id');
 
         if ($user->hasRoleId(4)) {
-            $foremanSubdivisionIds = $user->assignedSubdivisions()
-                ->pluck('subdivisions.id')
-                ->map(fn ($id): int => (int) $id);
-            $query->whereIn('subdivision_id', $foremanSubdivisionIds);
+            $query->forSiteForemanAccess($user);
         }
 
         if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
@@ -2062,7 +2550,7 @@ class ApplicationController extends Controller
     private function authorizeViewInstallationActFiles(Request $request, Application $application): void
     {
         $user = $request->user();
-        if ($user && $user->hasRoleId(self::ACCOUNTANT_ROLE_ID) && $application->hasInstallationActEvidence()) {
+        if ($user && $user->hasRoleId(User::ACCOUNTANT_ROLE_ID) && $application->hasInstallationActEvidence()) {
             return;
         }
 
@@ -2140,9 +2628,8 @@ class ApplicationController extends Controller
         }
 
         if ($user->hasRoleId(4)) {
-            $ids = $user->assignedSubdivisions()->pluck('subdivisions.id');
-            if (! $ids->contains((int) $application->subdivision_id)) {
-                abort(403, 'Заявка относится к подразделению вне вашей зоны ответственности.');
+            if (! $application->isVisibleToSiteForeman($user)) {
+                abort(403, 'Заявка закреплена за другим мастером участка или относится к подразделению вне вашей зоны ответственности.');
             }
 
             return;
@@ -2153,19 +2640,28 @@ class ApplicationController extends Controller
             if (! $ids->contains((int) $application->subdivision_id)) {
                 abort(403, 'Заявка относится к подразделению вне вашей зоны ответственности.');
             }
-
-            return;
-        }
-
-        if ($user->hasAnyRoleId($this->managementEditorRoleIds())) {
-            if ($this->isForemanCreatedApplication($application) && $application->needsBoilerChiefReviewBeforeManagement()) {
-                abort(403, 'Заявка пока недоступна: сначала её согласует начальник котельной по подразделению.');
+            if ($application->isForemanDraftBeforeBoilerChief()) {
+                abort(403, 'Заявка ещё не отправлена мастером участка на согласование.');
             }
 
             return;
         }
 
-        if ($user->hasRoleId(self::ACCOUNTANT_ROLE_ID)) {
+        if ($user->hasAnyRoleId($this->managementEditorRoleIds())) {
+            if ($application->isBoilerChiefDraftBeforeManagement()) {
+                abort(403, 'Заявка ещё не отправлена начальником котельной на согласование.');
+            }
+            if ($this->isForemanCreatedApplication($application) && $application->needsBoilerChiefReviewBeforeManagement()) {
+                abort(403, 'Заявка пока недоступна: сначала её согласует начальник котельной по подразделению.');
+            }
+            if ($this->isForemanCreatedApplication($application) && ! $application->boilerChiefReleasedToManagement()) {
+                abort(403, 'Заявка ещё не отправлена начальником котельной на согласование руководству и снабжению.');
+            }
+
+            return;
+        }
+
+        if ($user->hasRoleId(User::ACCOUNTANT_ROLE_ID)) {
             return;
         }
 
@@ -2200,6 +2696,39 @@ class ApplicationController extends Controller
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $requestRow
+     */
+    private function normalizedEquipmentRowFromApplicationItem(ApplicationItem $item): array
+    {
+        $row = [
+            'equipment_id' => $item->equipment_id,
+            'equipment_name' => $item->equipment_name ?? '',
+            'quantity' => $item->quantity,
+            'size_value' => $item->size_value ?? '',
+            'measurement_type' => $item->measurement_type ?? 'piece',
+            'quantity_unit' => $item->quantity_unit ?? 'шт',
+        ];
+        $typeId = $item->equipment_id !== null ? (int) $item->equipment_id : null;
+        $catalog = $typeId ? Equipment::query()->find($typeId)?->name : null;
+
+        return $this->normalizeItemPayload($row, $catalog !== null && trim((string) $catalog) !== '' ? (string) $catalog : null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestRow
+     */
+    private function applicationItemRowMatchesStored(ApplicationItem $existing, array $requestRow): bool
+    {
+        $typeId = $requestRow['equipment_id'] ?? null;
+        $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
+        $catalog = $typeId ? Equipment::query()->find($typeId)?->name : null;
+        $normRequest = $this->normalizeItemPayload($requestRow, $catalog !== null && trim((string) $catalog) !== '' ? (string) $catalog : null);
+        $normStored = $this->normalizedEquipmentRowFromApplicationItem($existing);
+
+        return $normStored == $normRequest;
+    }
+
     private function authorizeForemanCanModifyApplication(Request $request, Application $application): void
     {
         $user = $request->user();
@@ -2207,8 +2736,70 @@ class ApplicationController extends Controller
             return;
         }
 
-        if ($application->isStatusApproved()) {
+        if (! $application->foremanCanEditApplication()) {
+            if (Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
+                && ! $application->isForemanDraftBeforeBoilerChief()) {
+                abort(403, 'Заявка отправлена на согласование — редактирование недоступно.');
+            }
+
             abort(403, 'Заявка полностью согласована — мастер участка не может больше изменять её или добавлять новые позиции.');
+        }
+    }
+
+    private function userUsesApplicationDraftSubmitFlow(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user) {
+            return false;
+        }
+        if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
+            return true;
+        }
+
+        return $user->hasRoleId(4);
+    }
+
+    private function resolveApplicationStatusIdOnCreate(
+        bool $isSiteForeman,
+        bool $isBoilerChief,
+        int $subdivisionId,
+        string $submitAction
+    ): int {
+        if ($isSiteForeman && Subdivision::hasBoilerChiefAssigned($subdivisionId)) {
+            return $submitAction === 'submit_to_boiler_chief'
+                ? ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING)
+                : ApplicationStatus::idForDraft();
+        }
+        if ($isBoilerChief) {
+            return $submitAction === 'submit_for_management'
+                ? ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING)
+                : ApplicationStatus::idForDraft();
+        }
+
+        return ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+    }
+
+    private function authorizeApplicationNotLockedAfterManagementApproval(Application $application): void
+    {
+        if ($application->managementHasSavedApproval()) {
+            abort(403, 'Заявка согласована руководством и снабжением — редактирование недоступно.');
+        }
+    }
+
+    private function authorizeBoilerChiefCanModifyApplication(Request $request, Application $application): void
+    {
+        $user = $request->user();
+        if (! $user || ! $user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
+            return;
+        }
+
+        if (! $application->boilerChiefCanEditApplication()) {
+            if ((int) ($application->user_id ?? 0) === (int) $user->id
+                && ! $application->isBoilerChiefDraftBeforeManagement()) {
+                abort(403, 'Заявка отправлена на согласование — редактирование недоступно.');
+            }
+
+            abort(403, 'Заявка полностью согласована — редактирование недоступно.');
         }
     }
 
@@ -2216,80 +2807,6 @@ class ApplicationController extends Controller
     {
         if (! $request->user() || ! $request->user()->hasAnyRoleId([4, self::BOILER_CHIEF_ROLE_ID])) {
             abort(403, 'Создание повторной заявки разрешено только мастеру участка и начальнику котельной.');
-        }
-    }
-
-    /**
-     * Проверяет, что по выбранному оборудованию из каталога не запрашивают больше остатка на основном складе.
-     *
-     * @param  array<int, array<string, mixed>>  $items
-     *
-     * @throws ValidationException
-     */
-    private function validateCatalogStockAvailabilityForRequestItems(array $items): void
-    {
-        $requestedByEquipmentId = [];
-        foreach ($items as $row) {
-            $equipmentIdRaw = $row['equipment_id'] ?? null;
-            $equipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' ? (int) $equipmentIdRaw : null;
-            if (! $equipmentId || $equipmentId <= 0) {
-                continue;
-            }
-
-            $qty = (int) ($row['quantity'] ?? 0);
-            if ($qty <= 0) {
-                continue;
-            }
-
-            $requestedByEquipmentId[$equipmentId] = ($requestedByEquipmentId[$equipmentId] ?? 0) + $qty;
-        }
-
-        if ($requestedByEquipmentId === []) {
-            return;
-        }
-
-        $equipmentIds = array_keys($requestedByEquipmentId);
-        $catalogEquipmentById = Equipment::query()
-            ->whereIn('id', $equipmentIds)
-            ->where('is_catalog', true)
-            ->get(['id', 'name'])
-            ->keyBy('id');
-
-        foreach ($equipmentIds as $equipmentId) {
-            if (! $catalogEquipmentById->has($equipmentId)) {
-                throw ValidationException::withMessages([
-                    'equipment' => 'Можно выбирать только оборудование из общего каталога. Резервные позиции из других заявок недоступны.',
-                ]);
-            }
-        }
-
-        $mainWarehouse = $this->resolveMainWarehouseForAccounting();
-        if (! $mainWarehouse) {
-            throw ValidationException::withMessages([
-                'equipment' => 'Не найден основной склад "Администрация". Проверьте настройки склада.',
-            ]);
-        }
-
-        $errors = [];
-        foreach ($requestedByEquipmentId as $equipmentId => $requestedQty) {
-            $availableQty = max(0.0, $this->warehouseEquipmentBalance((int) $equipmentId, (int) $mainWarehouse->id));
-            if ((float) $requestedQty <= $availableQty + 0.0005) {
-                continue;
-            }
-
-            $equipmentName = (string) ($catalogEquipmentById->get($equipmentId)?->name ?? ('ID '.$equipmentId));
-            $errors[] = sprintf(
-                '%s: запрошено %d, доступно на основном складе %s.',
-                $equipmentName,
-                (int) $requestedQty,
-                number_format($availableQty, 3, '.', ' ')
-            );
-        }
-
-        if ($errors !== []) {
-            throw ValidationException::withMessages([
-                'equipment' => 'Недостаточно остатков на основном складе: '.implode(' ', $errors),
-            ]);
         }
     }
 
@@ -2355,17 +2872,16 @@ class ApplicationController extends Controller
     /**
      * Склады по подразделению (для подсказки в формах): строки «Нет» из справочника привязаны к «Да» через warehouses.subdivision_id.
      *
-     * @return array<string, list<array{code: string, name: string}>>
+     * @return array<string, list<array{name: string}>>
      */
     private function warehousesBySubdivisionForUi(): array
     {
         return Warehouse::query()
             ->whereNotNull('subdivision_id')
             ->orderBy('name')
-            ->get(['subdivision_id', 'code', 'name'])
+            ->get(['subdivision_id', 'name'])
             ->groupBy(fn (Warehouse $w): string => (string) $w->subdivision_id)
             ->map(fn ($group) => $group->map(fn (Warehouse $w): array => [
-                'code' => $w->code,
                 'name' => $w->name,
             ])->values()->all())
             ->all();
@@ -2495,10 +3011,7 @@ class ApplicationController extends Controller
 
     private function resolveMainWarehouseForAccounting(): ?Warehouse
     {
-        return Warehouse::query()
-            ->where('is_primary', true)
-            ->orderBy('id')
-            ->first();
+        return \App\Support\AdministrationWarehouse::resolvePrimaryWarehouse();
     }
 
     /**
@@ -2571,6 +3084,10 @@ class ApplicationController extends Controller
     private function syncCompletionArchiveForEligibleApplications(): void
     {
         if (! Schema::hasColumn('applications', 'archived_at')) {
+            return;
+        }
+
+        if (! Cache::add('applications:completion-archive-sync', true, now()->addMinutes(5))) {
             return;
         }
 
@@ -2795,6 +3312,7 @@ class ApplicationController extends Controller
                         $deliveryReceiptRef,
                         'Автовосстановление прихода перед списанием доставленного оборудования.'
                     ),
+                    'created_by_user_id' => (int) $user->id,
                 ]);
             }
 
@@ -2813,6 +3331,7 @@ class ApplicationController extends Controller
                 'unit_price' => null,
                 'counterparty' => 'Заявка №'.$application->id.' / '.$application->subdivision?->name,
                 'comment' => MaterialStockMovement::packCommentWithCorrelation($docRef, $movementComment),
+                'created_by_user_id' => (int) $user->id,
             ]);
             $issuedLines++;
         }
@@ -2887,7 +3406,21 @@ class ApplicationController extends Controller
 
     private function buildReservedEquipmentName(string $name, Application $application, ApplicationItem $item): string
     {
-        $suffix = ' [РЕЗЕРВ заявка '.$application->id.', строка '.$item->id.']';
+        $baseSuffix = ' [РЕЗЕРВ заявка '.$application->id.']';
+
+        for ($n = 1; $n <= 50; $n++) {
+            $suffix = $baseSuffix.($n === 1 ? '' : ' ('.$n.')');
+            $maxBaseLength = 150 - mb_strlen($suffix);
+            if ($maxBaseLength < 1) {
+                $maxBaseLength = 1;
+            }
+            $candidate = mb_substr($name, 0, $maxBaseLength).$suffix;
+            if (! Equipment::query()->whereRaw('LOWER(name) = LOWER(?)', [$candidate])->exists()) {
+                return $candidate;
+            }
+        }
+
+        $suffix = $baseSuffix.' #'.$item->id;
         $maxBaseLength = 150 - mb_strlen($suffix);
         if ($maxBaseLength < 1) {
             $maxBaseLength = 1;
@@ -2899,6 +3432,42 @@ class ApplicationController extends Controller
     private function catalogEquipmentQuery()
     {
         return Equipment::query()->where('is_catalog', true);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, Equipment>
+     */
+    private function catalogEquipmentForForms()
+    {
+        return $this->catalogEquipmentQuery()
+            ->with(['measurementUnit.unitType'])
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Equipment>  $equipment
+     * @return array<string, array{unitType: string, unitCode: string}>
+     */
+    private function catalogEquipmentMeasurementMetaById($equipment): array
+    {
+        $out = [];
+        foreach ($equipment as $eq) {
+            $out[(string) $eq->id] = [
+                'unitType' => (string) ($eq->measurementUnit?->unitType?->code ?? 'piece'),
+                'unitCode' => (string) ($eq->measurementUnit?->code ?? 'шт'),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function clothingCatalogSizeOptionsForApplications(): array
+    {
+        return ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL'];
     }
 
     private function issuedQuantityForApplicationItem(int $applicationId, int $itemId): float
@@ -2924,18 +3493,143 @@ class ApplicationController extends Controller
     }
 
     /**
+     * Подпись для «своей» позиции: превышение над остатком на основном складе, на согласование.
+     *
+     * @param  array{measurement_type: string, quantity_unit: string, size_value?: ?string}  $normalized
+     */
+    private function catalogOverflowPendingOrderLabel(string $catalogName, int $overflowQty, array $normalized): string
+    {
+        $unit = trim((string) ($normalized['quantity_unit'] ?? 'шт'));
+        $type = (string) ($normalized['measurement_type'] ?? 'piece');
+        $size = trim((string) ($normalized['size_value'] ?? ''));
+        if (PieceQuantity::isClothingMeasurement($type) && $size !== '') {
+            $label = sprintf('%s (+на согласовании: %d шт., размер %s)', $catalogName, $overflowQty, $size);
+        } else {
+            $label = sprintf('%s (+на согласовании: %d %s)', $catalogName, $overflowQty, $unit);
+        }
+
+        return mb_substr($label, 0, 255);
+    }
+
+    /**
+     * Для строк из каталога: часть до остатка на основном складе остаётся каталожной позицией,
+     * остаток запроса — отдельной строкой «своё» на согласовании (редактируется как своё оборудование).
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function expandCatalogRowsAgainstMainWarehouseVirtualStock(array $items): array
+    {
+        $mainWarehouse = $this->resolveMainWarehouseForAccounting();
+        $catalogIds = [];
+        foreach ($items as $row) {
+            $rawId = $row['equipment_id'] ?? null;
+            if ($rawId === null || $rawId === '') {
+                continue;
+            }
+            $catalogIds[] = (int) $rawId;
+        }
+        $catalogIds = array_values(array_unique(array_filter($catalogIds, fn (int $id): bool => $id > 0)));
+        $catalogEquipmentById = $catalogIds === []
+            ? collect()
+            : Equipment::query()
+                ->whereIn('id', $catalogIds)
+                ->where('is_catalog', true)
+                ->get()
+                ->keyBy('id');
+
+        $reservedByStockKey = ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId();
+        $virtualAvailableByStockKey = [];
+        $out = [];
+
+        foreach ($items as $row) {
+            $typeIdRaw = $row['equipment_id'] ?? null;
+            $typeId = $typeIdRaw !== null && $typeIdRaw !== '' ? (int) $typeIdRaw : null;
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            if ($typeId === null && $name === '') {
+                continue;
+            }
+
+            if ($typeId === null || $mainWarehouse === null || ! $catalogEquipmentById->has($typeId)) {
+                $out[] = $row;
+
+                continue;
+            }
+
+            $equipment = $catalogEquipmentById->get($typeId);
+            $equipmentName = trim((string) $equipment->name);
+            $normalized = $this->normalizeItemPayload($row, $equipmentName !== '' ? $equipmentName : null);
+            $requested = (int) $normalized['quantity'];
+            if ($requested < 1) {
+                $out[] = $row;
+
+                continue;
+            }
+
+            $sizeVariant = PieceQuantity::isClothingMeasurement($normalized['measurement_type'])
+                ? trim((string) ($normalized['size_value'] ?? ''))
+                : '';
+            $stockKey = ApplicationCatalogStockAvailability::stockAggregateKey(
+                $typeId,
+                $sizeVariant !== '' ? $sizeVariant : null
+            );
+
+            if (! isset($virtualAvailableByStockKey[$stockKey])) {
+                $balance = $sizeVariant !== ''
+                    ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                        $typeId,
+                        (int) $mainWarehouse->id,
+                        $sizeVariant
+                    )
+                    : $this->warehouseEquipmentBalance($typeId, (int) $mainWarehouse->id);
+                $reserved = (float) ($reservedByStockKey[$stockKey] ?? 0.0);
+                $virtualAvailableByStockKey[$stockKey] = (int) max(0, (int) floor($balance - $reserved + 1e-9));
+            }
+
+            $fromStock = min($requested, $virtualAvailableByStockKey[$stockKey]);
+            $over = $requested - $fromStock;
+            $virtualAvailableByStockKey[$stockKey] -= $fromStock;
+
+            if ($fromStock > 0) {
+                $catalogRow = array_merge($row, [
+                    'equipment_id' => $typeIdRaw,
+                    'quantity' => $fromStock,
+                    'measurement_type' => $normalized['measurement_type'],
+                    'quantity_unit' => $normalized['quantity_unit'],
+                    'size_value' => $normalized['size_value'] ?? '',
+                ]);
+                $out[] = $catalogRow;
+            }
+            if ($over > 0) {
+                $out[] = [
+                    'item_id' => null,
+                    'equipment_id' => null,
+                    'equipment_name' => $this->catalogOverflowPendingOrderLabel($equipmentName !== '' ? $equipmentName : 'Оборудование', $over, $normalized),
+                    'quantity' => $over,
+                    'measurement_type' => $normalized['measurement_type'],
+                    'quantity_unit' => $normalized['quantity_unit'],
+                    'size_value' => $normalized['size_value'] ?? '',
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      * @return array{equipment_name:?string,base_name:string,size_value:?string,quantity:int,measurement_type:string,quantity_unit:string,raw_input:?string}
      */
     private function normalizeItemPayload(array $row, ?string $equipmentName = null): array
     {
         $rawName = trim((string) ($row['equipment_name'] ?? ''));
-        $rawQty = (int) ($row['quantity'] ?? 1);
-        $quantity = max(1, $rawQty);
-        $measurementType = (string) ($row['measurement_type'] ?? 'piece');
-        if (! array_key_exists($measurementType, $this->measurementUnitsMap())) {
-            $measurementType = 'piece';
+        $measurementType = $this->resolveRowMeasurementType($row);
+        if (PieceQuantity::isPieceMeasurement($measurementType) || PieceQuantity::isClothingMeasurement($measurementType)) {
+            PieceQuantity::assertWholeQuantity($row['quantity'] ?? null);
         }
+        $quantity = PieceQuantity::isPieceMeasurement($measurementType) || PieceQuantity::isClothingMeasurement($measurementType)
+            ? PieceQuantity::normalizeStoredQuantity($row['quantity'] ?? 1, $measurementType)
+            : max(1, (int) round((float) str_replace(',', '.', trim((string) ($row['quantity'] ?? 1)))));
         $quantityUnit = trim((string) ($row['quantity_unit'] ?? ''));
         $quantityUnit = $quantityUnit !== '' ? mb_substr($quantityUnit, 0, 20) : $this->defaultUnitForType($measurementType);
         $sizeValue = trim((string) ($row['size_value'] ?? ''));
@@ -2949,7 +3643,7 @@ class ApplicationController extends Controller
             return [
                 'equipment_name' => null,
                 'base_name' => $baseName,
-                'size_value' => $measurementType === 'clothing_size' ? $sizeValue : null,
+                'size_value' => PieceQuantity::isClothingMeasurement($measurementType) ? $sizeValue : null,
                 'quantity' => $quantity,
                 'measurement_type' => $measurementType,
                 'quantity_unit' => $quantityUnit,
@@ -2959,7 +3653,14 @@ class ApplicationController extends Controller
 
         [$parsedName, $parsedSize, $parsedQty, $parsedUnit] = $this->parseFreeEquipmentText($rawName);
         if ($parsedQty !== null && $quantity === 1) {
-            $quantity = max(1, (int) round($parsedQty));
+            if ($parsedUnit !== null && in_array($parsedUnit, $this->measurementUnitsMap()['mass'] ?? [], true)) {
+                $quantity = max(1, (int) round($parsedQty));
+            } elseif ($parsedUnit !== null && in_array($parsedUnit, $this->measurementUnitsMap()['length'] ?? [], true)) {
+                $quantity = max(1, (int) round($parsedQty));
+            } else {
+                PieceQuantity::assertWholeQuantity($parsedQty);
+                $quantity = PieceQuantity::normalizeStoredQuantity($parsedQty, PieceQuantity::MEASUREMENT_TYPE);
+            }
         }
         if ($parsedUnit !== null && trim((string) ($row['quantity_unit'] ?? '')) === '') {
             $quantityUnit = $parsedUnit;
@@ -2977,7 +3678,7 @@ class ApplicationController extends Controller
             $sizeValue = $parsedSize;
         }
 
-        if ($measurementType !== 'clothing_size') {
+        if (! PieceQuantity::isClothingMeasurement($measurementType)) {
             $sizeValue = null;
         }
 
@@ -3032,13 +3733,266 @@ class ApplicationController extends Controller
     }
 
     /**
+     * @return array<string, int> normalized label => catalog equipment id
+     */
+    private function catalogEquipmentNameLookup(): array
+    {
+        $map = [];
+        $register = function (string $label, int $id) use (&$map): void {
+            $label = trim($label);
+            if ($label === '') {
+                return;
+            }
+            $map[mb_strtolower($label)] = $id;
+        };
+
+        foreach ($this->catalogEquipmentForForms() as $equipment) {
+            $id = (int) $equipment->id;
+            $register((string) $equipment->name, $id);
+            $register($equipment->display_name, $id);
+            if (preg_match('/^\s*[\w\d.-]+\s*[—–-]\s*(.+)$/u', (string) $equipment->name, $m)) {
+                $register(trim((string) $m[1]), $id);
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    /**
+     * @param  array{measurement_type: string, quantity_unit: string, size_value?: ?string}  $normalized
+     */
+    private function syncCatalogItemManualDetail(ApplicationItem $item, array $normalized): void
+    {
+        if ($item->equipment_id === null) {
+            return;
+        }
+
+        $measurementType = (string) ($normalized['measurement_type'] ?? 'piece');
+        if (! PieceQuantity::isClothingMeasurement($measurementType)) {
+            $item->manualDetail()->delete();
+
+            return;
+        }
+
+        $size = trim((string) ($normalized['size_value'] ?? ''));
+        if ($size === '') {
+            $item->manualDetail()->delete();
+
+            return;
+        }
+
+        $item->manualDetail()->updateOrCreate(
+            ['application_item_id' => $item->id],
+            [
+                'equipment_name' => null,
+                'base_name' => null,
+                'size_value' => $size,
+                'measurement_type' => $measurementType,
+                'quantity_unit' => (string) ($normalized['quantity_unit'] ?? 'разм'),
+                'raw_input' => null,
+            ]
+        );
+    }
+
+    private function resolveRowMeasurementType(array $row): string
+    {
+        $measurementType = trim((string) ($row['measurement_type'] ?? ''));
+        $map = $this->measurementUnitsMap();
+        if ($measurementType !== '' && array_key_exists($measurementType, $map)) {
+            return $measurementType;
+        }
+
+        $typeId = (int) ($row['equipment_id'] ?? 0);
+        if ($typeId > 0) {
+            $fromEquipment = Equipment::query()
+                ->whereKey($typeId)
+                ->with('measurementUnit.unitType:id,code')
+                ->first()
+                ?->measurementUnit
+                ?->unitType
+                ?->code;
+            if (is_string($fromEquipment) && $fromEquipment !== '' && array_key_exists($fromEquipment, $map)) {
+                return $fromEquipment;
+            }
+        }
+
+        return PieceQuantity::MEASUREMENT_TYPE;
+    }
+
+    private function equipmentLineDuplicateKey(array $row, array $catalogNameToId): ?string
+    {
+        $measurementType = $this->resolveRowMeasurementType($row);
+        $sizeValue = trim((string) ($row['size_value'] ?? ''));
+
+        $equipmentIdRaw = $row['equipment_id'] ?? null;
+        $typeId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' ? (int) $equipmentIdRaw : 0;
+        $baseKey = null;
+        if ($typeId > 0) {
+            $baseKey = 'catalog:'.$typeId;
+        } else {
+            $rawName = trim((string) ($row['equipment_name'] ?? ''));
+            if ($rawName === '') {
+                return null;
+            }
+
+            $lower = mb_strtolower($rawName);
+            if (isset($catalogNameToId[$lower])) {
+                $baseKey = 'catalog:'.$catalogNameToId[$lower];
+            } elseif (preg_match('/^\s*[\w\d.-]+\s*[—–-]\s*(.+)$/u', $rawName, $m)) {
+                $tail = mb_strtolower(trim((string) $m[1]));
+                if ($tail !== '' && isset($catalogNameToId[$tail])) {
+                    $baseKey = 'catalog:'.$catalogNameToId[$tail];
+                }
+            }
+
+            if ($baseKey === null) {
+                [$parsedName] = $this->parseFreeEquipmentText($rawName);
+                $parsedLower = mb_strtolower(trim($parsedName));
+                if ($parsedLower !== '' && isset($catalogNameToId[$parsedLower])) {
+                    $baseKey = 'catalog:'.$catalogNameToId[$parsedLower];
+                } else {
+                    $identityLabel = $parsedLower !== '' ? $parsedLower : $lower;
+                    $baseKey = 'custom:'.$identityLabel;
+                }
+            }
+        }
+
+        if ($baseKey === null) {
+            return null;
+        }
+
+        if (PieceQuantity::isClothingMeasurement($measurementType) && $sizeValue !== '') {
+            return $baseKey.':size:'.mb_strtoupper($sizeValue);
+        }
+
+        return $baseKey;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateUniqueEquipmentLines(array $items): void
+    {
+        $catalogNameToId = $this->catalogEquipmentNameLookup();
+        $seenKeys = [];
+
+        foreach ($items as $idx => $row) {
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            $equipmentIdRaw = $row['equipment_id'] ?? null;
+            $hasEquipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' && (int) $equipmentIdRaw > 0;
+            if ($name === '' && ! $hasEquipmentId) {
+                continue;
+            }
+
+            $key = $this->equipmentLineDuplicateKey($row, $catalogNameToId);
+            if ($key === null) {
+                continue;
+            }
+
+            if (isset($seenKeys[$key])) {
+                $isClothingSizeDup = str_contains($key, ':size:');
+                throw ValidationException::withMessages([
+                    'equipment' => $isClothingSizeDup
+                        ? 'Нельзя добавить две строки с одним и тем же наименованием и размером.'
+                        : 'Нельзя добавить одно и то же оборудование дважды.',
+                    "items.{$idx}.equipment_name" => $isClothingSizeDup
+                        ? 'Этот размер уже указан в другой строке для той же позиции.'
+                        : 'Эта позиция повторяет оборудование из другой строки заявки.',
+                ]);
+            }
+
+            $seenKeys[$key] = $idx;
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateSubstantiveEquipmentItemQuantities(array $items): void
+    {
+        foreach ($items as $idx => $row) {
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            $equipmentIdRaw = $row['equipment_id'] ?? null;
+            $hasEquipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' && (int) $equipmentIdRaw > 0;
+            if ($name === '' && ! $hasEquipmentId) {
+                continue;
+            }
+            $qty = $row['quantity'] ?? null;
+            if ($qty === null || $qty === '') {
+                throw ValidationException::withMessages([
+                    "items.{$idx}.quantity" => 'Укажите количество.',
+                ]);
+            }
+
+            $measurementType = $this->resolveRowMeasurementType($row);
+
+            if (PieceQuantity::isPieceMeasurement($measurementType) || PieceQuantity::isClothingMeasurement($measurementType)) {
+                PieceQuantity::assertWholeQuantity($qty, "items.{$idx}.quantity");
+                if ((int) round((float) str_replace(',', '.', trim((string) $qty))) < 1) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.quantity" => 'Укажите количество.',
+                    ]);
+                }
+            } elseif ((float) str_replace(',', '.', trim((string) $qty)) < 0.0005) {
+                throw ValidationException::withMessages([
+                    "items.{$idx}.quantity" => 'Укажите количество.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateCustomEquipmentRowsHaveMeasurementType(array $items): void
+    {
+        foreach ($items as $idx => $row) {
+            $equipmentIdRaw = $row['equipment_id'] ?? null;
+            $equipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' ? (int) $equipmentIdRaw : null;
+            if ($equipmentId !== null && $equipmentId > 0) {
+                continue;
+            }
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $type = trim((string) ($row['measurement_type'] ?? ''));
+            if ($type === '') {
+                throw ValidationException::withMessages([
+                    "items.{$idx}.measurement_type" => 'Выберите тип единицы измерения для своего оборудования.',
+                ]);
+            }
+        }
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $items
      */
     private function validateMeasurementPairs(array $items): void
     {
         $map = $this->measurementUnitsMap();
         foreach ($items as $idx => $row) {
-            $type = (string) ($row['measurement_type'] ?? 'piece');
+            $name = trim((string) ($row['equipment_name'] ?? ''));
+            $equipmentIdRaw = $row['equipment_id'] ?? null;
+            $hasEquipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' && (int) $equipmentIdRaw > 0;
+            if ($name === '' && ! $hasEquipmentId) {
+                continue;
+            }
+
+            $type = trim((string) ($row['measurement_type'] ?? ''));
+            if ($type === '') {
+                if ($hasEquipmentId) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.measurement_type" => 'Некорректный тип единицы измерения.',
+                    ]);
+                }
+
+                continue;
+            }
+
             if (! array_key_exists($type, $map)) {
                 throw ValidationException::withMessages([
                     "items.{$idx}.measurement_type" => 'Некорректный тип единицы измерения.',
@@ -3058,8 +4012,18 @@ class ApplicationController extends Controller
                 $size = trim((string) ($row['size_value'] ?? ''));
                 if ($size === '') {
                     throw ValidationException::withMessages([
-                        "items.{$idx}.size_value" => 'Для типа «Размер одежды» укажите размер (например, 48, M, XL).',
+                        "items.{$idx}.size_value" => 'Для типа «Размер одежды» укажите размер.',
                     ]);
+                }
+                $equipmentIdRaw = $row['equipment_id'] ?? null;
+                $equipmentId = $equipmentIdRaw !== null && $equipmentIdRaw !== '' ? (int) $equipmentIdRaw : null;
+                if ($equipmentId !== null && $equipmentId > 0) {
+                    $allowed = $this->clothingCatalogSizeOptionsForApplications();
+                    if (! in_array($size, $allowed, true)) {
+                        throw ValidationException::withMessages([
+                            "items.{$idx}.size_value" => 'Выберите размер из списка.',
+                        ]);
+                    }
                 }
             }
         }
@@ -3126,13 +4090,14 @@ class ApplicationController extends Controller
                 'piece' => 'Штучные',
                 'mass' => 'Масса',
                 'length' => 'Длина',
-                'clothing_size' => 'Размер одежды',
+                'clothing_size' => 'Размер',
             ];
         }
 
         return [
             'typeOptions' => $typeOptions,
             'unitsByType' => $unitsByType,
+            'clothingSizes' => $this->clothingCatalogSizeOptionsForApplications(),
         ];
     }
 
@@ -3223,7 +4188,6 @@ class ApplicationController extends Controller
             'responsible' => 'responsible_user_id',
             'author' => 'user_id',
             'approved_by' => 'approved_by_user_id',
-            'status' => 'application_status_id',
         ];
     }
 }

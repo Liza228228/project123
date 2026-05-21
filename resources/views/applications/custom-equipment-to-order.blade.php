@@ -6,9 +6,7 @@
                 <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
                     Своё оборудование к заказу
                 </h2>
-                <p class="text-sm text-stone-600 dark:text-stone-400 max-w-2xl">
-                    Выберите заявку — откроется форма со всеми позициями со своим названием по этой заявке: что отметить как заказанное и что оприходовать на основной склад.
-                </p>
+               
             </div>
         </div>
     </x-slot>
@@ -16,17 +14,30 @@
     <div class="mx-auto max-w-[96rem] px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8 space-y-4">
+                @if($errors->has('custom_supply'))
+                    <div class="rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/25 dark:text-amber-100">
+                        {{ $errors->first('custom_supply') }}
+                    </div>
+                @endif
                 @if($applications->isEmpty())
                     <p class="text-sm text-stone-600 dark:text-stone-400">
-                        Нет заявок с незавершённым своим оборудованием (все позиции уже оприходованы или нет согласованных строк без справочника).
+                        Нет заявок для заказа своего оборудования.
                     </p>
                 @else
-                    <form method="GET" action="{{ route('applications.custom-equipment-to-order') }}" class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between" data-auto-submit="filter">
+                    <form method="GET" action="{{ route('applications.custom-equipment-to-order') }}" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between" data-auto-submit="filter">
                         <div class="w-full sm:w-auto">
                             <label for="sort_date" class="app-form-label">Сортировка по дате</label>
                             <select id="sort_date" name="sort_date" class="app-select min-w-[16rem]">
                                 <option value="desc" @selected(($sortDate ?? 'desc') === 'desc')>Сначала новые заявки</option>
                                 <option value="asc" @selected(($sortDate ?? 'desc') === 'asc')>Сначала старые заявки</option>
+                            </select>
+                        </div>
+                        <div class="w-full sm:w-auto">
+                            <label for="custom-equipment-per-page" class="app-form-label">На странице</label>
+                            <select id="custom-equipment-per-page" name="per_page" class="app-select min-w-[10rem]">
+                                @foreach($allowedPerPage as $size)
+                                    <option value="{{ $size }}" @selected((int) ($perPage ?? 0) === (int) $size)>{{ $size }}</option>
+                                @endforeach
                             </select>
                         </div>
                     </form>

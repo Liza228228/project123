@@ -37,9 +37,6 @@
                     .map(function (r) {
                         return (
                             '<li class="py-2 border-b border-orange-100/90 text-sm last:border-0 dark:border-orange-900/40">' +
-                            '<span class="font-mono text-xs opacity-80">' +
-                            escapeHtml(r.code) +
-                            '</span> — ' +
                             escapeHtml(r.name) +
                             '</li>'
                         );

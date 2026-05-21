@@ -21,7 +21,11 @@
             <!-- Page Heading -->
             @isset($header)
                 <header class="border-b border-orange-400/70 dark:border-orange-800/60 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100">
-                    <div class="max-w-7xl mx-auto py-3 sm:py-6 px-4 sm:px-6 lg:px-8">
+                    <div @class([
+                        'mx-auto py-3 sm:py-6 px-4 sm:px-6 lg:px-8',
+                        'max-w-7xl' => ! ($wide ?? false),
+                        'w-full max-w-[min(100%,1920px)]' => ($wide ?? false),
+                    ])>
                         <div class="w-full min-w-0">
                             {{ $header }}
                         </div>
@@ -38,5 +42,7 @@
                 КТ-Ресурс — система учёта материалов
             </footer>
         </div>
+
+        @include('partials.global-confirm-modal')
     </body>
 </html>

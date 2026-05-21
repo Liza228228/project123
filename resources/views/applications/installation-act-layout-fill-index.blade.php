@@ -13,7 +13,7 @@
             <div class="px-4 py-5 sm:p-8 space-y-6">
                 @unless(Auth::user()?->hasRoleId(3))
                     <p class="rounded-xl border border-stone-200/80 bg-stone-50/60 px-4 py-3 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-800/35 dark:text-stone-100">
-                        Выберите готовый макет и заполните только поля. Создание и редактирование шапки/конструктора недоступно.
+                        Выберите готовый макет и заполните только поля.
                     </p>
                 @endunless
                 <div class="flex flex-wrap gap-2">

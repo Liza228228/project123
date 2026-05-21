@@ -124,6 +124,43 @@ test('receipt quantity rejects letters for length-type equipment', function (): 
     $response->assertSessionHasErrors('quantity');
 });
 
+test('receipt quantity rejects fractional amount for piece-type equipment', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $mainWarehouse = FunctionalScenarioFixture::primaryAdministrationWarehouse();
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Кузнецов',
+        'name' => 'Алексей',
+        'patronymic' => 'Игоревич',
+        'email' => 'Kuznetsov-piece-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+
+    $equipmentName = 'Клапан для штук '.uniqid();
+    $this->actingAs($supplyHead)->post(route('materials.store-material'), [
+        'name' => $equipmentName,
+        'measurement_type' => 'piece',
+        'measurement_unit_id' => $pieceUnitId,
+    ])->assertRedirect(route('materials.index'));
+
+    $equipmentId = (int) Equipment::query()->where('name', $equipmentName)->value('id');
+    $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+
+    $response = $this->actingAs($supplyHead)->from(route('materials.index'))->post(route('materials.store-movement'), [
+        'equipment_id' => $equipmentId,
+        'warehouse_id' => $mainWarehouse->id,
+        'material_stock_movement_type_id' => $receiptTypeId,
+        'quantity' => '2.5',
+    ]);
+
+    $response->assertSessionHasErrors('quantity');
+});
+
 test('duplicate catalog equipment name shows справочник message', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
 
@@ -206,4 +243,53 @@ test('clothing catalog receipt saves size in receipt_variant and quantity one', 
     expect($row)->not->toBeNull();
     expect($row->receipt_variant)->toBe('L');
     expect((float) $row->quantity)->toBe(1.0);
+});
+
+test('technical director cannot open equipment accounting or post warehouse catalog operations', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $mainWarehouse = FunctionalScenarioFixture::primaryAdministrationWarehouse();
+
+    $td = User::query()->create([
+        'surname' => 'Техдир',
+        'name' => 'Тест',
+        'patronymic' => 'Тестович',
+        'email' => 'td-mat-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 6,
+    ]);
+
+    $this->actingAs($td)->get(route('materials.index'))->assertForbidden();
+
+    $meterUnitId = (int) MeasurementUnit::query()
+        ->where('code', 'м')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'length'))
+        ->value('id');
+
+    $this->actingAs($td)->post(route('materials.store-material'), [
+        'name' => 'Оборудование ТД '.uniqid(),
+        'measurement_type' => 'length',
+        'measurement_unit_id' => $meterUnitId,
+    ])->assertForbidden();
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->where('code', 'шт')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+    $equipment = Equipment::query()->create([
+        'name' => 'Единица для ТД '.uniqid(),
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'is_catalog' => true,
+    ]);
+    $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+
+    $this->actingAs($td)->post(route('materials.store-movement'), [
+        'equipment_id' => $equipment->id,
+        'warehouse_id' => $mainWarehouse->id,
+        'material_stock_movement_type_id' => $receiptTypeId,
+        'quantity' => 1,
+    ])->assertForbidden();
+
+    $this->actingAs($td)->get(route('materials.overview'))->assertOk();
+    $this->actingAs($td)->get(route('materials.movements'))->assertOk();
 });

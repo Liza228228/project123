@@ -40,7 +40,9 @@ $maxWidth = [
         }
     })"
     x-on:open-modal.window="$event.detail == '{{ $name }}' ? show = true : null"
+    x-on:open-modal.document="$event.detail == '{{ $name }}' ? show = true : null"
     x-on:close-modal.window="$event.detail == '{{ $name }}' ? show = false : null"
+    x-on:close-modal.document="$event.detail == '{{ $name }}' ? show = false : null"
     x-on:close.stop="show = false"
     x-on:keydown.escape.window="show = false"
     x-on:keydown.tab.prevent="$event.shiftKey || nextFocusable().focus()"

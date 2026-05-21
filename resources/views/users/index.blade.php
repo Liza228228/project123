@@ -62,8 +62,8 @@
                                 <label for="users-per-page" class="app-form-label">На странице</label>
                                 <select name="per_page" id="users-per-page"
                                     class="app-select">
-                                    @foreach([10, 25, 50] as $size)
-                                        <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
+                                    @foreach($allowedPerPage as $size)
+                                        <option value="{{ $size }}" @selected((int) $perPage === (int) $size)>{{ $size }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -78,7 +78,6 @@
                                             <option value="patronymic" @selected(($sortState['primary_field'] ?? '') === 'patronymic')>Отчество</option>
                                             <option value="email" @selected(($sortState['primary_field'] ?? '') === 'email')>E-mail</option>
                                             <option value="role" @selected(($sortState['primary_field'] ?? '') === 'role')>Роль</option>
-                                            <option value="status" @selected(($sortState['primary_field'] ?? '') === 'status')>Статус</option>
                                             <option value="created_at" @selected(($sortState['primary_field'] ?? '') === 'created_at')>Дата создания</option>
                                         </select>
                                         <select name="sort_primary_direction"
@@ -96,7 +95,6 @@
                                             <option value="patronymic" @selected(($sortState['secondary_field'] ?? '') === 'patronymic')>Отчество</option>
                                             <option value="email" @selected(($sortState['secondary_field'] ?? '') === 'email')>E-mail</option>
                                             <option value="role" @selected(($sortState['secondary_field'] ?? '') === 'role')>Роль</option>
-                                            <option value="status" @selected(($sortState['secondary_field'] ?? '') === 'status')>Статус</option>
                                             <option value="created_at" @selected(($sortState['secondary_field'] ?? '') === 'created_at')>Дата создания</option>
                                         </select>
                                         <select name="sort_secondary_direction"

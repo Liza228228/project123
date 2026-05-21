@@ -12,7 +12,9 @@
             return [
                 'uid' => 'old_'.$i,
                 'key' => (string) ($row['key'] ?? ''),
-                'type' => in_array($t, ['text', 'number', 'textarea', 'date'], true) ? $t : 'text',
+                'type' => in_array($t, ['text', 'number', 'textarea', 'date', 'table'], true) ? $t : 'text',
+                'label' => (string) ($row['label'] ?? $row['key'] ?? ''),
+                'table_columns' => is_array($row['table_columns'] ?? null) ? array_values($row['table_columns']) : ['Столбец 1', 'Столбец 2'],
             ];
         })->all();
     } elseif ($layout) {
@@ -23,13 +25,13 @@
             return [
                 'uid' => 'db_'.$i,
                 'key' => (string) ($row['key'] ?? ''),
-                'type' => in_array($t, ['text', 'number', 'textarea', 'date'], true) ? $t : 'text',
+                'type' => in_array($t, ['text', 'number', 'textarea', 'date', 'table'], true) ? $t : 'text',
+                'label' => (string) ($row['label'] ?? $row['key'] ?? ''),
+                'table_columns' => is_array($row['table_columns'] ?? null) ? array_values($row['table_columns']) : ['Столбец 1', 'Столбец 2'],
             ];
         })->all();
     } else {
-        $initialFields = [
-            ['uid' => 'f1', 'key' => '', 'type' => 'text'],
-        ];
+        $initialFields = [];
     }
 
     $initialBody = old('body_template', $schema['body_template'] ?? "");
@@ -41,8 +43,10 @@
     $initialFooterStampBool = filter_var($initialFooterStamp, FILTER_VALIDATE_BOOLEAN);
     $initialPresHeadingPt = (int) old('presentation_heading_size_pt', $schema['presentation_heading_size_pt'] ?? 18);
     $initialPresSubtitlePt = (int) old('presentation_subtitle_size_pt', $schema['presentation_subtitle_size_pt'] ?? 12);
-    $needsStatementHeader = old('needs_statement_header', ($schema['needs_statement_header'] ?? false) || ($layout?->document_header_layout_id ? true : false));
+    $returnDocumentHeaderLayoutId = (int) request('document_header_layout_id', 0);
+    $needsStatementHeader = old('needs_statement_header', ($schema['needs_statement_header'] ?? false) || ($layout?->document_header_layout_id ? true : false) || $returnDocumentHeaderLayoutId > 0);
     $needsStatementHeader = filter_var($needsStatementHeader, FILTER_VALIDATE_BOOLEAN);
+    $selectedDocumentHeaderLayoutId = (string) (old('document_header_layout_id', $layout?->document_header_layout_id ?? '') ?: ($returnDocumentHeaderLayoutId > 0 ? $returnDocumentHeaderLayoutId : ''));
     $signatureSlotsCount = \App\Models\RequestLayout::resolvedSignatureSlotsCount($schema);
     if (old('signature_slots_count') !== null && old('signature_slots_count') !== '') {
         $signatureSlotsCount = max(0, min(3, (int) old('signature_slots_count')));
@@ -56,6 +60,7 @@
     foreach (($roles ?? collect()) as $role) {
         $roleNamesByIdForPreview[(string) $role->id] = (string) $role->name;
     }
+    $signatureLineMark = \App\Support\RequestLayoutSignatureLine::mark();
 @endphp
 
 <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-white shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35"
@@ -71,7 +76,7 @@
         signatureTemplate: '',
         documentTitle: @js($initialDocTitle),
         needsStatementHeader: @js($needsStatementHeader),
-        documentHeaderLayoutId: @js((string) (old('document_header_layout_id', $layout?->document_header_layout_id ?? '') ?: '')),
+        documentHeaderLayoutId: @js($selectedDocumentHeaderLayoutId),
         presentationHeadingSizePt: {{ $initialPresHeadingPt }},
         presentationSubtitleSizePt: {{ $initialPresSubtitlePt }},
         signatureSlotsCount: {{ $signatureSlotsCount }},
@@ -126,7 +131,7 @@
             const s = Number(slot);
             const rid = String(this.signatureRoles?.[s] ?? this.signatureRoles?.[String(s)] ?? '').trim();
             if (!rid || !this.roleNamesById) {
-                return '— роль не выбрана';
+                return '— сотрудник не выбран';
             }
             const map = this.roleNamesById;
 
@@ -134,10 +139,9 @@
         },
         signaturePreviewLine(slot) {
             const label = this.signatureRoleLabel(slot);
-            const dash = '__________';
             const nb = '\u00A0\u00A0\u00A0';
 
-            return dash + nb + label;
+            return @js($signatureLineMark) + nb + label;
         },
         signatureSlotIndices() {
             const n = Number(this.signatureSlotsCount ?? 0);
@@ -155,8 +159,70 @@
         },
         removeField(index) {
             this.fields.splice(index, 1);
-            if (this.fields.length === 0) this.addField();
             this.ensureSelectedTokenField();
+        },
+        tableModalOpen: false,
+        tableEditIndex: null,
+        tableDraft: { key: '', table_columns: ['Столбец 1', 'Столбец 2'] },
+        openTableModal(editIndex = null) {
+            if (editIndex !== null && this.fields[editIndex]) {
+                const f = this.fields[editIndex];
+                this.tableEditIndex = editIndex;
+                this.tableDraft = {
+                    key: String(f.key || ''),
+                    table_columns: Array.isArray(f.table_columns) && f.table_columns.length
+                        ? [...f.table_columns]
+                        : ['Столбец 1', 'Столбец 2'],
+                };
+            } else {
+                this.tableEditIndex = null;
+                const n = this.fields.filter((x) => x.type === 'table').length + 1;
+                this.tableDraft = {
+                    key: 'таблица_' + n,
+                    table_columns: ['Столбец 1', 'Столбец 2'],
+                };
+            }
+            this.tableModalOpen = true;
+        },
+        closeTableModal() {
+            this.tableModalOpen = false;
+            this.tableEditIndex = null;
+        },
+        addTableColumn() {
+            if (this.tableDraft.table_columns.length >= 12) return;
+            this.tableDraft.table_columns.push('Столбец ' + (this.tableDraft.table_columns.length + 1));
+        },
+        removeTableColumn(index) {
+            if (this.tableDraft.table_columns.length <= 1) return;
+            this.tableDraft.table_columns.splice(index, 1);
+        },
+        saveTableField() {
+            const key = String(this.tableDraft.key || '').trim();
+            if (!key) {
+                window.alert('Укажите ключ таблицы (название для подстановки в текст).');
+                return;
+            }
+            const cols = this.tableDraft.table_columns.map((c) => String(c || '').trim()).filter((c) => c !== '');
+            if (cols.length === 0) {
+                window.alert('Добавьте хотя бы один столбец с подписью.');
+                return;
+            }
+            const payload = {
+                uid: 'tbl_' + Date.now(),
+                key,
+                label: key,
+                type: 'table',
+                table_columns: cols,
+            };
+            if (this.tableEditIndex !== null) {
+                payload.uid = this.fields[this.tableEditIndex].uid;
+                this.fields.splice(this.tableEditIndex, 1, payload);
+            } else {
+                this.fields.push(payload);
+            }
+            this.ensureSelectedTokenField();
+            this.selectedTokenField = key;
+            this.closeTableModal();
         },
         execCmd(cmd, arg = null) {
             if (cmd === 'justifyLeft') {
@@ -219,7 +285,7 @@
             <label class="inline-flex items-start gap-3 cursor-pointer text-sm text-stone-800 dark:text-stone-100">
                 <input type="checkbox" class="mt-1 rounded border-stone-300 text-orange-600 focus:ring-orange-500/40"
                        x-model="needsStatementHeader" @checked($needsStatementHeader)/>
-                <span>Нужна шапка заявления </span>
+                <span>Нужна шапка отчета </span>
             </label>
 
             <div class="space-y-3 rounded-2xl border border-orange-200/80 bg-orange-50/40 p-4 dark:border-orange-900/40 dark:bg-orange-950/25" x-show="needsStatementHeader" x-cloak>
@@ -235,8 +301,8 @@
                         @endforeach
                     </select>
                 </div>
-                <a href="{{ route('boiler-chief.document-header-layouts.create') }}" target="_blank" rel="noopener noreferrer"
-                   class="text-sm font-medium text-orange-800 hover:underline dark:text-orange-200/90">Создать новый макет шапки </a>
+                <a href="{{ route('boiler-chief.document-header-layouts.create', ['return' => url()->current()]) }}"
+                   class="text-sm font-medium text-orange-800 hover:underline dark:text-orange-200/90">Создать новый макет шапки</a>
                 @error('document_header_layout_id')
                     <p class="text-sm text-rose-600">{{ $message }}</p>
                 @enderror
@@ -323,43 +389,115 @@
             <button type="button" @click="tab = 'text'"
                     :class="tab === 'text' ? 'bg-orange-600 text-black dark:bg-orange-600 dark:text-black' : 'bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200'"
                     class="flex-1 sm:flex-none min-w-[140px] rounded-xl px-4 py-3 text-sm font-medium transition-colors">
-                Текст заявки
+                Текст отчёта
             </button>
         </div>
 
         <div class="px-5 sm:px-8 py-6 space-y-4" x-show="tab === 'fields'" x-cloak>
-            <div class="flex justify-end">
+            <div class="flex flex-wrap justify-end gap-2">
+                <button type="button" @click="openTableModal()" class="ui-btn ui-btn--secondary inline-flex items-center">
+                    + Добавить таблицу
+                </button>
                 <button type="button" @click="addField()" class="ui-btn ui-btn--primary inline-flex items-center">
                     + Добавить поле
                 </button>
             </div>
             <template x-for="(field, index) in fields" :key="field.uid">
-                <div class="rounded-2xl border border-stone-200 dark:border-stone-700 p-4 space-y-3 bg-white dark:bg-stone-950/40">
+                <div class="rounded-2xl border border-stone-200 dark:border-stone-700 p-4 space-y-3 bg-white dark:bg-stone-950/40"
+                     :class="field.type === 'table' ? 'border-orange-300/80 dark:border-orange-800/50' : ''">
                     <div class="flex items-center justify-between gap-2">
-                        <span class="text-sm font-semibold text-stone-900 dark:text-white" x-text="'Поле ' + (index + 1)"></span>
-                        <button type="button" class="text-stone-400 hover:text-rose-600 p-1" @click="removeField(index)" title="Удалить">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Название</label>
-                            <input type="text" class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
-                                   :name="'fields['+index+'][key]'" x-model="field.key" required maxlength="64" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Тип</label>
-                            <select class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
-                                    :name="'fields['+index+'][type]'" x-model="field.type">
-                                <option value="text">Текст</option>
-                                <option value="number">Число</option>
-                                <option value="textarea">Многострочный текст</option>
-                                <option value="date">Дата</option>
-                            </select>
+                        <span class="text-sm font-semibold text-stone-900 dark:text-white"
+                              x-text="field.type === 'table' ? ('Таблица ' + (index + 1)) : ('Поле ' + (index + 1))"></span>
+                        <div class="flex items-center gap-1">
+                            <template x-if="field.type === 'table'">
+                                <button type="button" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90 px-2"
+                                        @click="openTableModal(index)">Изменить</button>
+                            </template>
+                            <button type="button" class="text-stone-400 hover:text-rose-600 p-1" @click="removeField(index)" title="Удалить">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
                         </div>
                     </div>
+                    <template x-if="field.type === 'table'">
+                        <div class="space-y-2">
+                            <input type="hidden" :name="'fields['+index+'][type]'" value="table" />
+                            <input type="hidden" :name="'fields['+index+'][key]'" :value="field.key" />
+                            <input type="hidden" :name="'fields['+index+'][label]'" :value="field.label || field.key" />
+                            <template x-for="(col, colIdx) in field.table_columns" :key="field.uid + '_col_' + colIdx">
+                                <input type="hidden" :name="'fields['+index+'][table_columns]['+colIdx+']'" :value="col" />
+                            </template>
+                            
+                            <ul class="text-xs text-stone-500 dark:text-stone-400 list-disc list-inside">
+                                <template x-for="(col, colIdx) in field.table_columns" :key="'lbl_'+colIdx">
+                                    <li x-text="(colIdx + 1) + '. ' + col"></li>
+                                </template>
+                            </ul>
+                                </div>
+                    </template>
+                    <template x-if="field.type !== 'table'">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Название</label>
+                                <input type="text" class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
+                                       :name="'fields['+index+'][key]'" x-model="field.key" required maxlength="64" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Тип</label>
+                                <select class="block w-full rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm"
+                                        :name="'fields['+index+'][type]'" x-model="field.type">
+                                    <option value="text">Текст</option>
+                                    <option value="number">Число</option>
+                                    <option value="textarea">Многострочный текст</option>
+                                    <option value="date">Дата</option>
+                                </select>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
+            <p x-show="fields.length === 0" class="text-sm text-stone-500 dark:text-stone-400 text-center py-4">
+                Добавьте поле или таблицу — без них макет не сохранится.
+            </p>
+
+            <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50"
+                 x-show="tableModalOpen"
+                 x-cloak
+                 @keydown.escape.window="closeTableModal()">
+                <div class="absolute inset-0" @click="closeTableModal()"></div>
+                <div class="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-orange-200/85 bg-white shadow-2xl dark:border-orange-900/50 dark:bg-stone-950 p-5 space-y-4"
+                     @click.stop>
+                    <h3 class="text-base font-semibold text-stone-900 dark:text-white"
+                        x-text="tableEditIndex !== null ? 'Редактирование таблицы' : 'Новая таблица'"></h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400">Задайте подписи столбцов. Число строк пользователь выберет при заполнении отчёта по макету.</p>
+                    <div>
+                        <label class="block text-xs font-medium text-stone-600 dark:text-stone-300 mb-1">Ключ (для подстановки в текст)</label>
+                        <input type="text" class="app-input w-full" x-model="tableDraft.key" maxlength="64"
+                               placeholder="например: сводная_таблица" />
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <label class="text-xs font-medium text-stone-600 dark:text-stone-300">Столбцы (заголовки)</label>
+                            <button type="button" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90"
+                                    @click="addTableColumn()" :disabled="tableDraft.table_columns.length >= 12">+ столбец</button>
+                        </div>
+                        <div class="space-y-2">
+                            <template x-for="(col, colIdx) in tableDraft.table_columns" :key="'draft_col_'+colIdx">
+                                <div class="flex gap-2 items-center">
+                                    <input type="text" class="app-input flex-1 min-h-0" x-model="tableDraft.table_columns[colIdx]"
+                                           maxlength="120" :placeholder="'Столбец ' + (colIdx + 1)" />
+                                    <button type="button" class="text-stone-400 hover:text-rose-600 shrink-0 p-1"
+                                            @click="removeTableColumn(colIdx)" title="Удалить столбец"
+                                            :disabled="tableDraft.table_columns.length <= 1">×</button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                        <button type="button" class="ui-btn ui-btn--secondary justify-center" @click="closeTableModal()">Отмена</button>
+                        <button type="button" class="ui-btn ui-btn--primary justify-center" @click="saveTableField()">Сохранить таблицу</button>
+                    </div>
+                </div>
+            </div>
             @error('fields')
                 <p class="text-sm text-rose-600">{{ $message }}</p>
             @enderror
@@ -369,8 +507,6 @@
             <div class="flex flex-wrap gap-1.5 rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50 dark:bg-stone-900/50 p-2">
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs font-semibold dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('bold')">B</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs italic dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('italic')">I</button>
-                <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs underline dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('underline')">U</button>
-                <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs line-through dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('strikeThrough')">S</button>
                 <span class="w-px h-6 bg-stone-200 dark:bg-stone-600 self-center"></span>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('justifyLeft')">Слева</button>
                 <button type="button" class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-600 dark:bg-stone-800" @click.prevent="execCmd('justifyCenter')">По центру</button>
@@ -397,7 +533,7 @@
                 <div class="flex flex-wrap gap-2">
                     <select x-model="selectedTokenField" class="flex-1 min-w-[12rem] rounded-lg border-stone-200 dark:border-stone-600 dark:bg-stone-900 text-sm">
                         <template x-for="field in fields" :key="'opt_'+field.uid">
-                            <option :value="field.key" x-text="field.key"></option>
+                            <option :value="field.key" x-text="(field.label && field.label !== field.key ? field.label + ' (' + field.key + ')' : field.key) + (field.type === 'table' ? ' — таблица' : '')"></option>
                         </template>
                     </select>
                     <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" @click="insertToken(selectedTokenField, 'body')">Вставить в текст</button>

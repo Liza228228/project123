@@ -87,11 +87,10 @@ class ImportExcelDataCommand extends Command
 
             $isPrimary = $this->normalizeBool($data['Основной'] ?? $data['Îñíîâíîé'] ?? 'Нет');
             $name = trim($data['Наименование'] ?? $data['Íàèìåíîâàíèå'] ?? '');
-            $code = trim($data['Код'] ?? $data['Êîä'] ?? '');
             $warehouseTypeName = trim($data['Тип склада'] ?? $data['Òèï ñêëàäà'] ?? '');
             $comment = trim($data['Комментарий'] ?? $data['Êîììåíòàðèé'] ?? '');
 
-            if ($name === '' || $code === '') {
+            if ($name === '') {
                 $skipped++;
 
                 continue;
@@ -104,9 +103,8 @@ class ImportExcelDataCommand extends Command
                     ['name' => $warehouseTypeName]
                 )->id;
             }
-            $warehouse = Warehouse::firstOrNew(['code' => $code]);
+            $warehouse = Warehouse::firstOrNew(['name' => $name]);
             $warehouse->is_primary = $isPrimary;
-            $warehouse->name = $name;
             $warehouse->warehouse_type_id = $warehouseTypeId;
             $warehouse->comment = $comment !== '' ? $comment : null;
             if ($warehouse->exists) {

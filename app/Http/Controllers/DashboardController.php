@@ -103,6 +103,8 @@ class DashboardController extends Controller
     private function applyApplicationIndexScope(Builder $applicationsQuery, User $user): void
     {
         if ($user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
+            $draftStatusId = \App\Models\ApplicationStatus::idForDraft();
+            $applicationsQuery->where('application_status_id', '!=', $draftStatusId);
             $applicationsQuery->where(function ($outer): void {
                 $outer->whereDoesntHave('user', function ($q): void {
                     $q->where('role_id', 4);
@@ -123,10 +125,7 @@ class DashboardController extends Controller
         }
 
         if ($user->hasRoleId(4)) {
-            $assignedSubdivisionIds = $user->assignedSubdivisions()
-                ->pluck('subdivisions.id')
-                ->map(fn ($id): int => (int) $id);
-            $applicationsQuery->whereIn('subdivision_id', $assignedSubdivisionIds);
+            $applicationsQuery->forSiteForemanAccess($user);
         }
     }
 }

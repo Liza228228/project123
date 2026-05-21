@@ -11,8 +11,6 @@ class MaterialStockMovementType extends Model
 
     public const NAME_ISSUE = 'Списание';
 
-    public const NAME_ADJUSTMENT = 'Корректировка';
-
     public $timestamps = false;
 
     protected $fillable = [

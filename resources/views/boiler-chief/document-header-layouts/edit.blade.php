@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="route('boiler-chief.document-header-layouts.index')">К списку макетов шапок</x-page-header-nav>
+            <x-page-header-nav :href="$backHref">{{ $backLabel }}</x-page-header-nav>
             <h2 class="font-semibold text-xl text-stone-900 dark:text-white min-w-0 break-words">Макет шапки: {{ $layout->title }}</h2>
         </div>
     </x-slot>
@@ -13,6 +13,8 @@
                 'httpMethod' => 'PUT',
                 'layout' => $layout,
                 'submitLabel' => 'Сохранить',
+                'returnTo' => $returnTo ?? null,
+                'backHref' => $backHref,
             ])
         </div>
     </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\ListingPerPage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,11 +33,9 @@ class UserController extends Controller
             $statusFilter = 'all';
         }
 
-        $allowedPerPage = [10,15, 20, 25, 30, 35, 40, 45, 50];
-        $perPage = (int) $request->integer('per_page', 20);
-        if (! in_array($perPage, $allowedPerPage, true)) {
-            $perPage = 20;
-        }
+        $pagination = ListingPerPage::fromRequest($request);
+        $perPage = $pagination['perPage'];
+        $allowedPerPage = $pagination['allowedPerPage'];
 
         $usersQuery = User::query()->with('role');
 
@@ -68,7 +67,7 @@ class UserController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        return view('users.index', compact('users', 'roles', 'search', 'selectedRoleId', 'statusFilter', 'perPage', 'sortState'));
+        return view('users.index', compact('users', 'roles', 'search', 'selectedRoleId', 'statusFilter', 'perPage', 'allowedPerPage', 'sortState'));
     }
 
     public function create(): View
@@ -214,7 +213,7 @@ class UserController extends Controller
     }
 
     /**
-     * @param array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string} $sortState
+     * @param  array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string}  $sortState
      */
     private function applyUserSorting($usersQuery, array $sortState): void
     {
@@ -254,7 +253,6 @@ class UserController extends Controller
             'patronymic' => 'patronymic',
             'email' => 'email',
             'role' => 'role_id',
-            'status' => 'is_blocked',
             'created_at' => 'created_at',
         ];
     }

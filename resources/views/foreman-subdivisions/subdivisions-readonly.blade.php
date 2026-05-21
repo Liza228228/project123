@@ -45,6 +45,7 @@
                                   data-dadata-clean-url="{{ route('api.dadata.address.clean', [], false) }}">
                                 @csrf
                                 <h3 class="text-sm font-semibold text-black dark:text-white">Добавить склад</h3>
+                              
                                 <div class="grid gap-2 sm:grid-cols-2">
                                     <select
                                         name="subdivision_id"
@@ -64,17 +65,6 @@
                                         placeholder="Название склада"
                                         class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                     />
-                                    <input
-                                        type="text"
-                                        name="code"
-                                        value="{{ old('code') }}"
-                                        placeholder="Код склада"
-                                        class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
-                                    />
-                                    <label class="inline-flex items-center gap-2 text-sm text-black dark:text-white">
-                                        <input type="checkbox" name="is_primary" value="1" @checked(old('is_primary') === '1') class="rounded border-stone-300 text-stone-600 shadow-sm focus:ring-stone-500">
-                                        Основной склад
-                                    </label>
                                 </div>
                                 <div class="relative" data-dadata-address-field>
                                     <input
@@ -97,7 +87,6 @@
                                 >{{ old('comment') }}</textarea>
                                 <x-input-error :messages="$errors->get('subdivision_id')" />
                                 <x-input-error :messages="$errors->get('warehouse_name')" />
-                                <x-input-error :messages="$errors->get('code')" />
                                 <x-input-error :messages="$errors->get('address')" />
                                 <x-input-error :messages="$errors->get('comment')" />
                                 <button type="submit" class="ui-btn ui-btn--primary">
@@ -114,7 +103,7 @@
                                 <input
                                     id="subdivision-search"
                                     type="text"
-                                    placeholder="Подразделение, склад или код склада..."
+                                    placeholder="Подразделение или склад..."
                                     class="block w-full rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                 />
                             </div>
@@ -137,7 +126,7 @@
                                         name="per_page"
                                         class="block w-full sm:w-32 rounded-lg border-stone-300 dark:border-stone-600 dark:bg-stone-900 dark:text-white text-sm shadow-sm focus:ring-stone-500 focus:border-stone-500"
                                     >
-                                        @foreach(($allowedPerPage ?? [10, 25, 50]) as $size)
+                                        @foreach(($allowedPerPage ?? [10, 15, 20, 30, 50]) as $size)
                                             <option value="{{ $size }}" @selected(($perPage ?? ($defaultPerPage ?? 10)) === $size)>{{ $size }}</option>
                                         @endforeach
                                     </select>
@@ -159,6 +148,45 @@
                         По выбранным фильтрам ничего не найдено.
                     </div>
 
+                    @if(($canViewAdministration ?? false) && ($administrationSubdivision ?? null))
+                        <div class="mb-6 rounded-xl border border-orange-300/90 bg-orange-50/70 p-4 dark:border-orange-800/60 dark:bg-orange-950/30">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-orange-900/90 dark:text-orange-100/90 mb-3">
+                                Главный склад
+                            </p>
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <p class="text-xs text-black/70 dark:text-white/70 mb-0.5">Подразделение</p>
+                                    <p class="text-sm font-semibold text-black dark:text-white">{{ $administrationSubdivision->name }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-black/70 dark:text-white/70 mb-0.5">Склады</p>
+                                    @if($administrationSubdivision->warehouses->isEmpty())
+                                        <p class="text-sm text-black dark:text-white">Складов нет</p>
+                                    @else
+                                        <ul class="space-y-1">
+                                            @foreach($administrationSubdivision->warehouses as $warehouse)
+                                                <li class="text-sm text-black dark:text-white rounded-md bg-white/80 dark:bg-stone-950/50 px-2 py-1.5">
+                                                    <span class="font-medium">{{ $warehouse->name }}</span>
+                                                    @if($warehouse->is_primary)
+                                                        <span class="ms-2 inline-flex items-center rounded-full bg-orange-200/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-950 dark:bg-orange-900/50 dark:text-orange-100">
+                                                            Основной
+                                                        </span>
+                                                    @endif
+                                                    @if($warehouse->formatted_address !== '')
+                                                        <div class="mt-1 text-xs opacity-75">{{ $warehouse->formatted_address }}</div>
+                                                    @endif
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-black/75 dark:text-white/75">
+                                Доступ к складам этого подразделения — только у директора, технического директора и начальника отдела снабжения. Дополнительные склады добавляются формой выше.
+                            </p>
+                        </div>
+                    @endif
+
                     <div class="app-table-shell">
                         <table class="min-w-full">
                             <thead>
@@ -171,7 +199,7 @@
                                 @forelse($subdivisions as $subdivision)
                                     @php
                                         $warehouseSearchBlob = $subdivision->warehouses
-                                            ->map(fn ($warehouse) => mb_strtolower(trim(($warehouse->code ?? '').' '.$warehouse->name.' '.$warehouse->formatted_address)))
+                                            ->map(fn ($warehouse) => mb_strtolower(trim($warehouse->name.' '.$warehouse->formatted_address)))
                                             ->implode(' ');
                                     @endphp
                                     <tr
@@ -192,8 +220,6 @@
                                                 <ul class="space-y-1">
                                                     @foreach($subdivision->warehouses as $warehouse)
                                                         <li class="text-sm text-black dark:text-white rounded-md bg-stone-50 dark:bg-stone-900/20 px-2 py-1">
-                                                            <span class="font-mono text-xs opacity-80">{{ $warehouse->code }}</span>
-                                                            <span class="opacity-70">—</span>
                                                             {{ $warehouse->name }}
                                                             @if($warehouse->formatted_address !== '')
                                                                 <div class="mt-1 text-xs opacity-75">{{ $warehouse->formatted_address }}</div>

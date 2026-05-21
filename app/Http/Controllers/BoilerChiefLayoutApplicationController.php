@@ -8,6 +8,7 @@ use App\Models\Application;
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
 use App\Models\User;
+use App\Support\ListingPerPage;
 use App\Support\RequestLayoutDocumentBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -19,13 +20,20 @@ class BoilerChiefLayoutApplicationController extends Controller
 {
     public function index(Request $request): View
     {
+        $user = $request->user();
+        $pagination = ListingPerPage::fromRequest($request);
         $submissions = RequestSubmission::query()
+            ->ownedBy($user ?? 0)
             ->with(['requestLayout', 'creator'])
             ->orderByDesc('id')
-            ->paginate(20);
+            ->paginate($pagination['perPage'])
+            ->withQueryString();
 
         return view('boiler-chief.layout-applications.index', [
             'submissions' => $submissions,
+            'perPage' => $pagination['perPage'],
+            'allowedPerPage' => $pagination['allowedPerPage'],
+            'defaultPerPage' => $pagination['defaultPerPage'],
         ]);
     }
 
@@ -109,8 +117,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->limit(300);
 
         if ($user->hasRoleId(4)) {
-            $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
-            $query->whereIn('subdivision_id', $subdivisionIds);
+            $query->forSiteForemanAccess($user);
         } elseif ($user->hasRoleId(7)) {
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $query->whereIn('subdivision_id', $subdivisionIds);
@@ -271,8 +278,11 @@ class BoilerChiefLayoutApplicationController extends Controller
         if (! $submission->requestLayout) {
             abort(404);
         }
-        if (! $user->hasAnyRoleId(User::LAYOUT_APPLICATION_REPORT_ROLE_IDS)) {
+        if (! $user->hasAnyRoleId(User::REPORT_LAYOUT_FILL_ROLE_IDS)) {
             abort(403);
+        }
+        if ((int) $submission->created_by !== (int) $user->id) {
+            abort(403, 'Нет доступа к этому отчёту.');
         }
     }
 }

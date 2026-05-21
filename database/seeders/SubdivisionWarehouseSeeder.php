@@ -38,17 +38,17 @@ class SubdivisionWarehouseSeeder extends Seeder
 
             for ($n = 1; $n <= $toAdd; $n++) {
                 $slot = $existing + $n;
-                $code = $this->makeWarehouseCode($subdivision->id, $slot);
                 $finalTotal = $existing + $toAdd;
                 $name = $finalTotal === 1
                     ? 'Склад'
                     : 'Склад №'.$slot;
 
                 Warehouse::query()->updateOrCreate(
-                    ['code' => $code],
                     [
-                        'name' => $name,
                         'subdivision_id' => $subdivision->id,
+                        'name' => $name,
+                    ],
+                    [
                         'warehouse_type_id' => $defaultType->id,
                         'is_primary' => false,
                         'comment' => 'Подразделение: '.$subdivision->name,
@@ -56,16 +56,5 @@ class SubdivisionWarehouseSeeder extends Seeder
                 );
             }
         }
-    }
-
-    private function makeWarehouseCode(int $subdivisionId, int $index): string
-    {
-        $readable = sprintf('S%dW%d', $subdivisionId, $index);
-
-        if (strlen($readable) <= 10) {
-            return $readable;
-        }
-
-        return strtoupper(substr(hash('sha256', 'wh|'.$subdivisionId.'|'.$index), 0, 10));
     }
 }

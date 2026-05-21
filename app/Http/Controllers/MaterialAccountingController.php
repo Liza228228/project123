@@ -10,6 +10,8 @@ use App\Models\Subdivision;
 use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Support\AdministrationWarehouse;
+use App\Support\PieceQuantity;
 use App\Support\MaterialsListPerPage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,7 +25,7 @@ class MaterialAccountingController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
-        $canManage = $user?->hasAnyRoleId([1, 6, 2]) ?? false;
+        $canManage = $user?->hasAnyRoleId(User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS) ?? false;
 
         return $this->renderIndex($request, $canManage);
     }
@@ -31,17 +33,39 @@ class MaterialAccountingController extends Controller
     public function movementsJournal(Request $request): View
     {
         $user = $request->user();
-        $canManage = $user?->hasAnyRoleId([1, 6, 2]) ?? false;
+        $canManage = $user?->hasAnyRoleId(User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS) ?? false;
+
+        $scopedWarehouseIds = $this->materialsJournalWarehouseIdsScopedToUserSubdivisions($user);
 
         $warehouseFilter = $request->integer('warehouse_id');
         $selectedWarehouseId = $warehouseFilter > 0 ? $warehouseFilter : null;
+        if ($scopedWarehouseIds !== null && $selectedWarehouseId !== null && ! in_array($selectedWarehouseId, $scopedWarehouseIds, true)) {
+            $selectedWarehouseId = null;
+        }
 
-        $warehouses = Warehouse::query()
+        $warehousesQuery = Warehouse::query()
             ->with('subdivision:id,name')
-            ->orderBy('name')
-            ->get(['id', 'name', 'subdivision_id']);
+            ->orderBy('name');
+
+        if (! AdministrationWarehouse::userCanAccess($user)) {
+            AdministrationWarehouse::excludeAdministrationWarehouse($warehousesQuery);
+        }
+
+        if ($scopedWarehouseIds !== null) {
+            if ($scopedWarehouseIds === []) {
+                $warehousesQuery->whereRaw('0 = 1');
+            } else {
+                $warehousesQuery->whereIn('id', $scopedWarehouseIds);
+            }
+        }
+
+        $warehouses = $warehousesQuery->get(['id', 'name', 'subdivision_id']);
 
         $movementTypes = MaterialStockMovementType::query()
+            ->whereIn('name', [
+                MaterialStockMovementType::NAME_RECEIPT,
+                MaterialStockMovementType::NAME_ISSUE,
+            ])
             ->orderBy('id')
             ->get(['id', 'name']);
 
@@ -53,14 +77,24 @@ class MaterialAccountingController extends Controller
 
         $movementsQuery = MaterialStockMovement::query()
             ->with([
-                'equipment:id,name,measurement_unit_id',
+                'equipment:id,name,value,measurement_unit_id',
                 'equipment.measurementUnit:id,code,unit_type_id',
                 'equipment.measurementUnit.unitType:id,code',
-                'warehouse:id,name',
+                'warehouse:id,name,subdivision_id',
+                'warehouse.subdivision:id,name',
                 'movementType:id,name',
+                'creator:id,surname,name,patronymic',
             ])
             ->orderByDesc('created_at')
             ->orderByDesc('id');
+
+        if ($scopedWarehouseIds !== null) {
+            if ($scopedWarehouseIds === []) {
+                $movementsQuery->whereRaw('0 = 1');
+            } else {
+                $movementsQuery->whereIn('warehouse_id', $scopedWarehouseIds);
+            }
+        }
 
         if ($selectedWarehouseId !== null) {
             $movementsQuery->where('warehouse_id', $selectedWarehouseId);
@@ -75,6 +109,9 @@ class MaterialAccountingController extends Controller
 
         $materialsJournalBackUrl = $this->materialsJournalBackUrl($user, $selectedWarehouseId);
 
+        $materialsJournalSubdivisionScoped = $scopedWarehouseIds !== null;
+        $mainWarehouseForJournalContext = $materialsJournalSubdivisionScoped ? $this->resolveMainWarehouse() : null;
+
         return view('materials.movements-journal', compact(
             'canManage',
             'warehouses',
@@ -83,15 +120,57 @@ class MaterialAccountingController extends Controller
             'selectedWarehouseId',
             'selectedMovementTypeId',
             'materialsJournalBackUrl',
+            'materialsJournalSubdivisionScoped',
+            'mainWarehouseForJournalContext',
         ) + $journalPerPage);
     }
 
     /**
-     * «Учёт оборудования» (supply_head) или «Остатки по складам» (остальные роли с /materials/overview).
+     * Склады, по которым мастер участка / начальник котельной может видеть журнал (только свои подразделения).
+     *
+     * @return list<int>|null null — без ограничения (прочие роли).
+     */
+    private function materialsJournalWarehouseIdsScopedToUserSubdivisions(?User $user): ?array
+    {
+        if (! $user) {
+            return null;
+        }
+
+        if ($user->hasRoleId(4)) {
+            $subdivisionIds = $user->assignedSubdivisions()
+                ->pluck('subdivisions.id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        } elseif ($user->hasRoleId(7)) {
+            $subdivisionIds = $user->boilerChiefSubdivisions()
+                ->pluck('subdivisions.id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        } else {
+            return null;
+        }
+
+        if ($subdivisionIds === []) {
+            return [];
+        }
+
+        return Warehouse::query()
+            ->whereIn('subdivision_id', $subdivisionIds)
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * «Учёт оборудования» (роли {@see User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS} и бухгалтер для просмотра) или «Остатки по складам».
      */
     private function materialsJournalBackUrl(?User $user, ?int $selectedWarehouseId): string
     {
-        if ($user?->hasAnyRoleId([1, 6, 2, 3])) {
+        if ($user?->hasAnyRoleId([1, 2, 3])) {
             return route('materials.index', array_filter(['warehouse_id' => $selectedWarehouseId]));
         }
 
@@ -112,7 +191,8 @@ class MaterialAccountingController extends Controller
         $user = $request->user();
         $selectedSubdivisionId = $request->integer('subdivision_id');
         $selectedWarehouseId = $request->integer('warehouse_id');
-        $mainWarehouse = $this->resolveMainWarehouse();
+        $canAccessAdministration = AdministrationWarehouse::userCanAccess($user);
+        $mainWarehouse = $canAccessAdministration ? $this->resolveMainWarehouse() : null;
         $hasExplicitFilters = $request->filled('subdivision_id') || $request->filled('warehouse_id');
         $usingDefaultMainWarehouse = false;
 
@@ -122,7 +202,14 @@ class MaterialAccountingController extends Controller
             $usingDefaultMainWarehouse = true;
         }
 
+        if ($selectedWarehouseId > 0 && ! $canAccessAdministration && AdministrationWarehouse::isAdministrationWarehouseId($selectedWarehouseId)) {
+            abort(403, 'Просмотр остатков складов подразделения «Администрация» доступен только директору, техническому директору и начальнику отдела снабжения.');
+        }
+
         $subdivisionsQuery = Subdivision::query()->orderBy('name');
+        if (! $canAccessAdministration) {
+            AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionsQuery);
+        }
         if ($user->hasRoleId(4)) {
             $subdivisionIds = $user->assignedSubdivisions()->pluck('subdivisions.id');
             $subdivisionsQuery->whereIn('id', $subdivisionIds);
@@ -146,7 +233,7 @@ class MaterialAccountingController extends Controller
             $warehouses = Warehouse::query()
                 ->where('subdivision_id', $selectedSubdivisionId)
                 ->orderBy('name')
-                ->get(['id', 'name', 'code', 'subdivision_id']);
+                ->get(['id', 'name', 'subdivision_id']);
         }
 
         $selectedWarehouse = $warehouses->firstWhere('id', $selectedWarehouseId);
@@ -210,22 +297,40 @@ class MaterialAccountingController extends Controller
 
         $balancesPerPage = MaterialsListPerPage::fromRequest($request, 'balances');
 
-        $warehouses = Warehouse::query()
+        $warehousesQuery = Warehouse::query()
             ->with('subdivision:id,name')
-            ->orderBy('name')
-            ->get(['id', 'name', 'subdivision_id']);
+            ->orderBy('name');
+        if (! AdministrationWarehouse::userCanAccess($request->user())) {
+            AdministrationWarehouse::excludeAdministrationWarehouse($warehousesQuery);
+        }
+        $warehouses = $warehousesQuery->get(['id', 'name', 'subdivision_id']);
 
-        $materialsQuery = Equipment::query()
+        $catalogMaterialsQuery = Equipment::query()
             ->where('is_catalog', true)
             ->with(['measurementUnit:id,code,unit_type_id', 'measurementUnit.unitType:id,code'])
             ->orderBy('name');
 
+        $materialsBalancesQuery = Equipment::query()
+            ->where(function ($q) use ($selectedWarehouseId): void {
+                $q->where('is_catalog', true)
+                    ->orWhereExists(function ($sub) use ($selectedWarehouseId): void {
+                        $sub->selectRaw('1')
+                            ->from('material_stock_movements')
+                            ->whereColumn('material_stock_movements.equipment_id', 'equipment.id');
+                        if ($selectedWarehouseId !== null) {
+                            $sub->where('material_stock_movements.warehouse_id', $selectedWarehouseId);
+                        }
+                    });
+            })
+            ->with(['measurementUnit:id,code,unit_type_id', 'measurementUnit.unitType:id,code'])
+            ->orderBy('name');
+
         if ($canManage) {
-            $catalogMaterials = (clone $materialsQuery)->get();
-            $materialsBalancesPaginator = (clone $materialsQuery)->paginate($balancesPerPage['perPage'])->withQueryString();
+            $catalogMaterials = (clone $catalogMaterialsQuery)->get();
+            $materialsBalancesPaginator = (clone $materialsBalancesQuery)->paginate($balancesPerPage['perPage'])->withQueryString();
         } else {
             $catalogMaterials = null;
-            $materialsBalancesPaginator = $materialsQuery->paginate($balancesPerPage['perPage'])->withQueryString();
+            $materialsBalancesPaginator = $materialsBalancesQuery->paginate($balancesPerPage['perPage'])->withQueryString();
         }
 
         $measurementUnitsByType = MeasurementUnit::query()
@@ -247,6 +352,7 @@ class MaterialAccountingController extends Controller
             ->all();
 
         $balances = $this->buildMaterialBalances($selectedWarehouseId);
+        $balanceLines = $this->buildMaterialBalanceLines($selectedWarehouseId);
 
         $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
 
@@ -258,6 +364,7 @@ class MaterialAccountingController extends Controller
             'catalogMaterials',
             'materialsBalancesPaginator',
             'balances',
+            'balanceLines',
             'selectedWarehouseId',
             'mainWarehouse',
             'measurementUnitsByType',
@@ -269,8 +376,8 @@ class MaterialAccountingController extends Controller
 
     public function storeMaterial(Request $request): RedirectResponse
     {
-        if (! $request->user()?->hasAnyRoleId([1, 6, 2])) {
-            abort(403, 'Добавление оборудования доступно только директору, техническому директору и начальнику отдела снабжения.');
+        if (! $request->user()?->hasAnyRoleId(User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS)) {
+            abort(403, 'Добавление оборудования доступно только директору и начальнику отдела снабжения.');
         }
 
         $validated = $request->validate([
@@ -309,8 +416,8 @@ class MaterialAccountingController extends Controller
 
     public function storeMovement(Request $request): RedirectResponse
     {
-        if (! $request->user()?->hasAnyRoleId([1, 6, 2])) {
-            abort(403, 'Операции по складу доступны только директору, техническому директору и начальнику отдела снабжения.');
+        if (! $request->user()?->hasAnyRoleId(User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS)) {
+            abort(403, 'Операции по складу доступны только директору и начальнику отдела снабжения.');
         }
 
         $validated = $request->validate([
@@ -328,6 +435,12 @@ class MaterialAccountingController extends Controller
 
         $typeModel = MaterialStockMovementType::query()->findOrFail((int) $validated['material_stock_movement_type_id']);
         $typeName = (string) $typeModel->name;
+
+        if (! in_array($typeName, [MaterialStockMovementType::NAME_RECEIPT, MaterialStockMovementType::NAME_ISSUE], true)) {
+            throw ValidationException::withMessages([
+                'material_stock_movement_type_id' => 'Допустимы только типы «Приход» и «Списание».',
+            ]);
+        }
 
         $equipmentUnitType = (string) ($equipment->measurementUnit?->unitType?->code ?? '');
 
@@ -359,8 +472,14 @@ class MaterialAccountingController extends Controller
             }
         }
 
+        if (PieceQuantity::isPieceMeasurement($equipmentUnitType)) {
+            PieceQuantity::assertWholeQuantity($request->input('quantity'));
+        }
+
         $type = $typeName;
-        $quantity = (float) $validated['quantity'];
+        $quantity = PieceQuantity::isPieceMeasurement($equipmentUnitType)
+            ? (float) PieceQuantity::normalizeStoredQuantity($validated['quantity'], $equipmentUnitType)
+            : (float) $validated['quantity'];
         $mainWarehouse = $this->resolveMainWarehouse();
 
         if ($type === MaterialStockMovementType::NAME_RECEIPT) {
@@ -378,20 +497,18 @@ class MaterialAccountingController extends Controller
             ]);
         }
 
-        if ($type === MaterialStockMovementType::NAME_ADJUSTMENT && abs($quantity) < 0.0005) {
-            throw ValidationException::withMessages([
-                'quantity' => 'Для корректировки укажите положительное или отрицательное значение.',
-            ]);
-        }
-
         $receiptVariant = $validated['receipt_variant'] ?? null;
 
-        DB::transaction(function () use ($validated, $type, $quantity, $receiptVariant) {
+        DB::transaction(function () use ($validated, $type, $quantity, $receiptVariant, $equipment) {
             if ($type === MaterialStockMovementType::NAME_ISSUE) {
                 $balance = $this->currentBalance((int) $validated['equipment_id'], (int) $validated['warehouse_id']);
                 if ($balance < $quantity) {
                     throw ValidationException::withMessages([
-                        'quantity' => 'Недостаточно остатка на складе. Доступно: '.number_format($balance, 3, '.', ' '),
+                        'quantity' => 'Недостаточно остатка на складе. Доступно: '.PieceQuantity::formatForDisplay(
+                            $balance,
+                            $equipment->measurementUnit?->code,
+                            $equipment->measurementUnit?->unitType?->code
+                        ),
                     ]);
                 }
             }
@@ -418,26 +535,46 @@ class MaterialAccountingController extends Controller
 
     /**
      * Агрегат приход / списание / остаток по оборудованию на одном складе (без фильтра по остатку).
+     * Для спецодежды — отдельная строка на каждый размер (S, M, L…) из прихода.
      *
      * @return \Illuminate\Database\Eloquent\Builder<\App\Models\MaterialStockMovement>
      */
     private function overviewWarehouseBalanceBaseQuery(int $warehouseId): \Illuminate\Database\Eloquent\Builder
     {
+        return $this->warehouseBalanceAggregatesQuery()
+            ->where('material_stock_movements.warehouse_id', $warehouseId);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\MaterialStockMovement>
+     */
+    private function warehouseBalanceAggregatesQuery(): \Illuminate\Database\Eloquent\Builder
+    {
         $r = MaterialStockMovementType::NAME_RECEIPT;
         $i = MaterialStockMovementType::NAME_ISSUE;
-        $a = MaterialStockMovementType::NAME_ADJUSTMENT;
+        $clothingType = PieceQuantity::CLOTHING_MEASUREMENT_TYPE;
+
+        $unitCodeSql = "CASE WHEN unit_types.code = '{$clothingType}' THEN COALESCE(NULLIF(TRIM(MAX(material_stock_movements.receipt_variant)), ''), NULLIF(TRIM(MAX(equipment.value)), ''), 'разм') ELSE COALESCE(MAX(measurement_units.code), 'шт') END";
 
         return MaterialStockMovement::query()
             ->join('equipment', 'equipment.id', '=', 'material_stock_movements.equipment_id')
             ->join('material_stock_movement_types as msm_types', 'msm_types.id', '=', 'material_stock_movements.material_stock_movement_type_id')
             ->leftJoin('measurement_units', 'measurement_units.id', '=', 'equipment.measurement_unit_id')
-            ->where('material_stock_movements.warehouse_id', $warehouseId)
-            ->groupBy('equipment.id', 'equipment.name', 'measurement_units.code')
+            ->leftJoin('unit_types', 'unit_types.id', '=', 'measurement_units.unit_type_id')
+            ->groupBy(
+                'equipment.id',
+                'equipment.name',
+                'unit_types.code',
+                'measurement_units.code',
+                'material_stock_movements.receipt_variant',
+                'equipment.value',
+            )
             ->selectRaw('equipment.id as equipment_id')
             ->selectRaw('equipment.name as equipment_name')
-            ->selectRaw("COALESCE(measurement_units.code, 'шт') as unit_code")
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity WHEN msm_types.name = ? AND material_stock_movements.quantity > 0 THEN material_stock_movements.quantity ELSE 0 END) as qty_in', [$r, $a])
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity WHEN msm_types.name = ? AND material_stock_movements.quantity < 0 THEN -material_stock_movements.quantity ELSE 0 END) as qty_out', [$i, $a])
+            ->selectRaw('unit_types.code as measurement_type_code')
+            ->selectRaw("{$unitCodeSql} as unit_code")
+            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_in', [$r])
+            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_out', [$i])
             ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) as balance', [$i]);
     }
 
@@ -446,29 +583,48 @@ class MaterialAccountingController extends Controller
      */
     private function buildMaterialBalances(?int $warehouseId = null): array
     {
-        $r = MaterialStockMovementType::NAME_RECEIPT;
-        $i = MaterialStockMovementType::NAME_ISSUE;
-        $a = MaterialStockMovementType::NAME_ADJUSTMENT;
-
-        $query = MaterialStockMovement::query()
-            ->join('material_stock_movement_types as msm_types', 'msm_types.id', '=', 'material_stock_movements.material_stock_movement_type_id')
-            ->selectRaw('material_stock_movements.equipment_id as equipment_id')
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity WHEN msm_types.name = ? AND material_stock_movements.quantity > 0 THEN material_stock_movements.quantity ELSE 0 END) as qty_in', [$r, $a])
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity WHEN msm_types.name = ? AND material_stock_movements.quantity < 0 THEN -material_stock_movements.quantity ELSE 0 END) as qty_out', [$i, $a])
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) as qty_balance', [$i])
-            ->groupBy('material_stock_movements.equipment_id');
-
-        if ($warehouseId !== null) {
-            $query->where('warehouse_id', $warehouseId);
+        $lines = $this->buildMaterialBalanceLines($warehouseId);
+        $result = [];
+        foreach ($lines as $equipmentId => $rows) {
+            $in = 0.0;
+            $out = 0.0;
+            $balance = 0.0;
+            foreach ($rows as $row) {
+                $in += (float) $row['in'];
+                $out += (float) $row['out'];
+                $balance += (float) $row['balance'];
+            }
+            $result[$equipmentId] = [
+                'in' => $in,
+                'out' => $out,
+                'balance' => $balance,
+            ];
         }
 
-        $rows = $query->get();
+        return $result;
+    }
+
+    /**
+     * Строки остатков по оборудованию; для одежды — по размеру.
+     *
+     * @return array<int, list<array{in: float, out: float, balance: float, unit_code: string, measurement_type_code: string}>>
+     */
+    private function buildMaterialBalanceLines(?int $warehouseId = null): array
+    {
+        $query = $this->warehouseBalanceAggregatesQuery();
+        if ($warehouseId !== null) {
+            $query->where('material_stock_movements.warehouse_id', $warehouseId);
+        }
+
         $result = [];
-        foreach ($rows as $row) {
-            $result[(int) $row->equipment_id] = [
+        foreach ($query->get() as $row) {
+            $equipmentId = (int) $row->equipment_id;
+            $result[$equipmentId][] = [
                 'in' => (float) $row->qty_in,
                 'out' => (float) $row->qty_out,
-                'balance' => (float) $row->qty_balance,
+                'balance' => (float) $row->balance,
+                'unit_code' => trim((string) ($row->unit_code ?? '')) ?: 'шт',
+                'measurement_type_code' => trim((string) ($row->measurement_type_code ?? '')),
             ];
         }
 
@@ -489,10 +645,7 @@ class MaterialAccountingController extends Controller
 
     private function resolveMainWarehouse(): ?Warehouse
     {
-        return Warehouse::query()
-            ->where('is_primary', true)
-            ->orderBy('id')
-            ->first();
+        return AdministrationWarehouse::resolvePrimaryWarehouse();
     }
 
     /**

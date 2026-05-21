@@ -6,6 +6,7 @@ use App\Models\Subdivision;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\DadataAddressService;
+use App\Support\AdministrationWarehouse;
 use App\Support\AssignmentListPerPage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,9 +27,16 @@ class ForemanSubdivisionAssignmentController extends Controller
         $allowedPerPage = $pagination['allowedPerPage'];
         $defaultPerPage = $pagination['defaultPerPage'];
 
+        $canViewAdministration = AdministrationWarehouse::userCanAccess($request->user());
+        $administrationSubdivision = $canViewAdministration
+            ? AdministrationWarehouse::resolveSubdivisionWithWarehouses()
+            : null;
+
         $subdivisionsQuery = Subdivision::query()
             ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name');
+
+        AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionsQuery);
 
         if ($request->user()?->hasRoleId(7)) {
             $ids = $request->user()->boilerChiefSubdivisions()->pluck('subdivisions.id');
@@ -38,9 +46,11 @@ class ForemanSubdivisionAssignmentController extends Controller
         $subdivisions = $subdivisionsQuery
             ->paginate($perPage)
             ->withQueryString();
-        $subdivisionOptions = Subdivision::query()
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $subdivisionOptionsQuery = Subdivision::query()->orderBy('name');
+        if (! $canViewAdministration) {
+            AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionOptionsQuery);
+        }
+        $subdivisionOptions = $subdivisionOptionsQuery->get(['id', 'name']);
 
         $canManage = $this->canManageSubdivisionInfrastructure($request);
 
@@ -48,6 +58,8 @@ class ForemanSubdivisionAssignmentController extends Controller
             'subdivisions',
             'subdivisionOptions',
             'canManage',
+            'canViewAdministration',
+            'administrationSubdivision',
             'perPage',
             'allowedPerPage',
             'defaultPerPage',
@@ -138,9 +150,7 @@ class ForemanSubdivisionAssignmentController extends Controller
         $validated = $request->validate([
             'subdivision_id' => ['required', 'integer', 'exists:subdivisions,id'],
             'warehouse_name' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:255', 'unique:warehouses,code'],
             'address' => ['required', 'string', 'max:255'],
-            'is_primary' => ['nullable', 'boolean'],
             'comment' => ['nullable', 'string'],
         ], [
             'subdivision_id.required' => 'Выберите подразделение.',
@@ -148,14 +158,35 @@ class ForemanSubdivisionAssignmentController extends Controller
             'warehouse_name.required' => 'Укажите название склада.',
             'warehouse_name.string' => 'Название склада должно быть текстом.',
             'warehouse_name.max' => 'Название склада не может быть длиннее :max символов.',
-            'code.required' => 'Укажите код склада.',
-            'code.string' => 'Код склада должен быть текстом.',
-            'code.max' => 'Код склада не может быть длиннее :max символов.',
-            'code.unique' => 'Склад с таким кодом уже существует.',
             'address.required' => 'Укажите адрес склада.',
             'address.string' => 'Адрес склада должен быть текстом.',
             'address.max' => 'Адрес склада не может быть длиннее :max символов.',
         ]);
+
+        if (AdministrationWarehouse::isAdministrationSubdivisionId((int) $validated['subdivision_id'])
+            && ! AdministrationWarehouse::userCanAccess($request->user())) {
+            throw ValidationException::withMessages([
+                'subdivision_id' => 'Склады подразделения «'.AdministrationWarehouse::SUBDIVISION_NAME.'» может добавлять только директор, технический директор или начальник отдела снабжения.',
+            ]);
+        }
+
+        $warehouseName = trim((string) $validated['warehouse_name']);
+
+        if (AdministrationWarehouse::isReservedWarehouseName($warehouseName)) {
+            throw ValidationException::withMessages([
+                'warehouse_name' => 'Склад «'.AdministrationWarehouse::WAREHOUSE_NAME.'» уже есть в системе (главный склад). Добавить его повторно нельзя — укажите другое название.',
+            ]);
+        }
+
+        $duplicateInSubdivision = Warehouse::query()
+            ->where('subdivision_id', (int) $validated['subdivision_id'])
+            ->whereRaw('LOWER(TRIM(name)) = ?', [AdministrationWarehouse::normalizeWarehouseName($warehouseName)])
+            ->exists();
+        if ($duplicateInSubdivision) {
+            throw ValidationException::withMessages([
+                'warehouse_name' => 'В этом подразделении уже есть склад с таким названием.',
+            ]);
+        }
 
         $normalizedAddress = trim((string) $validated['address']);
         $addressParts = [
@@ -195,22 +226,12 @@ class ForemanSubdivisionAssignmentController extends Controller
             ]);
         }
 
-        $warehouseName = trim((string) $validated['warehouse_name']);
-        $isAdministrationWarehouse = preg_match('/администрац/iu', $warehouseName) === 1;
-        $isPrimary = (bool) ($validated['is_primary'] ?? false) || $isAdministrationWarehouse;
-
-        DB::transaction(function () use ($validated, $warehouseName, $addressParts, $isPrimary): void {
-            if ($isPrimary) {
-                // In the system there must be only one priority warehouse.
-                Warehouse::query()->where('is_primary', true)->update(['is_primary' => false]);
-            }
-
+        DB::transaction(function () use ($validated, $warehouseName, $addressParts): void {
             Warehouse::query()->create([
                 'subdivision_id' => (int) $validated['subdivision_id'],
                 'name' => $warehouseName,
-                'code' => trim((string) $validated['code']),
                 ...$addressParts,
-                'is_primary' => $isPrimary,
+                'is_primary' => false,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
                 'warehouse_type_id' => null,
             ]);

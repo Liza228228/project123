@@ -17,14 +17,14 @@
         @if(!($canManage ?? false))
             <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
                 <p class="text-sm text-black dark:text-white opacity-90">
-                    Доступен просмотр остатков по складам. Журнал операций — по кнопке «Посмотреть журнал операций». Добавление оборудования и приход/расход доступны только директору, техническому директору и начальнику отдела снабжения.
+                    Доступен просмотр остатков по складам. Журнал операций — по кнопке «Посмотреть журнал операций». Добавление оборудования и приход/расход доступны только директору и начальнику отдела снабжения.
                 </p>
             </div>
         @endif
 
         @if($canManage ?? false)
         <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
-            <h3 class="text-lg font-semibold text-black dark:text-white">1) Добавить оборудование в справочник</h3>
+            <h3 class="text-lg font-semibold text-black dark:text-white"> Добавить оборудование в справочник</h3>
             <p class="mt-2 text-sm text-black/80 dark:text-white/80">
                 Размер, маркировка и фактическое количество указываются при поступлении на склад: для спецодежды — выбор размера, для длины, массы и штук — число в поле «Количество».
             </p>
@@ -58,7 +58,7 @@
 
         @if($canManage ?? false)
         <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
-            <h3 class="text-lg font-semibold text-black dark:text-white">2) Поступление оборудования на основной склад</h3>
+            <h3 class="text-lg font-semibold text-black dark:text-white"> Поступление оборудования на основной склад</h3>
             @if(!$mainWarehouse)
                 <div class="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/30 dark:text-red-300">
                     Основной склад не найден. Назначьте складу «Администрация» признак основного (`is_primary = true`).
@@ -67,7 +67,7 @@
             @php
                 $receiptEquipmentPickerOptions = $catalogMaterials->map(fn ($m) => [
                     'id' => (int) $m->id,
-                    'label' => $m->display_name.' ('.($m->measurementUnit?->code ?? 'шт').')',
+                    'label' => $m->display_name.' ('.$m->stockQuantityUnitLabel().')',
                     'unit_type_code' => (string) ($m->measurementUnit?->unitType?->code ?? ''),
                 ])->values()->all();
             @endphp
@@ -224,14 +224,27 @@
 
         <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-                <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? '3) Остатки оборудования' : '1) Остатки оборудования' }}</h3>
+                <h3 class="text-lg font-semibold text-black dark:text-white">{{ ($canManage ?? false) ? ' Остатки оборудования' : ' Остатки оборудования' }}</h3>
                 <form method="GET" action="{{ ($canManage ?? false) ? route('materials.index') : route('materials.overview') }}" class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end w-full sm:w-auto" data-auto-submit="filter">
                     <div class="min-w-0 sm:w-80">
                         <label for="warehouse_filter" class="app-form-label">Склад</label>
+                        <input
+                            id="warehouse_filter_search"
+                            type="search"
+                            class="app-input mb-2 min-h-0 w-full min-w-0 sm:max-w-xs"
+                            placeholder="Поиск по подразделению или складу"
+                            autocomplete="off"
+                        />
                         <select id="warehouse_filter" name="warehouse_id" class="app-select w-full min-w-0 sm:max-w-xs">
                             <option value="">Все склады</option>
                             @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected($selectedWarehouseId === $warehouse->id)>{{ $warehouse->name }}</option>
+                                <option value="{{ $warehouse->id }}" @selected($selectedWarehouseId === $warehouse->id)>
+                                    @if($warehouse->subdivision)
+                                        {{ $warehouse->subdivision->name }} — {{ $warehouse->name }}
+                                    @else
+                                        {{ $warehouse->name }}
+                                    @endif
+                                </option>
                             @endforeach
                         </select>
                     </div>
@@ -248,6 +261,9 @@
 
             <p class="mt-2 text-xs text-black/70 dark:text-white/70">
                 Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход». Подробный журнал операций — по кнопке «Посмотреть журнал операций» вверху страницы.
+                @if($canManage ?? false)
+                    Позиции, пришедшие по заявке как «своё оборудование» (не из справочника), тоже отображаются здесь, если по ним есть движения на выбранном складе.
+                @endif
             </p>
             @if($materialsBalancesPaginator->total() === 0)
                 <p class="mt-4 rounded-xl border border-dashed border-stone-300 px-4 py-6 text-center text-sm text-black/70 dark:border-stone-600 dark:text-white/70">
@@ -257,29 +273,53 @@
                 <div class="mt-4 md:hidden app-card-list">
                     @foreach($materialsBalancesPaginator as $material)
                         @php
-                            $row = $balances[$material->id] ?? ['in' => 0, 'out' => 0, 'balance' => 0];
-                            $unitCode = $material->measurementUnit?->code ?? 'шт';
+                            $aggregate = $balances[$material->id] ?? ['in' => 0, 'out' => 0, 'balance' => 0];
+                            $lines = $balanceLines[$material->id] ?? [];
+                            if ($lines === []) {
+                                $lines = [[
+                                    'in' => (float) $aggregate['in'],
+                                    'out' => (float) $aggregate['out'],
+                                    'balance' => (float) $aggregate['balance'],
+                                    'unit_code' => trim((string) ($material->measurementUnit?->code ?? '')) ?: 'шт',
+                                    'measurement_type_code' => (string) ($material->measurementUnit?->unitType?->code ?? ''),
+                                ]];
+                            }
                         @endphp
-                        <article class="app-card-list__item">
-                            <p class="text-sm font-medium text-black dark:text-white app-equipment-line">
-                                {{ $material->name }}
-                                <span class="text-black/55 dark:text-white/55">({{ $unitCode }})</span>
-                            </p>
-                            <dl class="grid grid-cols-3 gap-2 text-center text-xs">
-                                <div class="rounded-lg bg-stone-100/80 px-2 py-2 dark:bg-stone-800/80">
-                                    <dt class="font-medium uppercase tracking-wide text-black/55 dark:text-white/55">Приход</dt>
-                                    <dd class="mt-1 tabular-nums text-sm font-medium text-black dark:text-white">{{ number_format((float) $row['in'], 3, '.', ' ') }} {{ $unitCode }}</dd>
-                                </div>
-                                <div class="rounded-lg bg-stone-100/80 px-2 py-2 dark:bg-stone-800/80">
-                                    <dt class="font-medium uppercase tracking-wide text-black/55 dark:text-white/55">Расход</dt>
-                                    <dd class="mt-1 tabular-nums text-sm font-medium text-red-700 dark:text-red-300/90">{{ number_format((float) $row['out'], 3, '.', ' ') }} {{ $unitCode }}</dd>
-                                </div>
-                                <div class="rounded-lg bg-emerald-50/90 px-2 py-2 dark:bg-emerald-950/35">
-                                    <dt class="font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Остаток</dt>
-                                    <dd class="mt-1 tabular-nums text-sm font-semibold text-emerald-900 dark:text-emerald-100">{{ number_format((float) $row['balance'], 3, '.', ' ') }} {{ $unitCode }}</dd>
-                                </div>
-                            </dl>
-                        </article>
+                        @foreach($lines as $line)
+                            @php
+                                $unitCode = trim((string) ($line['unit_code'] ?? '')) ?: 'шт';
+                                $measurementTypeCode = trim((string) ($line['measurement_type_code'] ?? ''));
+                            @endphp
+                            <article class="app-card-list__item">
+                                <p class="text-sm font-medium text-black dark:text-white app-equipment-line">
+                                    @include('materials.partials.balance-equipment-title', [
+                                        'equipmentName' => $material->display_name,
+                                        'unitCode' => $unitCode,
+                                        'measurementTypeCode' => $measurementTypeCode,
+                                    ])
+                                </p>
+                                <dl class="grid grid-cols-3 gap-2 text-center text-xs">
+                                    <div class="rounded-lg bg-stone-100/80 px-2 py-2 dark:bg-stone-800/80">
+                                        <dt class="font-medium uppercase tracking-wide text-black/55 dark:text-white/55">Приход</dt>
+                                        <dd class="mt-1 text-sm font-medium text-black dark:text-white">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['in'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </dd>
+                                    </div>
+                                    <div class="rounded-lg bg-stone-100/80 px-2 py-2 dark:bg-stone-800/80">
+                                        <dt class="font-medium uppercase tracking-wide text-black/55 dark:text-white/55">Расход</dt>
+                                        <dd class="mt-1 text-sm font-medium text-red-700 dark:text-red-300/90">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['out'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </dd>
+                                    </div>
+                                    <div class="rounded-lg bg-emerald-50/90 px-2 py-2 dark:bg-emerald-950/35">
+                                        <dt class="font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Остаток</dt>
+                                        <dd class="mt-1 text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['balance'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </article>
+                        @endforeach
                     @endforeach
                 </div>
                 <div class="mt-4 hidden md:block app-table-shell">
@@ -295,15 +335,42 @@
                         <tbody>
                             @foreach($materialsBalancesPaginator as $material)
                                 @php
-                                    $row = $balances[$material->id] ?? ['in' => 0, 'out' => 0, 'balance' => 0];
-                                    $unitCode = $material->measurementUnit?->code ?? 'шт';
+                                    $aggregate = $balances[$material->id] ?? ['in' => 0, 'out' => 0, 'balance' => 0];
+                                    $lines = $balanceLines[$material->id] ?? [];
+                                    if ($lines === []) {
+                                        $lines = [[
+                                            'in' => (float) $aggregate['in'],
+                                            'out' => (float) $aggregate['out'],
+                                            'balance' => (float) $aggregate['balance'],
+                                            'unit_code' => trim((string) ($material->measurementUnit?->code ?? '')) ?: 'шт',
+                                            'measurement_type_code' => (string) ($material->measurementUnit?->unitType?->code ?? ''),
+                                        ]];
+                                    }
                                 @endphp
-                                <tr class="border-b border-stone-100 dark:border-stone-700/60">
-                                    <td class="py-2 pr-3">{{ $material->name }} ({{ $unitCode }})</td>
-                                    <td class="py-2 pr-3 text-right">{{ number_format((float) $row['in'], 3, '.', ' ') }} {{ $unitCode }}</td>
-                                    <td class="py-2 pr-3 text-right">{{ number_format((float) $row['out'], 3, '.', ' ') }} {{ $unitCode }}</td>
-                                    <td class="py-2 text-right font-semibold">{{ number_format((float) $row['balance'], 3, '.', ' ') }} {{ $unitCode }}</td>
-                                </tr>
+                                @foreach($lines as $line)
+                                    @php
+                                        $unitCode = trim((string) ($line['unit_code'] ?? '')) ?: 'шт';
+                                        $measurementTypeCode = trim((string) ($line['measurement_type_code'] ?? ''));
+                                    @endphp
+                                    <tr class="border-b border-stone-100 dark:border-stone-700/60">
+                                        <td class="py-2 pr-3">
+                                            @include('materials.partials.balance-equipment-title', [
+                                                'equipmentName' => $material->display_name,
+                                                'unitCode' => $unitCode,
+                                                'measurementTypeCode' => $measurementTypeCode,
+                                            ])
+                                        </td>
+                                        <td class="py-2 pr-3 text-right">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['in'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </td>
+                                        <td class="py-2 pr-3 text-right">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['out'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </td>
+                                        <td class="py-2 text-right font-semibold">
+                                            @include('materials.partials.balance-quantity-cell', ['quantity' => $line['balance'], 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                                        </td>
+                                    </tr>
+                                @endforeach
                             @endforeach
                         </tbody>
                     </table>
@@ -351,3 +418,8 @@
     })();
 </script>
 @endif
+@include('partials.js-filterable-select', [
+    'searchInputId' => 'warehouse_filter_search',
+    'selectInputId' => 'warehouse_filter',
+    'preserveSelection' => false,
+])

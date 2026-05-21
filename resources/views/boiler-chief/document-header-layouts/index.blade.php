@@ -44,7 +44,10 @@
                                                class="ui-btn ui-btn--secondary ui-btn--sm inline-flex items-center">
                                                 Изменить
                                             </a>
-                                            <form class="inline-block" method="POST" action="{{ route('boiler-chief.document-header-layouts.destroy', $layout) }}" onsubmit="return confirm('Удалить этот макет шапки?');">
+                                            <form class="inline-block" method="POST" action="{{ route('boiler-chief.document-header-layouts.destroy', $layout) }}"
+                                                data-app-confirm="Удалить этот макет шапки?"
+                                                data-app-confirm-variant="danger"
+                                                data-app-confirm-label="Да, удалить">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit" class="ui-btn ui-btn--danger ui-btn--sm inline-flex items-center">
@@ -67,7 +70,10 @@
                                        class="ui-btn ui-btn--secondary inline-flex justify-center">
                                         Изменить
                                     </a>
-                                    <form method="POST" action="{{ route('boiler-chief.document-header-layouts.destroy', $layout) }}" onsubmit="return confirm('Удалить этот макет шапки?');">
+                                    <form method="POST" action="{{ route('boiler-chief.document-header-layouts.destroy', $layout) }}"
+                                        data-app-confirm="Удалить этот макет шапки?"
+                                        data-app-confirm-variant="danger"
+                                        data-app-confirm-label="Да, удалить">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="ui-btn ui-btn--danger w-full inline-flex justify-center">

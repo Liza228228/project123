@@ -12,9 +12,9 @@ final class MaterialsListPerPage
      */
     public static function fromRequest(Request $request, string $section): array
     {
-        $allowed = config("materials_lists.{$section}.allowed", [10, 20, 50]);
+        $allowed = config("materials_lists.{$section}.allowed", [10, 15, 20, 30, 50]);
         if (! is_array($allowed) || $allowed === []) {
-            $allowed = [10, 20, 50];
+            $allowed = [10, 15, 20, 30, 50];
         }
         /** @var list<int> $allowed */
         $allowed = array_values(array_unique(array_map(static fn ($v): int => (int) $v, $allowed)));
