@@ -19,7 +19,7 @@ test('site foreman cannot access document header layouts', function (): void {
     $response = $this->actingAs($foreman)->get(route('boiler-chief.document-header-layouts.index'));
 
     $response->assertForbidden();
-    $response->assertSee('Раздел доступен только директору и техническому директору.', false);
+    $response->assertSee('Раздел доступен только директору, техническому директору и администратору.', false);
 });
 
 test('site foreman can open report layout catalog for filling', function (): void {
@@ -68,9 +68,26 @@ test('boiler chief can open report layout catalog but not template tools', funct
 
     $this->actingAs($chief)->get(route('boiler-chief.document-header-layouts.index'))
         ->assertForbidden()
-        ->assertSee('Раздел доступен только директору и техническому директору.', false);
+        ->assertSee('Раздел доступен только директору, техническому директору и администратору.', false);
 
     $this->actingAs($chief)->get(route('boiler-chief.request-layouts.create'))
         ->assertForbidden()
-        ->assertSee('Раздел доступен только директору и техническому директору.', false);
+        ->assertSee('Раздел доступен только директору, техническому директору и администратору.', false);
+});
+
+test('administrator can access report layout designer tools like technical director', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $admin = User::query()->create([
+        'surname' => 'Администратор',
+        'name' => 'Отчёты',
+        'patronymic' => 'Тест',
+        'email' => 'admin-layout-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => User::ADMINISTRATOR_ROLE_ID,
+    ]);
+
+    $this->actingAs($admin)->get(route('boiler-chief.document-header-layouts.index'))->assertOk();
+    $this->actingAs($admin)->get(route('boiler-chief.request-layouts.create'))->assertOk();
+    $this->actingAs($admin)->get(route('boiler-chief.layout-applications.index'))->assertOk();
 });

@@ -13,7 +13,7 @@ class EnsureUserIsReportLayoutDesigner
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->user() || ! $request->user()->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS)) {
-            abort(403, 'Раздел доступен только директору и техническому директору.');
+            abort(403, 'Раздел доступен только директору, техническому директору и администратору.');
         }
 
         return $next($request);

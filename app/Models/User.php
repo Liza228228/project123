@@ -49,8 +49,8 @@ class User extends Authenticatable
     /** @var list<int> */
     public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
 
-    /** Директор и технический директор — макеты шапок и конструктор макетов отчётов (PDF). */
-    public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [1, 6];
+    /** Директор, технический директор и администратор — макеты шапок и конструктор макетов отчётов (PDF). */
+    public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [1, 6, self::ADMINISTRATOR_ROLE_ID];
 
     /** @var list<int> */
     public const REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;

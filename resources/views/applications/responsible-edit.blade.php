@@ -15,9 +15,7 @@
                     Текущий ответственный: <span class="font-medium text-stone-900 dark:text-stone-100">{{ $responsible->surname }} {{ $responsible->name }} {{ $responsible->patronymic }}</span>@if($responsible->is_blocked) <span class="text-amber-800 dark:text-amber-200/90">(учётная запись заблокирована)</span>@endif.
                     Подразделение заявки: <span class="font-medium text-stone-900 dark:text-stone-100">{{ $application->subdivision?->name ?? '—' }}</span>.
                 </p>
-                <p class="text-xs text-stone-600 dark:text-stone-400">
-                    Новым ответственным можно назначить только активного мастера участка, которому в системе назначено <strong>это же</strong> подразделение.
-                </p>
+                
 
                 @if($replacementForemen->isEmpty())
                     <div class="rounded-xl border border-amber-200/90 bg-amber-50/80 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">

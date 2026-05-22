@@ -14,7 +14,7 @@ class AdministrationWarehouse
     public const WAREHOUSE_NAME = 'Администрация офис';
 
     /** @var list<int> */
-    public const ACCESS_ROLE_IDS = [1, 6, 2];
+    public const ACCESS_ROLE_IDS = [1, 6, 2, User::ACCOUNTANT_ROLE_ID];
 
     public static function userCanAccess(?User $user): bool
     {

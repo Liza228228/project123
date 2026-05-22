@@ -544,9 +544,7 @@
                                 @if($itemsFrozenAsBoilerRejectedForSupply->isNotEmpty())
                                     <div class="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/20">
                                         <h4 class="app-form-label !normal-case !mb-0">Не согласовано</h4>
-                                        <p class="text-xs text-black/80 dark:text-white/75">
-                                            Эти позиции уже не в согласовании снабжения на этом шаге — только просмотр. Ниже отмечайте и сохраняйте согласование только по остальным позициям.
-                                        </p>
+                                        
                                         <ul class="divide-y divide-amber-200/80 overflow-hidden rounded-lg border border-amber-200/70 dark:divide-amber-800/40 dark:border-amber-800/40">
                                             @foreach($itemsFrozenAsBoilerRejectedForSupply->sortBy('id') as $item)
                                                 <li class="space-y-1 bg-white/90 px-3 py-2.5 dark:bg-stone-900/50">

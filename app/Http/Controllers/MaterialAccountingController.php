@@ -203,7 +203,7 @@ class MaterialAccountingController extends Controller
         }
 
         if ($selectedWarehouseId > 0 && ! $canAccessAdministration && AdministrationWarehouse::isAdministrationWarehouseId($selectedWarehouseId)) {
-            abort(403, 'Просмотр остатков складов подразделения «Администрация» доступен только директору, техническому директору и начальнику отдела снабжения.');
+            abort(403, 'Просмотр остатков складов подразделения «Администрация» доступен только директору, техническому директору, начальнику отдела снабжения и бухгалтеру.');
         }
 
         $subdivisionsQuery = Subdivision::query()->orderBy('name');

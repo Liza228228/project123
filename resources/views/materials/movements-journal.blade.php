@@ -74,12 +74,7 @@
                 </form>
             </div>
 
-            <p class="mt-2 text-xs text-black/70 dark:text-white/70">
-                В колонке «{{ $quantityColumnHeader }}» для строки показан тип учёта (штуки, масса, длина, размер) и числовое значение; для спецодежды в скобках — размер прихода.
-                @if($journalSubdivisionScoped)
-                    Журнал ограничен складами ваших подразделений; в списке складов указано подразделение.
-                @endif
-            </p>
+          
 
             @if($movements->isEmpty())
                 <p class="mt-4 rounded-xl border border-dashed border-stone-300 px-4 py-6 text-center text-sm text-black/70 dark:border-stone-600 dark:text-white/70">

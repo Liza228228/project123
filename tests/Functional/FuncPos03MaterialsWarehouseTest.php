@@ -4,7 +4,10 @@ use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\MeasurementUnit;
+use App\Models\Subdivision;
 use App\Models\User;
+use App\Models\Warehouse;
+use App\Support\AdministrationWarehouse;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;
 
@@ -292,4 +295,44 @@ test('technical director cannot open equipment accounting or post warehouse cata
 
     $this->actingAs($td)->get(route('materials.overview'))->assertOk();
     $this->actingAs($td)->get(route('materials.movements'))->assertOk();
+});
+
+test('accountant can view administration warehouse balances in overview', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $subdivision = Subdivision::query()->firstOrCreate(
+        ['name' => AdministrationWarehouse::SUBDIVISION_NAME],
+    );
+
+    Warehouse::query()->where('subdivision_id', $subdivision->id)->update(['is_primary' => false]);
+
+    $warehouse = Warehouse::query()->firstOrCreate(
+        [
+            'subdivision_id' => $subdivision->id,
+            'name' => AdministrationWarehouse::WAREHOUSE_NAME,
+        ],
+        ['is_primary' => true],
+    );
+    $warehouse->update(['is_primary' => true]);
+
+    $accountant = User::query()->create([
+        'surname' => 'Бухгалтер',
+        'name' => 'Остатки',
+        'patronymic' => 'Складович',
+        'email' => 'accountant-overview-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => User::ACCOUNTANT_ROLE_ID,
+    ]);
+
+    $this->actingAs($accountant)
+        ->get(route('materials.overview', [
+            'subdivision_id' => $subdivision->id,
+            'warehouse_id' => $warehouse->id,
+        ]))
+        ->assertOk()
+        ->assertSee(AdministrationWarehouse::WAREHOUSE_NAME, false);
+
+    $this->actingAs($accountant)
+        ->get(route('materials.overview'))
+        ->assertOk();
 });
