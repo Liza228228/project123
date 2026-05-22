@@ -23,6 +23,7 @@
             ])
             ->all();
         $items = old('items', $defaultItems);
+        $equipmentNameMax = \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH;
         if (empty($items)) {
             $items = [[
                 'item_id' => null,
@@ -160,8 +161,9 @@
                                         <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
                                             <div class="md:col-span-12">
                                                 <label class="app-form-label !normal-case">Наименование</label>
-                                                <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Как в заявке у поставщика" class="custom-equipment-input app-input" />
-                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Цепочка: согласование → «Заказано» → «На складе».</p>
+                                                <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Как в заявке у поставщика" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
+                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. Цепочка: согласование → «Заказано» → «На складе».</p>
+                                                <x-input-error :messages="$errors->get('items.'.$idx.'.equipment_name')" class="mt-1.5" />
                                             </div>
                                             <div class="custom-type-wrap md:col-span-4 min-w-0">
                                                 <label class="app-form-label !normal-case">Тип</label>
@@ -353,8 +355,8 @@
             <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
                 <div class="md:col-span-12">
                     <label class="app-form-label !normal-case">Наименование</label>
-                    <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Как в заявке у поставщика" class="custom-equipment-input app-input" />
-                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Цепочка: согласование → «Заказано» → «На складе».</p>
+                    <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Как в заявке у поставщика" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. Цепочка: согласование → «Заказано» → «На складе».</p>
                 </div>
                 <div class="custom-type-wrap md:col-span-4 min-w-0">
                     <label class="app-form-label !normal-case">Тип</label>

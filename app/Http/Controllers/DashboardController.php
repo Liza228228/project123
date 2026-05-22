@@ -103,20 +103,10 @@ class DashboardController extends Controller
     private function applyApplicationIndexScope(Builder $applicationsQuery, User $user): void
     {
         if ($user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
-            $draftStatusId = \App\Models\ApplicationStatus::idForDraft();
-            $applicationsQuery->where('application_status_id', '!=', $draftStatusId);
-            $applicationsQuery->where(function ($outer): void {
-                $outer->whereDoesntHave('user', function ($q): void {
-                    $q->where('role_id', 4);
-                })->orWhere(function ($q): void {
-                    $q->whereHas('items')
-                        ->whereDoesntHave('items', function ($itemQuery): void {
-                            $itemQuery
-                                ->where('is_checked', false)
-                                ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                        });
-                });
-            });
+            $draftStatusId = ApplicationStatus::idForDraft();
+            $applicationsQuery
+                ->where('application_status_id', '!=', $draftStatusId)
+                ->visibleToManagementEditors();
         }
 
         if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {

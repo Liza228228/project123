@@ -516,7 +516,8 @@
                                 $stockByItem = $catalogStockOnMainWarehouseByItemId ?? [];
                                 $supplyAwaitingPostBoilerManagementSave = $subdivisionHasBoilerChief
                                     && ! $application->needsBoilerChiefReviewBeforeManagement()
-                                    && $application->management_supply_items_saved_at === null;
+                                    && $application->management_supply_items_saved_at === null
+                                    && ! $application->isManagementCreatedApplication();
                                 $splitSupplyFormForBoilerFrozen = $subdivisionHasBoilerChief
                                     && ! $application->needsBoilerChiefReviewBeforeManagement();
                                 if ($splitSupplyFormForBoilerFrozen) {

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
@@ -128,6 +129,9 @@ final class ApplicationApprovalListingFilter
         $query->whereNull('archived_at')
             ->where('application_status_id', '!=', $draftId)
             ->whereExists(self::boilerChiefSubdivisionExistsSubquery())
+            ->whereDoesntHave('user', function (Builder $userQuery): void {
+                $userQuery->whereIn('role_id', User::MANAGEMENT_EDITOR_ROLE_IDS);
+            })
             ->where(function (Builder $outer): void {
                 $outer->whereDoesntHave('items')
                     ->orWhereHas('items', function (Builder $itemQuery): void {
@@ -146,12 +150,18 @@ final class ApplicationApprovalListingFilter
         $draftId = ApplicationStatus::idForDraft();
         $query->whereNull('archived_at')
             ->where('application_status_id', '!=', $draftId)
-            ->whereNotNull('approved_by_user_id')
             ->whereExists(self::boilerChiefSubdivisionExistsSubquery())
             ->whereHas('items')
             ->whereDoesntHave('items', fn (Builder $itemQuery) => $itemQuery->where('is_checked', true))
             ->whereDoesntHave('items', function (Builder $itemQuery): void {
                 $itemQuery->whereRaw("TRIM(COALESCE(reason_not_selected, '')) <> ''");
+            })
+            ->where(function (Builder $released): void {
+                $released
+                    ->whereNotNull('approved_by_user_id')
+                    ->orWhereHas('user', function (Builder $userQuery): void {
+                        $userQuery->whereIn('role_id', User::MANAGEMENT_EDITOR_ROLE_IDS);
+                    });
             });
     }
 

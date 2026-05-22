@@ -45,6 +45,14 @@ class Application extends Model
         return (int) ($this->user?->role_id ?? 0) === 4;
     }
 
+    /** Заявку создали директор, технический директор или начальник отдела снабжения. */
+    public function isManagementCreatedApplication(): bool
+    {
+        $this->loadMissing('user:id,role_id');
+
+        return in_array((int) ($this->user?->role_id ?? 0), User::MANAGEMENT_EDITOR_ROLE_IDS, true);
+    }
+
     public function applicationStatus(): BelongsTo
     {
         return $this->belongsTo(ApplicationStatus::class, 'application_status_id');
@@ -373,6 +381,9 @@ class Application extends Model
         if ($this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement()) {
             return false;
         }
+        if ($this->isManagementCreatedApplication()) {
+            return false;
+        }
         if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
             return false;
         }
@@ -404,6 +415,63 @@ class Application extends Model
         }
 
         return $this->approved_by_user_id !== null;
+    }
+
+    /**
+     * Заявка попадает в список у директора, ТД и начальника снабжения
+     * (согласовано с {@see scopeVisibleToManagementEditors}).
+     */
+    public function isVisibleToManagementEditors(): bool
+    {
+        if (! $this->isForemanCreatedApplication()) {
+            return true;
+        }
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return true;
+        }
+
+        return $this->approved_by_user_id !== null;
+    }
+
+    /**
+     * Список заявок для директора, ТД и начальника снабжения: без черновиков мастера «у котельной»
+     * и без заявок мастера, которые котельная ещё не передала руководству.
+     *
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeVisibleToManagementEditors(Builder $query): Builder
+    {
+        if (! Schema::hasTable('boiler_chief_subdivision_user')) {
+            return $query->where(function (Builder $outer): void {
+                $outer->whereDoesntHave('user', function (Builder $userQuery): void {
+                    $userQuery->where('role_id', 4);
+                })->orWhereNotNull('approved_by_user_id');
+            });
+        }
+
+        return $query->where(function (Builder $outer): void {
+            $outer->whereDoesntHave('user', function (Builder $userQuery): void {
+                $userQuery->where('role_id', 4);
+            })->orWhere(function (Builder $foremanPath): void {
+                $foremanPath
+                    ->whereHas('user', function (Builder $userQuery): void {
+                        $userQuery->where('role_id', 4);
+                    })
+                    ->where(function (Builder $released): void {
+                        $released
+                            ->whereNotNull('approved_by_user_id')
+                            ->orWhereNotExists(function ($sub): void {
+                                $sub->selectRaw('1')
+                                    ->from('boiler_chief_subdivision_user')
+                                    ->whereColumn(
+                                        'boiler_chief_subdivision_user.subdivision_id',
+                                        'applications.subdivision_id'
+                                    );
+                            });
+                    });
+            });
+        });
     }
 
     /**

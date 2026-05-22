@@ -76,19 +76,9 @@ class ApplicationController extends Controller
 
         if ($user?->hasAnyRoleId($this->managementEditorRoleIds())) {
             $draftStatusId = ApplicationStatus::idForDraft();
-            $applicationsQuery->where('application_status_id', '!=', $draftStatusId);
-            $applicationsQuery->where(function ($outer) {
-                $outer->whereDoesntHave('user', function ($q) {
-                    $q->where('role_id', 4);
-                })->orWhere(function ($q) {
-                    $q->whereHas('items')
-                        ->whereDoesntHave('items', function ($itemQuery) {
-                            $itemQuery
-                                ->where('is_checked', false)
-                                ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                        });
-                });
-            });
+            $applicationsQuery
+                ->where('application_status_id', '!=', $draftStatusId)
+                ->visibleToManagementEditors();
         }
 
         if ($isBoilerChief && $user) {
@@ -765,19 +755,19 @@ class ApplicationController extends Controller
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.equipment_id' => ['nullable', 'exists:equipment,id'],
-            'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
-            'items.*.size_value' => ['nullable', 'string', 'max:120'],
+            'items.*.equipment_name' => ['nullable', 'string', 'max:'.ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH],
+            'items.*.size_value' => ['nullable', 'string', 'max:'.ApplicationItem::SIZE_VALUE_MAX_LENGTH],
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
-            'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
+            'items.*.quantity_unit' => ['nullable', 'string', 'max:'.ApplicationItem::QUANTITY_UNIT_MAX_LENGTH],
             'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
             'commercial_offer' => ['nullable', 'file', 'mimes:pdf,docx', 'max:10240'],
-        ], [
+        ], array_merge([
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
             'commercial_offer.mimes' => 'Коммерческое предложение можно прикрепить только в формате PDF или DOCX.',
             'commercial_offer.max' => 'Максимальный размер файла: 10 МБ.',
-        ]);
+        ], ApplicationItem::applicationFormValidationMessages()));
 
         if (filled($request->input('transport_option_id'))) {
             throw ValidationException::withMessages([
@@ -1521,18 +1511,18 @@ class ApplicationController extends Controller
                 Rule::exists('application_items', 'id')->where('application_id', $application->id),
             ],
             'items.*.equipment_id' => ['nullable', 'exists:equipment,id'],
-            'items.*.equipment_name' => ['nullable', 'string', 'max:255'],
-            'items.*.size_value' => ['nullable', 'string', 'max:120'],
+            'items.*.equipment_name' => ['nullable', 'string', 'max:'.ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH],
+            'items.*.size_value' => ['nullable', 'string', 'max:'.ApplicationItem::SIZE_VALUE_MAX_LENGTH],
             'items.*.measurement_type' => ['nullable', Rule::in(array_keys($this->measurementUnitsMap()))],
-            'items.*.quantity_unit' => ['nullable', 'string', 'max:20'],
+            'items.*.quantity_unit' => ['nullable', 'string', 'max:'.ApplicationItem::QUANTITY_UNIT_MAX_LENGTH],
             'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
         ];
 
-        $validated = $request->validate($rules, [
+        $validated = $request->validate($rules, array_merge([
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
-        ]);
+        ], ApplicationItem::applicationFormValidationMessages()));
 
         $managementMayEditCheckedEquipmentLines = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
             && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)

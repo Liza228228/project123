@@ -206,6 +206,11 @@ test('boiler chief submits foreman application to management after boiler approv
     expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
     expect($app->boilerChiefCanSubmitToManagement())->toBeTrue();
     expect($app->boilerChiefReleasedToManagement())->toBeFalse();
+    expect($app->isVisibleToManagementEditors())->toBeFalse();
+
+    $this->actingAs($management)->get(route('applications.index'))
+        ->assertOk()
+        ->assertDontSee('applications/'.$app->id, false);
 
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertForbidden();
@@ -222,6 +227,10 @@ test('boiler chief submits foreman application to management after boiler approv
     expect($app->boilerChiefReleasedToManagement())->toBeTrue();
     expect($app->approved_by_user_id)->toBe($chief->id);
     expect($app->boilerChiefCanSubmitToManagement())->toBeFalse();
+
+    $this->actingAs($management)->get(route('applications.index'))
+        ->assertOk()
+        ->assertSee('applications/'.$app->id, false);
 
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertOk();
@@ -244,6 +253,115 @@ test('boiler chief submits foreman application to management after boiler approv
 
     $this->actingAs($chief)->get(route('applications.edit', $app))
         ->assertForbidden();
+});
+
+test('management creator application skips boiler chief and is open for management approval', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-500');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Котельный',
+        'patronymic' => 'Менеджмент',
+        'email' => 'chief-mgmt-skip-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $supplyHead = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Начальник',
+        'patronymic' => 'Создатель',
+        'email' => 'supply-mgmt-skip-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($supplyHead)->post(route('applications.store'), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->where('user_id', $supplyHead->id)->first();
+    expect($app)->not->toBeNull();
+    expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
+    expect($app->managementMayReviewAfterBoilerChief())->toBeTrue();
+    expect($app->awaitsManagementEquipmentApproval())->toBeTrue();
+
+    $this->actingAs($chief)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertDontSee('id="boiler-chief-approval-form"', false);
+
+    $this->actingAs($supplyHead)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('id="approval-form"', false);
+
+    $atBoilerChiefIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_BOILER_CHIEF))
+        ->pluck('id')
+        ->all();
+    expect($atBoilerChiefIds)->not->toContain($app->id);
+
+    $atManagementIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_MANAGEMENT))
+        ->pluck('id')
+        ->all();
+    expect($atManagementIds)->toContain($app->id);
+});
+
+test('application update rejects equipment name longer than limit with russian message', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл валидация');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    expect($app)->not->toBeNull();
+
+    $longName = str_repeat('А', \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH + 1);
+
+    $this->actingAs($ctx['foreman'])
+        ->from(route('applications.edit', $app))
+        ->put(route('applications.update', $app), [
+            'subdivision_id' => $ctx['subdivision']->id,
+            'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+            'items' => [
+                [
+                    'equipment_id' => '',
+                    'equipment_name' => $longName,
+                    'quantity' => 1,
+                    'measurement_type' => 'piece',
+                    'quantity_unit' => 'шт',
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors('items.0.equipment_name')
+        ->assertRedirect(route('applications.edit', $app));
+
+    expect(session('errors')->first('items.0.equipment_name'))
+        ->toContain((string) \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH);
 });
 
 test('application store rejects duplicate equipment from catalog and custom line', function (): void {

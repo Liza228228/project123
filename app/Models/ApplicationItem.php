@@ -19,6 +19,13 @@ class ApplicationItem extends Model
         'raw_input',
     ];
 
+    /** Максимальная длина свободного наименования в форме заявки (совпадает с колонкой БД). */
+    public const EQUIPMENT_NAME_MAX_LENGTH = 255;
+
+    public const SIZE_VALUE_MAX_LENGTH = 120;
+
+    public const QUANTITY_UNIT_MAX_LENGTH = 20;
+
     public const CUSTOM_SUPPLY_PENDING_APPROVAL_ID = 1;
     public const CUSTOM_SUPPLY_ACCEPTED_ID = 2;
     public const CUSTOM_SUPPLY_ORDERED_ID = 3;
@@ -600,5 +607,19 @@ class ApplicationItem extends Model
             self::DELIVERY_DELIVERED => self::DELIVERY_DELIVERED_ID,
             default => null,
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function applicationFormValidationMessages(): array
+    {
+        return [
+            'items.*.equipment_name.max' => 'Наименование оборудования — не более '
+                .self::EQUIPMENT_NAME_MAX_LENGTH.' символов.',
+            'items.*.size_value.max' => 'Размер — не более '.self::SIZE_VALUE_MAX_LENGTH.' символов.',
+            'items.*.quantity_unit.max' => 'Единица измерения — не более '
+                .self::QUANTITY_UNIT_MAX_LENGTH.' символов.',
+        ];
     }
 }
