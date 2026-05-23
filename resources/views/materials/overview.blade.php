@@ -9,7 +9,6 @@
         $usingDefaultMainWarehouse = (bool) ($usingDefaultMainWarehouse ?? false);
         $hasFilters = ! $usingDefaultMainWarehouse
             && ((int) ($selectedSubdivision?->id ?? 0) > 0 || (int) ($selectedWarehouse?->id ?? 0) > 0);
-        $balancesView = $balancesView ?? 'stock';
         $overviewTabQuery = $overviewTabQuery ?? [];
     @endphp
 
@@ -64,9 +63,6 @@
                                     action="{{ route('materials.overview') }}"
                                     class="grid grid-cols-1 gap-4"
                                 >
-                                    @if($balancesView === 'written')
-                                        <input type="hidden" name="balances" value="written">
-                                    @endif
                                     <div class="min-w-0">
                                         <label for="overview_subdivision_id" class="app-form-label">Подразделение</label>
                                         <input
@@ -142,36 +138,6 @@
                                     <span class="font-normal text-black/45 dark:text-white/45">·</span>
                                     {{ $selectedWarehouse->name }}
                                 </h3>
-                                <p class="text-xs text-black/65 dark:text-white/65">
-                                    @if($balancesView === 'written')
-                                        Позиции с движением списания, у которых текущий остаток на этом складе нулевой. Переключитесь на «Остатки по складу», чтобы видеть все позиции с движениями.
-                                    @else
-                                        Учитываются все операции на этом складе. Вкладка «Списанное оборудование» — только позиции с движением списания и нулевым остатком.
-                                    @endif
-                                </p>
-                            </div>
-
-                            <div class="mt-4 flex flex-wrap gap-1 border-b border-stone-200/90 dark:border-stone-600" role="tablist">
-                                <a
-                                    href="{{ route('materials.overview', $overviewTabQuery) }}"
-                                    @class([
-                                        'inline-flex items-center rounded-t-md px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-                                        'border-orange-500 text-orange-900 dark:border-orange-400 dark:text-orange-100' => $balancesView === 'stock',
-                                        'border-transparent text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white' => $balancesView !== 'stock',
-                                    ])
-                                >
-                                    Остатки по складу
-                                </a>
-                                <a
-                                    href="{{ route('materials.overview', array_merge($overviewTabQuery, ['balances' => 'written'])) }}"
-                                    @class([
-                                        'inline-flex items-center rounded-t-md px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-                                        'border-orange-500 text-orange-900 dark:border-orange-400 dark:text-orange-100' => $balancesView === 'written',
-                                        'border-transparent text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white' => $balancesView !== 'written',
-                                    ])
-                                >
-                                    Списанное оборудование
-                                </a>
                             </div>
 
                             <div class="mt-4">
@@ -179,9 +145,7 @@
                                     'balances' => $equipmentBalances,
                                     'heading' => null,
                                     'intro' => null,
-                                    'emptyText' => $balancesView === 'written'
-                                        ? 'Нет позиций с движением списания и нулевым остатком.'
-                                        : 'По этому складу ещё не было движений оборудования.',
+                                    'emptyText' => 'По этому складу ещё не было движений оборудования.',
                                 ])
                             </div>
                         </div>

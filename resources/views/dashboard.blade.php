@@ -13,9 +13,7 @@
                         <h2 id="dash-applications-heading" class="text-lg font-semibold text-stone-900 dark:text-white sm:text-xl">
                             Заявки
                         </h2>
-                        <p class="max-w-2xl text-sm text-stone-600 dark:text-stone-300">
-                            Активные заявки в вашей зоне видимости по статусу в системе. Нажмите на блок или кнопку, чтобы открыть список с фильтром.
-                        </p>
+                       
                     </div>
                     <div class="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
                         <a href="{{ route('applications.index') }}" class="ui-btn ui-btn--primary ui-btn--sm justify-center sm:justify-center">
@@ -28,11 +26,11 @@
                 </div>
 
                 @if(($applicationAnalytics['custom_equipment_pending'] ?? 0) > 0 && Auth::user()?->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
-                    <div class="mt-4 rounded-xl border border-amber-300/70 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100">
+                    <x-app-alert type="warning" class="mt-4">
                         <span class="font-medium">Своё оборудование к заказу:</span>
                         {{ (int) $applicationAnalytics['custom_equipment_pending'] }} позиций.
                         <a href="{{ route('applications.custom-equipment-to-order') }}" class="ms-1 font-medium text-orange-800 underline decoration-orange-400/80 underline-offset-2 hover:text-orange-950 dark:text-orange-200 dark:hover:text-white">Перейти</a>
-                    </div>
+                    </x-app-alert>
                 @endif
 
                 <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

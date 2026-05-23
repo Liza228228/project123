@@ -8,6 +8,9 @@ use App\Models\Warehouse;
 use App\Services\DadataAddressService;
 use App\Support\AdministrationWarehouse;
 use App\Support\AssignmentListPerPage;
+use App\Support\ForemanApplicationReassignment;
+use App\Support\SubdivisionInfrastructureDeactivation;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -21,6 +24,16 @@ class ForemanSubdivisionAssignmentController extends Controller
 {
     public function index(Request $request): View
     {
+        return $this->subdivisionDirectory($request, archived: false);
+    }
+
+    public function archiveIndex(Request $request): View
+    {
+        return $this->subdivisionDirectory($request, archived: true);
+    }
+
+    private function subdivisionDirectory(Request $request, bool $archived): View
+    {
         $this->authorizeForView($request);
         $pagination = AssignmentListPerPage::fromRequest($request);
         $perPage = $pagination['perPage'];
@@ -28,13 +41,19 @@ class ForemanSubdivisionAssignmentController extends Controller
         $defaultPerPage = $pagination['defaultPerPage'];
 
         $canViewAdministration = AdministrationWarehouse::userCanAccess($request->user());
-        $administrationSubdivision = $canViewAdministration
+        $administrationSubdivision = $canViewAdministration && ! $archived
             ? AdministrationWarehouse::resolveSubdivisionWithWarehouses()
             : null;
 
         $subdivisionsQuery = Subdivision::query()
-            ->with(['warehouses' => fn ($q) => $q->orderBy('name')])
+            ->with(['warehouses' => fn ($q) => $q->orderBy('name'), 'archive'])
             ->orderBy('name');
+
+        if ($archived) {
+            $subdivisionsQuery->archived();
+        } else {
+            $subdivisionsQuery->active();
+        }
 
         AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionsQuery);
 
@@ -46,24 +65,65 @@ class ForemanSubdivisionAssignmentController extends Controller
         $subdivisions = $subdivisionsQuery
             ->paginate($perPage)
             ->withQueryString();
-        $subdivisionOptionsQuery = Subdivision::query()->orderBy('name');
+        $subdivisionOptionsQuery = Subdivision::query()->active()->orderBy('name');
         if (! $canViewAdministration) {
             AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionOptionsQuery);
         }
         $subdivisionOptions = $subdivisionOptionsQuery->get(['id', 'name']);
 
-        $canManage = $this->canManageSubdivisionInfrastructure($request);
+        $canManage = $this->canManageSubdivisionInfrastructure($request) && ! $archived;
+        $canDeleteInfrastructure = $this->canDeleteSubdivisionInfrastructure($request) && ! $archived;
 
         return view('foreman-subdivisions.subdivisions-readonly', compact(
             'subdivisions',
             'subdivisionOptions',
             'canManage',
+            'canDeleteInfrastructure',
             'canViewAdministration',
             'administrationSubdivision',
             'perPage',
             'allowedPerPage',
             'defaultPerPage',
+            'archived',
         ));
+    }
+
+    public function subdivisionDeactivatePreview(Request $request, Subdivision $subdivision): JsonResponse
+    {
+        $this->authorizeSubdivisionInfrastructureDelete($request);
+
+        return response()->json(
+            app(SubdivisionInfrastructureDeactivation::class)->subdivisionDeactivatePreview($subdivision)
+        );
+    }
+
+    public function deactivateSubdivision(Request $request, Subdivision $subdivision): RedirectResponse
+    {
+        $this->authorizeSubdivisionInfrastructureDelete($request);
+
+        $validated = $request->validate([
+            'chief_subdivisions' => ['sometimes', 'array'],
+            'chief_subdivisions.*' => ['nullable'],
+            'foreman_subdivisions' => ['sometimes', 'array'],
+            'foreman_subdivisions.*' => ['nullable'],
+        ]);
+
+        try {
+            app(SubdivisionInfrastructureDeactivation::class)->deactivateSubdivision(
+                $subdivision,
+                is_array($validated['chief_subdivisions'] ?? null) ? $validated['chief_subdivisions'] : [],
+                is_array($validated['foreman_subdivisions'] ?? null) ? $validated['foreman_subdivisions'] : [],
+                $request->user()?->id,
+            );
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('foreman-subdivisions.index')
+                ->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('foreman-subdivisions.index')
+            ->with('status', 'Подразделение «'.$subdivision->name.'» сделано недоступным.');
     }
 
     public function assignments(Request $request): View
@@ -164,9 +224,16 @@ class ForemanSubdivisionAssignmentController extends Controller
         ]);
 
         if (AdministrationWarehouse::isAdministrationSubdivisionId((int) $validated['subdivision_id'])
-            && ! AdministrationWarehouse::userCanAccess($request->user())) {
+            && ! AdministrationWarehouse::userCanManageWarehouses($request->user())) {
             throw ValidationException::withMessages([
-                'subdivision_id' => 'Склады подразделения «'.AdministrationWarehouse::SUBDIVISION_NAME.'» может добавлять только директор, технический директор или начальник отдела снабжения.',
+                'subdivision_id' => 'Склады подразделения «'.AdministrationWarehouse::SUBDIVISION_NAME.'» может добавлять только директор, начальник отдела снабжения или администратор.',
+            ]);
+        }
+
+        $subdivision = Subdivision::query()->find((int) $validated['subdivision_id']);
+        if ($subdivision === null || $subdivision->isArchived()) {
+            throw ValidationException::withMessages([
+                'subdivision_id' => 'Нельзя добавить склад к недоступному подразделению.',
             ]);
         }
 
@@ -252,9 +319,11 @@ class ForemanSubdivisionAssignmentController extends Controller
 
         $foreman->load(['assignedSubdivisions' => fn ($q) => $q->orderBy('name')]);
         $chiefManagedIds = $this->chiefManagedSubdivisionIds($request);
+        $subdivisionsQuery = Subdivision::query()->active()->orderBy('name');
+        AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionsQuery);
         $subdivisions = $chiefManagedIds !== null
-            ? Subdivision::query()->whereIn('id', $chiefManagedIds)->orderBy('name')->get()
-            : Subdivision::query()->orderBy('name')->get();
+            ? $subdivisionsQuery->whereIn('id', $chiefManagedIds)->get()
+            : $subdivisionsQuery->get();
         $foremanAssignmentRestrictedToChiefSubdivisions = $chiefManagedIds !== null;
 
         return view('foreman-subdivisions.edit', compact(
@@ -262,6 +331,29 @@ class ForemanSubdivisionAssignmentController extends Controller
             'subdivisions',
             'foremanAssignmentRestrictedToChiefSubdivisions',
         ));
+    }
+
+    public function updatePreview(Request $request, User $foreman): JsonResponse
+    {
+        $this->authorizeForemanAssignmentAccess($request);
+
+        if (! $foreman->hasRoleId(4)) {
+            abort(404);
+        }
+
+        $newSubdivisionIds = $this->resolveNewSubdivisionIdsForUpdate($request, $foreman);
+        $reassignment = app(ForemanApplicationReassignment::class);
+        $requires = $reassignment->requiresReassignmentBeforeSubdivisionRemoval($foreman, $newSubdivisionIds);
+
+        return response()->json([
+            'requires_reassignment' => $requires,
+            'removed_subdivision_ids' => $requires
+                ? $reassignment->removedSubdivisionIds($foreman, $newSubdivisionIds)
+                : [],
+            'applications' => $requires
+                ? $reassignment->subdivisionRemovalPreviewPayload($foreman, $newSubdivisionIds)
+                : [],
+        ]);
     }
 
     public function update(Request $request, User $foreman): RedirectResponse
@@ -281,8 +373,79 @@ class ForemanSubdivisionAssignmentController extends Controller
         $validated = $request->validate([
             'subdivision_ids' => ['array'],
             'subdivision_ids.*' => $subdivisionIdRule,
+            'reassignments' => ['sometimes', 'array'],
+            'reassignments.*' => ['integer'],
         ]);
 
+        $newSubdivisionIds = $this->resolveNewSubdivisionIdsFromValidated($foreman, $validated, $chiefManagedIds);
+        AdministrationWarehouse::rejectForemanAssignmentToAdministration($newSubdivisionIds);
+        $newSubdivisionIds = AdministrationWarehouse::withoutAdministrationSubdivisionIds($newSubdivisionIds);
+        $reassignment = app(ForemanApplicationReassignment::class);
+
+        try {
+            DB::transaction(function () use ($request, $foreman, $newSubdivisionIds, $reassignment): void {
+                if ($reassignment->requiresReassignmentBeforeSubdivisionRemoval($foreman, $newSubdivisionIds)) {
+                    $reassignment->applySubdivisionRemovalReassignments(
+                        $foreman,
+                        $newSubdivisionIds,
+                        is_array($request->input('reassignments')) ? $request->input('reassignments') : []
+                    );
+                }
+
+                $foreman->assignedSubdivisions()->sync($newSubdivisionIds);
+            });
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('foreman-subdivisions.edit', $foreman)
+                ->withErrors($e->errors())
+                ->withInput();
+        }
+
+        $hadReassignments = is_array($request->input('reassignments'))
+            && $request->input('reassignments') !== [];
+
+        return redirect()
+            ->route('foreman-subdivisions.assignments')
+            ->with('status', $hadReassignments
+                ? 'Заявки переназначены, назначения мастера обновлены.'
+                : 'Назначения для мастера участка обновлены.');
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function resolveNewSubdivisionIdsForUpdate(Request $request, User $foreman): array
+    {
+        $chiefManagedIds = $this->chiefManagedSubdivisionIds($request);
+        $raw = $request->input('subdivision_ids', []);
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $selectedFromForm = collect($raw)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($chiefManagedIds !== null) {
+            $allowed = $chiefManagedIds->flip();
+            $selectedFromForm = $selectedFromForm->filter(fn (int $id) => $allowed->has($id))->values();
+        }
+
+        return $this->resolveNewSubdivisionIdsFromValidated(
+            $foreman,
+            ['subdivision_ids' => $selectedFromForm->all()],
+            $chiefManagedIds
+        );
+    }
+
+    /**
+     * @param  array{subdivision_ids?: list<int|string>}  $validated
+     * @param  Collection<int, int>|null  $chiefManagedIds
+     * @return list<int>
+     */
+    private function resolveNewSubdivisionIdsFromValidated(User $foreman, array $validated, ?Collection $chiefManagedIds): array
+    {
         $selectedFromForm = collect($validated['subdivision_ids'] ?? [])
             ->map(fn ($id) => (int) $id)
             ->unique()
@@ -293,15 +456,11 @@ class ForemanSubdivisionAssignmentController extends Controller
             $existingIds = $foreman->assignedSubdivisions->pluck('id')->map(fn ($id) => (int) $id);
             $managedSet = $chiefManagedIds->flip();
             $outsideChiefZone = $existingIds->filter(fn (int $id) => ! $managedSet->has($id))->values();
-            $merged = $outsideChiefZone->merge($selectedFromForm)->unique()->values();
-            $foreman->assignedSubdivisions()->sync($merged->all());
-        } else {
-            $foreman->assignedSubdivisions()->sync($selectedFromForm->all());
+
+            return $outsideChiefZone->merge($selectedFromForm)->unique()->values()->all();
         }
 
-        return redirect()
-            ->route('foreman-subdivisions.assignments')
-            ->with('status', 'Назначения для мастера участка обновлены.');
+        return $selectedFromForm->all();
     }
 
     private function authorizeForView(Request $request): void
@@ -322,25 +481,36 @@ class ForemanSubdivisionAssignmentController extends Controller
             return;
         }
 
-        abort(403, 'Назначение мастеров участка по подразделениям разрешено директору, техническому директору, начальнику отдела снабжения, администратору и начальнику котельной (только по своим подразделениям).');
+        abort(403, 'Назначение мастеров участка по подразделениям разрешено директору, техническому директору, начальнику отдела снабжения и администратору.');
     }
 
     private function authorizeSubdivisionInfrastructureManage(Request $request): void
     {
         if (! $this->canManageSubdivisionInfrastructure($request)) {
-            abort(403, 'Создание подразделений и складов разрешено только директору, техническому директору, начальнику отдела снабжения и администратору.');
+            abort(403, 'Создание подразделений и складов разрешено только директору, начальнику отдела снабжения и администратору.');
         }
     }
 
     private function canAssignForemenToSubdivisions(Request $request): bool
     {
-        return $this->canManageSubdivisionInfrastructure($request)
-            || (bool) $request->user()?->hasRoleId(7);
+        return $request->user()?->hasAnyRoleId(User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS) ?? false;
     }
 
     private function canManageSubdivisionInfrastructure(Request $request): bool
     {
-        return $request->user()?->hasAnyRoleId(User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS) ?? false;
+        return $request->user()?->hasAnyRoleId(User::SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS) ?? false;
+    }
+
+    private function canDeleteSubdivisionInfrastructure(Request $request): bool
+    {
+        return (bool) $request->user()?->hasRoleId(User::ADMINISTRATOR_ROLE_ID);
+    }
+
+    private function authorizeSubdivisionInfrastructureDelete(Request $request): void
+    {
+        if (! $this->canDeleteSubdivisionInfrastructure($request)) {
+            abort(403, 'Удаление подразделений и складов разрешено только администратору.');
+        }
     }
 
     /**

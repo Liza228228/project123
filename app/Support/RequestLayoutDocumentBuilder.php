@@ -235,6 +235,27 @@ final class RequestLayoutDocumentBuilder
     }
 
     /**
+     * Значение поля формы (plain или HTML из contenteditable) → текст для подстановок в PDF.
+     */
+    private function storedFieldValueToPlain(mixed $raw): string
+    {
+        $text = is_scalar($raw) || $raw === null ? trim((string) $raw) : '';
+        if ($text === '') {
+            return '';
+        }
+
+        if (preg_match('/<[a-z][\s\S]*?>/i', $text)) {
+            $normalized = preg_replace('/<br\s*\/?>/iu', "\n", $text) ?? $text;
+            $text = strip_tags($normalized);
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
      * Переносы → &lt;br&gt;, как в PDF-шаблоне (без pre-wrap).
      */
     private function plainToPdfInnerHtml(string $plain): string
@@ -365,7 +386,7 @@ final class RequestLayoutDocumentBuilder
                 continue;
             }
             $raw = $values[$k] ?? '';
-            $map[$k] = is_scalar($raw) || $raw === null ? (string) $raw : '';
+            $map[$k] = $this->storedFieldValueToPlain($raw);
         }
 
         // Раньше ключи, начинающиеся с цифры, сохранялись как «поле N» — даём подстановку и для {{N}}.
@@ -513,7 +534,7 @@ final class RequestLayoutDocumentBuilder
             },
             $normalized
         ) ?? $normalized;
-        $normalized = preg_replace('/([^\n])\h*(?=_{3,})/u', '$1'."\n", $normalized) ?? $normalized;
+        $normalized = preg_replace('/([^\n_])\h*(?=_{3,})/u', '$1'."\n", $normalized) ?? $normalized;
         $normalized = preg_replace(
             '/([А-ЯЁA-Z][А-ЯЁA-Zа-яёa-z\-]+\h+[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.)(?=\h+[А-ЯЁA-Z][А-ЯЁA-Zа-яёa-z\-]+\h+[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.)/u',
             '$1'."\n",

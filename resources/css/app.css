@@ -82,11 +82,55 @@
     }
 
     .applications-index-status-badge {
-        @apply inline-flex max-w-full items-center rounded-full px-3 py-1 text-sm font-medium leading-snug;
+        @apply inline-flex max-w-full items-center rounded-full px-3 py-1 text-sm font-medium leading-snug ring-1 ring-inset;
+    }
+
+    .applications-index-status-badge--compact {
+        @apply px-2.5 py-0.5 text-xs leading-normal;
+    }
+
+    /*
+     * Статусы заявок: одна тёплая гамма (крем → оранж → янтарь), как таблица и кнопки.
+     * Отличия — глубина фона и насыщенность обводки, без холодных и кислотных оттенков.
+     */
+    .applications-index-status-badge--draft {
+        @apply bg-stone-100/95 text-stone-600 ring-stone-200/90 dark:bg-stone-800/40 dark:text-stone-300 dark:ring-stone-600/40;
+    }
+
+    .applications-index-status-badge--pending {
+        @apply bg-orange-50/95 text-orange-800 ring-orange-200/90 dark:bg-orange-950/30 dark:text-orange-200/90 dark:ring-orange-800/50;
+    }
+
+    .applications-index-status-badge--partial {
+        @apply bg-orange-50 text-orange-900 ring-orange-300/70 dark:bg-orange-950/30 dark:text-orange-100 dark:ring-orange-700/40;
     }
 
     .applications-index-status-badge--submit {
-        @apply bg-indigo-100 text-indigo-950 ring-1 ring-inset ring-indigo-300/70 dark:bg-indigo-950/50 dark:text-indigo-100 dark:ring-indigo-700/60;
+        @apply bg-orange-100/95 font-semibold text-orange-950 ring-orange-500/50 shadow-sm dark:bg-orange-900/40 dark:text-orange-50 dark:ring-orange-500/40;
+    }
+
+    .applications-index-status-badge--boiler {
+        @apply bg-amber-50/95 text-amber-900 ring-amber-300/70 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-700/40;
+    }
+
+    .applications-index-status-badge--management {
+        @apply bg-amber-100/90 text-amber-950 ring-amber-400/50 dark:bg-amber-950/40 dark:text-amber-50 dark:ring-amber-600/50;
+    }
+
+    .applications-index-status-badge--approved {
+        @apply bg-amber-50/90 text-amber-900 ring-amber-300/60 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-700/40;
+    }
+
+    .applications-index-status-badge--transit {
+        @apply bg-orange-200/50 text-orange-950 ring-orange-400/50 dark:bg-orange-900/50 dark:text-orange-50 dark:ring-orange-600/40;
+    }
+
+    .applications-index-status-badge--completed {
+        @apply bg-emerald-50/95 text-emerald-800 ring-emerald-300/50 dark:bg-emerald-950/30 dark:text-emerald-100 dark:ring-emerald-700/40;
+    }
+
+    .applications-index-status-badge--rejected {
+        @apply bg-red-50/95 text-red-800 ring-red-200/80 dark:bg-red-950/30 dark:text-red-100 dark:ring-red-800/40;
     }
 
     .applications-index-actions {
@@ -194,6 +238,77 @@
     }
 
     /**
+     * Уведомления: успех, ошибка, предупреждение, информация (палитра системы).
+     */
+    .app-alert {
+        @apply flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ring-1;
+    }
+
+    .app-alert__icon {
+        @apply mt-0.5 flex shrink-0 items-center justify-center;
+    }
+
+    .app-alert__title {
+        @apply mb-0.5 font-semibold leading-snug;
+    }
+
+    .app-alert__message {
+        @apply leading-relaxed;
+    }
+
+    .app-alert__dismiss {
+        @apply -me-1 -mt-0.5 shrink-0 rounded-lg p-1.5 opacity-70 transition hover:bg-black/5 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 dark:hover:bg-white/10;
+    }
+
+    .app-alert--success {
+        @apply border-emerald-300/85 bg-gradient-to-r from-emerald-50/95 via-orange-50/40 to-emerald-50/90 text-emerald-950 ring-emerald-200/70 dark:border-emerald-700/55 dark:from-emerald-950/45 dark:via-orange-950/25 dark:to-emerald-950/35 dark:text-emerald-50 dark:ring-emerald-900/40;
+    }
+
+    .app-alert--success .app-alert__icon {
+        @apply text-emerald-600 dark:text-emerald-400;
+    }
+
+    .app-alert--success .app-alert__dismiss {
+        @apply focus-visible:ring-emerald-500/40 dark:focus-visible:ring-emerald-400/35;
+    }
+
+    .app-alert--error {
+        @apply border-rose-300/85 bg-rose-50/95 text-rose-950 ring-rose-200/70 dark:border-rose-800/55 dark:bg-rose-950/40 dark:text-rose-100 dark:ring-rose-900/40;
+    }
+
+    .app-alert--error .app-alert__icon {
+        @apply text-rose-600 dark:text-rose-400;
+    }
+
+    .app-alert--error .app-alert__dismiss {
+        @apply focus-visible:ring-rose-500/40 dark:focus-visible:ring-rose-400/35;
+    }
+
+    .app-alert--warning {
+        @apply border-amber-300/85 bg-amber-50/95 text-amber-950 ring-amber-200/70 dark:border-amber-800/55 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-900/40;
+    }
+
+    .app-alert--warning .app-alert__icon {
+        @apply text-amber-600 dark:text-amber-400;
+    }
+
+    .app-alert--warning .app-alert__dismiss {
+        @apply focus-visible:ring-amber-500/40 dark:focus-visible:ring-amber-400/35;
+    }
+
+    .app-alert--info {
+        @apply border-orange-300/85 bg-orange-50/95 text-orange-950 ring-orange-200/70 dark:border-orange-800/55 dark:bg-orange-950/40 dark:text-orange-100 dark:ring-orange-900/40;
+    }
+
+    .app-alert--info .app-alert__icon {
+        @apply text-orange-600 dark:text-orange-400;
+    }
+
+    .app-alert--info .app-alert__dismiss {
+        @apply focus-visible:ring-orange-500/40 dark:focus-visible:ring-orange-400/35;
+    }
+
+    /**
      * Единые поля ввода / выбора (заявки, фильтры, материалы).
      */
     .app-form-label {
@@ -216,6 +331,24 @@
 
     .app-input--with-icon {
         @apply pl-10;
+    }
+
+    /** Поиск + выпадающий список (подразделения в форме склада и т.п.). */
+    .filterable-select-combo .filterable-select-target:not(.filterable-select--expanded) {
+        @apply pointer-events-none absolute h-px w-px overflow-hidden opacity-0;
+    }
+
+    .filterable-select-combo .filterable-select-target.filterable-select--expanded {
+        @apply relative mt-2 max-h-52 overflow-y-auto bg-white pr-3.5 shadow-md ring-1 ring-orange-200/80 dark:bg-stone-900/90 dark:ring-orange-900/45;
+        background-image: none;
+    }
+
+    .subdivisions-warehouse-card {
+        @apply rounded-xl border border-orange-200/70 border-l-4 border-l-orange-400/90 bg-gradient-to-br from-white via-orange-50/30 to-white px-3.5 py-2.5 shadow-sm ring-1 ring-orange-100/60 dark:border-orange-900/45 dark:border-l-orange-500 dark:from-stone-900/80 dark:via-orange-950/20 dark:to-stone-950/90 dark:ring-orange-950/30;
+    }
+
+    .subdivisions-directory-subdivision {
+        @apply text-[0.9375rem] font-semibold leading-snug text-stone-900 dark:text-stone-100;
     }
 
     .app-filter-panel {

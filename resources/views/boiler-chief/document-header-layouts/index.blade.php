@@ -15,12 +15,6 @@
 
     <div class="py-6 sm:py-10 min-h-[60vh]">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            @if (session('status'))
-                <div class="mb-4 px-4 py-3 rounded-xl border border-orange-200/80 bg-orange-50 dark:bg-orange-950/35 dark:border-orange-900/50 text-orange-950 dark:text-orange-100 text-sm">
-                    {{ session('status') }}
-                </div>
-            @endif
-
             <div class="overflow-hidden rounded-2xl border border-orange-200/85 bg-orange-50/35 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35">
                 @if($layouts->isEmpty())
                     <div class="py-16 px-6 text-center text-stone-400 dark:text-stone-500 text-sm leading-relaxed">

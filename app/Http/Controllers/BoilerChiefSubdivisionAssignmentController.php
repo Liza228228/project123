@@ -61,7 +61,7 @@ class BoilerChiefSubdivisionAssignmentController extends Controller
         }
 
         $chief->load(['boilerChiefSubdivisions' => fn ($q) => $q->orderBy('name')]);
-        $subdivisions = Subdivision::query()->orderBy('name')->get();
+        $subdivisions = Subdivision::query()->active()->orderBy('name')->get();
 
         return view('boiler-chief-subdivisions.edit', compact('chief', 'subdivisions'));
     }

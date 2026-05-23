@@ -151,6 +151,7 @@ test('accountant layout application create embeds same rich form as chief', func
         'schema' => [
             'document_title' => 'Док',
             'body_template' => '{{k}}',
+            'category' => \App\Support\ReportLayoutCommercialProposal::CATEGORY,
             'fields' => [
                 ['key' => 'k', 'label' => 'Ключевое поле', 'type' => 'textarea'],
             ],
@@ -381,6 +382,75 @@ test('layout applications index shows only submissions created by current user',
     $forbiddenEdit->assertForbidden();
 
     expect($ownSubmission->id)->not->toBe($otherSubmission->id);
+});
+
+test('user can delete own layout application report even when layout was soft deleted', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $foreman = User::query()->create([
+        'surname' => 'Удаляторов',
+        'name' => 'Мастер',
+        'patronymic' => 'Тест',
+        'email' => 'foreman-layout-delete-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 4,
+    ]);
+
+    $activeLayout = RequestLayout::query()->create([
+        'title' => 'Акт для удаления',
+        'schema' => [
+            'document_title' => 'Акт',
+            'body_template' => '{{pole}}',
+            'fields' => [
+                ['key' => 'pole', 'label' => 'Поле', 'type' => 'textarea'],
+            ],
+            'signature_slots_count' => 0,
+            'signature_roles' => [],
+        ],
+        'has_header' => false,
+        'type' => 'pdf',
+        'version' => 1,
+    ]);
+    $deletedLayout = RequestLayout::query()->create([
+        'title' => 'Устаревший макет',
+        'schema' => [
+            'document_title' => 'Акт',
+            'body_template' => '{{pole}}',
+            'fields' => [
+                ['key' => 'pole', 'label' => 'Поле', 'type' => 'textarea'],
+            ],
+            'signature_slots_count' => 0,
+            'signature_roles' => [],
+        ],
+        'has_header' => false,
+        'type' => 'pdf',
+        'version' => 1,
+    ]);
+    $deletedLayout->delete();
+
+    $activeSubmission = RequestSubmission::query()->create([
+        'data' => ['pole' => 'Активный отчет'],
+        'created_by' => $foreman->id,
+        'layout_structure_id' => $activeLayout->id,
+    ]);
+    $orphanedSubmission = RequestSubmission::query()->create([
+        'data' => ['pole' => 'Отчет по удаленному макету'],
+        'created_by' => $foreman->id,
+        'layout_structure_id' => $deletedLayout->id,
+    ]);
+
+    $deleteActive = $this->actingAs($foreman)->delete(
+        route('boiler-chief.layout-applications.destroy', $activeSubmission)
+    );
+    $deleteActive->assertRedirect(route('boiler-chief.layout-applications.index'));
+    $deleteActive->assertSessionHas('status');
+    expect(RequestSubmission::query()->find($activeSubmission->id))->toBeNull();
+
+    $deleteOrphaned = $this->actingAs($foreman)->delete(
+        route('boiler-chief.layout-applications.destroy', $orphanedSubmission)
+    );
+    $deleteOrphaned->assertRedirect(route('boiler-chief.layout-applications.index'));
+    expect(RequestSubmission::query()->find($orphanedSubmission->id))->toBeNull();
 });
 
 test('boiler chief can open edit form and update layout submission pdf', function (): void {

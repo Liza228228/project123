@@ -2,6 +2,8 @@
 
 use App\Models\Application;
 use App\Models\ApplicationStatus;
+use App\Support\ApplicationIndexPresenter;
+use App\Support\CommercialOfferApplicationLines;
 use Tests\Support\FunctionalScenarioFixture;
 
 test('create form shows draft save buttons for site foreman', function (): void {
@@ -93,6 +95,392 @@ test('foreman can save draft and submit to boiler chief when chief assigned', fu
         ->assertForbidden();
 });
 
+test('submit to approval from applications index stays on list with notification', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл отправка-список');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    $indexUrl = route('applications.index');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app), [
+        '_return_url' => $indexUrl,
+    ])
+        ->assertRedirect($indexUrl)
+        ->assertSessionHas('status', 'Заявка отправлена на согласование. Редактирование больше недоступно.');
+
+    $this->actingAs($ctx['foreman'])->get($indexUrl)
+        ->assertOk()
+        ->assertSee('Заявка отправлена на согласование', false);
+});
+
+test('foreman can submit draft application with commercial offer only', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-отправка');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'КП',
+        'patronymic' => 'Тест',
+        'email' => 'chief-kp-submit-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => '',
+                'equipment_name' => '',
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    expect($app)->not->toBeNull();
+    expect($app->hasCommercialOfferAttached())->toBeTrue();
+    expect($app->items)->toHaveCount(0);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    expect($app->fresh()->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING));
+});
+
+test('boiler chief can approve commercial offer only application and release to management', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-согласование');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Соглас',
+        'patronymic' => 'КП',
+        'email' => 'chief-kp-approve-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => '',
+                'equipment_name' => '',
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp.pdf', 100, 'application/pdf'),
+    ]);
+
+    $app = Application::query()->first();
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '1',
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->commercial_offer_chief_is_checked)->toBeTrue();
+    expect($app->approved_by_user_id)->toBe($chief->id);
+    expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
+    expect($app->needsManagementCommercialOfferReview())->toBeTrue();
+
+    $director = \App\Models\User::query()->create([
+        'surname' => 'Директор',
+        'name' => 'КП',
+        'patronymic' => 'Тест',
+        'email' => 'director-kp-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 1,
+    ]);
+
+    $this->actingAs($director)->post(route('applications.approval', $app), [
+        'commercial_offer_management_is_checked' => '1',
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->commercial_offer_management_is_checked)->toBeTrue();
+    expect($app->management_supply_items_saved_at)->not->toBeNull();
+    expect($app->isStatusApproved())->toBeTrue();
+
+    CommercialOfferApplicationLines::persistForApplication((int) $app->id, [
+        [
+            'equipment_name' => 'вапрвапр',
+            'quantity' => 45,
+            'quantity_unit' => 'шт',
+            'measurement_type' => 'piece',
+        ],
+    ]);
+
+    $this->actingAs($director)
+        ->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Данные подставлены из таблицы коммерческого предложения', false);
+
+    expect(CommercialOfferApplicationLines::linesForOrderFormPrefill($app->fresh()))
+        ->toHaveCount(1)
+        ->and(CommercialOfferApplicationLines::linesForOrderFormPrefill($app->fresh())[0]['equipment_name'])
+        ->toBe('вапрвапр');
+
+    $this->actingAs($director)
+        ->post(route('applications.commercial-offer-order-lines.store', $app), [
+            'items' => [
+                [
+                    'equipment_name' => 'Насос циркуляционный',
+                    'measurement_type' => 'piece',
+                    'quantity' => 2,
+                    'quantity_unit' => 'шт',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('applications.show', $app))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('status');
+
+    $this->assertDatabaseHas('application_items', [
+        'application_id' => $app->id,
+        'is_checked' => true,
+        'custom_equipment_supply_status_id' => \App\Models\ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID,
+    ]);
+
+    $customItem = \App\Models\ApplicationItem::query()
+        ->where('application_id', $app->id)
+        ->whereNull('equipment_id')
+        ->where('is_checked', true)
+        ->latest('id')
+        ->first();
+    expect($customItem)->not->toBeNull();
+    expect($customItem->is_checked)->toBeTrue();
+    expect($customItem->isOrderedFromCommercialOffer())->toBeTrue();
+    expect($customItem->custom_equipment_supply_status_id)->toBe(\App\Models\ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID);
+
+    $this->actingAs($director)
+        ->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Заказано по КП', false);
+    expect($customItem->canMarkCustomSupplyOrdered())->toBeTrue();
+    expect($customItem->equipment_display_name)->not->toBe('—');
+});
+
+test('boiler chief can approve commercial offer together with equipment items', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП+позиции');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Смеш',
+        'patronymic' => 'КП',
+        'email' => 'chief-kp-items-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 2,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp-mixed.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    expect($app->items)->toHaveCount(1);
+    expect($app->hasCommercialOfferAttached())->toBeTrue();
+    expect($app->isCommercialOfferOnlyApplication())->toBeFalse();
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    $itemId = $app->items()->value('id');
+
+    $this->actingAs($chief)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Согласовать коммерческое предложение', false)
+        ->assertSee('id="boiler-chief-approval-form"', false);
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '1',
+        'boiler_items' => [
+            (string) $itemId => ['is_checked' => '1'],
+        ],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->commercial_offer_chief_is_checked)->toBeTrue();
+    expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
+    expect($app->boilerChiefCanSubmitToManagement())->toBeTrue();
+    expect($app->boilerChiefReleasedToManagement())->toBeFalse();
+});
+
+test('management can approve commercial offer together with equipment items', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП+снабжение');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Котельный',
+        'patronymic' => 'КП',
+        'email' => 'chief-mgmt-co-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $management = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'КП',
+        'patronymic' => 'Позиции',
+        'email' => 'supply-mgmt-co-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp-mgmt-mixed.pdf', 100, 'application/pdf'),
+    ]);
+
+    $app = Application::query()->first();
+    $itemId = $app->items()->value('id');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app));
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '1',
+        'boiler_items' => [(string) $itemId => ['is_checked' => '1']],
+    ]);
+    $this->actingAs($chief)->post(route('applications.submit-for-management', $app));
+
+    $app->refresh();
+    expect($app->needsManagementCommercialOfferReview())->toBeTrue();
+
+    $this->actingAs($management)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Согласовать коммерческое предложение', false)
+        ->assertSee('id="approval-form"', false);
+
+    $this->actingAs($management)->post(route('applications.approval', $app), [
+        'commercial_offer_management_is_checked' => '1',
+        'items' => [
+            (string) $itemId => ['is_checked' => '1'],
+        ],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->commercial_offer_management_is_checked)->toBeTrue();
+    expect($app->needsManagementCommercialOfferReview())->toBeFalse();
+    expect($app->managementHasSavedApproval())->toBeTrue();
+    expect($app->management_supply_items_saved_at)->not->toBeNull();
+});
+
+test('boiler chief must provide reason when rejecting commercial offer only application', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-отказ');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Отказ',
+        'patronymic' => 'КП',
+        'email' => 'chief-kp-reject-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => '',
+                'equipment_name' => '',
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    expect($app)->not->toBeNull();
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '0',
+        'commercial_offer_chief_reason_not_selected' => 'Сумма завышена',
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->commercial_offer_chief_is_checked)->toBeFalse();
+    expect($app->commercial_offer_chief_reason_not_selected)->toBe('Сумма завышена');
+    expect($app->approved_by_user_id)->toBeNull();
+    expect($app->isStatusRejected())->toBeTrue();
+    expect($app->commercialOfferShowsAsRejected())->toBeTrue();
+
+    $this->actingAs($chief)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Коммерческое предложение', false)
+        ->assertSee('Сумма завышена', false);
+});
+
 test('boiler chief can save draft and submit for management approval', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-300');
@@ -119,6 +507,7 @@ test('boiler chief can save draft and submit for management approval', function 
     $this->actingAs($chief)->post(route('applications.store'), [
         'submit_action' => 'save',
         'subdivision_id' => $ctx['subdivision']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
         'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
         'items' => [
             [
@@ -132,7 +521,24 @@ test('boiler chief can save draft and submit for management approval', function 
 
     $app = Application::query()->where('user_id', $chief->id)->first();
     expect($app)->not->toBeNull();
+    expect((int) $app->responsible_user_id)->toBe((int) $ctx['foreman']->id);
     expect($app->isBoilerChiefDraftBeforeManagement())->toBeTrue();
+    expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
+
+    $this->actingAs($chief)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('Отправить на согласование', false)
+        ->assertDontSee('id="boiler-chief-approval-form"', false)
+        ->assertDontSee('>Не согласовано<', false);
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertDontSee('>Изменить<', false);
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.edit', $app))
+        ->assertForbidden();
+
+    expect($app->foremanCanEditApplication())->toBeFalse();
 
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertForbidden();
@@ -143,12 +549,105 @@ test('boiler chief can save draft and submit for management approval', function 
     $app->refresh();
     expect($app->isBoilerChiefDraftBeforeManagement())->toBeFalse();
     expect($app->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING));
+    expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
+    expect((int) $app->approved_by_user_id)->toBe((int) $chief->id);
 
     $this->actingAs($management)->get(route('applications.show', $app))
-        ->assertOk();
+        ->assertOk()
+        ->assertDontSee('Ожидается согласование начальником котельной', false);
 
     $this->actingAs($chief)->get(route('applications.edit', $app))
         ->assertForbidden();
+});
+
+test('management creator cannot assign responsible foreman from another subdivision', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-ответственный-mgmt');
+
+    $otherSubdivision = \App\Models\Subdivision::query()->create(['name' => 'Другое подразделение ответственный mgmt']);
+    $otherForeman = \App\Models\User::query()->create([
+        'surname' => 'Чужой',
+        'name' => 'Мастер',
+        'patronymic' => 'Руководство',
+        'email' => 'other-foreman-resp-mgmt-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 4,
+    ]);
+    $otherForeman->assignedSubdivisions()->sync([$otherSubdivision->id]);
+
+    $supplyHead = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Начальник',
+        'patronymic' => 'Ответственный',
+        'email' => 'supply-resp-block-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($supplyHead)->from(route('applications.create'))->post(route('applications.store'), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'responsible_user_id' => $otherForeman->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.create'))
+        ->assertSessionHasErrors('responsible_user_id');
+
+    expect(Application::query()->where('user_id', $supplyHead->id)->exists())->toBeFalse();
+
+    $this->actingAs($supplyHead)->get(route('applications.create'))
+        ->assertOk()
+        ->assertSee('"subdivision_first"', false);
+});
+
+test('boiler chief cannot assign responsible foreman from another subdivision', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-ответственный');
+
+    $otherSubdivision = \App\Models\Subdivision::query()->create(['name' => 'Другое подразделение ответственный']);
+    $otherForeman = \App\Models\User::query()->create([
+        'surname' => 'Чужой',
+        'name' => 'Мастер',
+        'patronymic' => 'Тест',
+        'email' => 'other-foreman-resp-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 4,
+    ]);
+    $otherForeman->assignedSubdivisions()->sync([$otherSubdivision->id]);
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Проверка',
+        'patronymic' => 'Ответственный',
+        'email' => 'chief-resp-block-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $this->actingAs($chief)->from(route('applications.create'))->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'responsible_user_id' => $otherForeman->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.create'))
+        ->assertSessionHasErrors('responsible_user_id');
+
+    expect(Application::query()->where('user_id', $chief->id)->exists())->toBeFalse();
 });
 
 test('boiler chief submits foreman application to management after boiler approval', function (): void {
@@ -255,7 +754,87 @@ test('boiler chief submits foreman application to management after boiler approv
         ->assertForbidden();
 });
 
-test('management creator application skips boiler chief and is open for management approval', function (): void {
+test('management rejection of all equipment lines marks application rejected and skips supply handoff', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-отклонение');
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Отклон',
+        'patronymic' => 'Все',
+        'email' => 'chief-reject-all-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $management = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Отклон',
+        'patronymic' => 'Все',
+        'email' => 'supply-reject-all-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ]);
+
+    $app = Application::query()->first();
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app));
+    $itemId = $app->items()->value('id');
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'boiler_items' => [
+            (string) $itemId => ['is_checked' => '1'],
+        ],
+    ]);
+
+    $this->actingAs($chief)->post(route('applications.submit-for-management', $app));
+
+    $app->refresh();
+    $this->actingAs($management)->post(route('applications.approval', $app), [
+        'items' => [
+            (string) $itemId => [
+                'is_checked' => '0',
+                'reason_not_selected' => '345',
+            ],
+        ],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED));
+    expect($app->isStatusRejected())->toBeTrue();
+    expect($app->managementHasSavedApproval())->toBeFalse();
+    expect($app->management_supply_items_saved_at)->toBeNull();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 1, 1),
+        $management
+    );
+    expect($app->index_list_status)->toBe('rejected');
+    expect($app->index_needs_submit)->toBeFalse();
+    expect($app->needsSubmitToApprovalBy($management))->toBeFalse();
+    expect($app->needsSubmitToApprovalBy($ctx['foreman']))->toBeFalse();
+    expect($app->needsSubmitToApprovalBy($chief))->toBeFalse();
+
+    $this->actingAs($management)->get(route('applications.index'))
+        ->assertOk()
+        ->assertDontSee('На согласование', false);
+});
+
+test('management creator with assigned foreman skips approval and is supply-ready', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-500');
 
@@ -280,6 +859,7 @@ test('management creator application skips boiler chief and is open for manageme
 
     $this->actingAs($supplyHead)->post(route('applications.store'), [
         'subdivision_id' => $ctx['subdivision']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
         'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
         'items' => [
             [
@@ -293,9 +873,19 @@ test('management creator application skips boiler chief and is open for manageme
 
     $app = Application::query()->where('user_id', $supplyHead->id)->first();
     expect($app)->not->toBeNull();
+    expect($app->isManagementDelegatedToSiteForeman())->toBeTrue();
     expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
-    expect($app->managementMayReviewAfterBoilerChief())->toBeTrue();
-    expect($app->awaitsManagementEquipmentApproval())->toBeTrue();
+    expect($app->managementMayReviewAfterBoilerChief())->toBeFalse();
+    expect($app->awaitsManagementEquipmentApproval())->toBeFalse();
+    expect($app->isStatusApproved())->toBeTrue();
+    expect($app->management_supply_items_saved_at)->not->toBeNull();
+    expect($app->hasApprovedEquipmentLines())->toBeTrue();
+    expect($app->isSupplyApprovedForCustomEquipmentWorkflow())->toBeTrue();
+    expect($app->foremanCanEditApplication())->toBeFalse();
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertDontSee('Изменить', false);
 
     $this->actingAs($chief)->get(route('applications.show', $app))
         ->assertOk()
@@ -303,7 +893,7 @@ test('management creator application skips boiler chief and is open for manageme
 
     $this->actingAs($supplyHead)->get(route('applications.show', $app))
         ->assertOk()
-        ->assertSee('id="approval-form"', false);
+        ->assertDontSee('id="approval-form"', false);
 
     $atBoilerChiefIds = Application::query()
         ->select('applications.id')
@@ -317,7 +907,7 @@ test('management creator application skips boiler chief and is open for manageme
         ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_MANAGEMENT))
         ->pluck('id')
         ->all();
-    expect($atManagementIds)->toContain($app->id);
+    expect($atManagementIds)->not->toContain($app->id);
 });
 
 test('application update rejects equipment name longer than limit with russian message', function (): void {
@@ -364,11 +954,11 @@ test('application update rejects equipment name longer than limit with russian m
         ->toContain((string) \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH);
 });
 
-test('application store rejects duplicate equipment from catalog and custom line', function (): void {
+test('application store allows same equipment name with different measurement types', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Хлебников ГСМ и зап.части');
 
-    $response = $this->actingAs($ctx['foreman'])->from(route('applications.create'))->post(route('applications.store'), [
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
         'subdivision_id' => $ctx['subdivision']->id,
         'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
         'items' => [
@@ -385,8 +975,165 @@ test('application store rejects duplicate equipment from catalog and custom line
                 'quantity_unit' => 'кг',
             ],
         ],
-    ]);
+    ])->assertRedirect(route('applications.index'));
 
-    $response->assertSessionHasErrors('equipment');
+    expect(Application::query()->count())->toBe(1);
+    expect(Application::query()->first()?->items)->toHaveCount(2);
+});
+
+test('application store rejects duplicate custom equipment with same measurement type', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл дубликат');
+
+    $this->actingAs($ctx['foreman'])->from(route('applications.create'))->post(route('applications.store'), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_name' => 'Гвозди',
+                'quantity' => 2,
+                'measurement_type' => 'mass',
+                'quantity_unit' => 'кг',
+            ],
+            [
+                'equipment_name' => 'Гвозди',
+                'quantity' => 1,
+                'measurement_type' => 'mass',
+                'quantity_unit' => 'кг',
+            ],
+        ],
+    ])->assertSessionHasErrors('equipment');
+
     expect(Application::query()->count())->toBe(0);
+});
+
+test('commercial offer is stored with readable file name', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-имя');
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('Смета поставщика.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    expect($app)->not->toBeNull();
+    expect($app->commercial_offer)->not->toBeNull();
+    expect(basename((string) $app->commercial_offer))->toBe('Смета поставщика.pdf');
+    \Illuminate\Support\Facades\Storage::disk('public')->assertExists((string) $app->commercial_offer);
+});
+
+test('applications index filters by commercial offer attachment', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-фильтр');
+
+    $itemPayload = [
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+    ];
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [$itemPayload],
+    ])->assertRedirect(route('applications.index'));
+
+    $withKp = Application::query()->first();
+    expect($withKp)->not->toBeNull();
+    $withKp->update(['commercial_offer' => 'commercial-offers/kp-test.pdf']);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(14)->format('Y-m-d'),
+        'items' => [$itemPayload],
+    ])->assertRedirect(route('applications.index'));
+
+    $withoutKp = Application::query()->orderByDesc('id')->first();
+    expect($withoutKp)->not->toBeNull();
+    expect($withoutKp->id)->not->toBe($withKp->id);
+    expect($withoutKp->commercial_offer)->toBeNull();
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.index', ['commercial_offer_filter' => 'with']))
+        ->assertOk()
+        ->assertSee('applications/'.$withKp->id, false)
+        ->assertDontSee('applications/'.$withoutKp->id, false);
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.index', ['commercial_offer_filter' => 'without']))
+        ->assertOk()
+        ->assertSee('applications/'.$withoutKp->id, false)
+        ->assertDontSee('applications/'.$withKp->id, false);
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.index', ['commercial_offer_filter' => 'all']))
+        ->assertOk()
+        ->assertSee('applications/'.$withKp->id, false)
+        ->assertSee('applications/'.$withoutKp->id, false);
+});
+
+test('application edit can replace commercial offer when attached', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-редакт');
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('Старое КП.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('applications.index'));
+
+    $application = Application::query()->first();
+    expect($application)->not->toBeNull();
+    $oldPath = (string) $application->commercial_offer;
+
+    $this->actingAs($ctx['foreman'])
+        ->get(route('applications.edit', $application))
+        ->assertOk()
+        ->assertSee('Коммерческое предложение', false)
+        ->assertSee('Старое КП.pdf', false)
+        ->assertSee('Заменить файлом', false);
+
+    $this->actingAs($ctx['foreman'])->put(route('applications.update', $application), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(8)->format('Y-m-d'),
+        'items' => [
+            [
+                'item_id' => $application->items()->first()?->id,
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('Новое КП.pdf', 100, 'application/pdf'),
+    ])->assertRedirect();
+
+    $application->refresh();
+    expect(basename((string) $application->commercial_offer))->toBe('Новое КП.pdf');
+    \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($oldPath);
+    \Illuminate\Support\Facades\Storage::disk('public')->assertExists((string) $application->commercial_offer);
 });

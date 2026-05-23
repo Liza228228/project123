@@ -42,7 +42,6 @@ final class ApplicationApprovalListingFilter
     {
         return [
             self::KEY_ALL => 'Все заявки',
-            self::KEY_NEEDS_SUBMIT => 'Нужна отправка',
             self::KEY_DRAFT => ApplicationStatus::NAME_DRAFT,
             self::KEY_AT_BOILER_CHIEF => 'У котельной',
             self::KEY_AT_MANAGEMENT => 'У руководства',
@@ -60,6 +59,10 @@ final class ApplicationApprovalListingFilter
     {
         $value = trim((string) $value);
         $allowed = array_keys(self::options());
+
+        if ($value === self::KEY_NEEDS_SUBMIT) {
+            return self::KEY_DRAFT;
+        }
 
         if (in_array($value, $allowed, true)) {
             return $value;
@@ -86,7 +89,6 @@ final class ApplicationApprovalListingFilter
         }
 
         match ($filter) {
-            self::KEY_NEEDS_SUBMIT => self::applyNeedsSubmit($query),
             self::KEY_DRAFT => self::applyDraft($query),
             self::KEY_AT_BOILER_CHIEF => self::applyAtBoilerChief($query),
             self::KEY_AT_MANAGEMENT => self::applyAtManagement($query),
@@ -104,20 +106,10 @@ final class ApplicationApprovalListingFilter
     /**
      * @param  Builder<Application>  $query
      */
-    private static function applyNeedsSubmit(Builder $query): void
-    {
-        $draftId = ApplicationStatus::idForDraft();
-        $query->whereNull('archived_at')
-            ->where('application_status_id', $draftId);
-    }
-
-    /**
-     * @param  Builder<Application>  $query
-     */
     private static function applyDraft(Builder $query): void
     {
         self::applyStatus($query, ApplicationStatus::NAME_DRAFT);
-        $query->whereNull('archived_at');
+        $query->notArchived();
     }
 
     /**
@@ -126,7 +118,7 @@ final class ApplicationApprovalListingFilter
     private static function applyAtBoilerChief(Builder $query): void
     {
         $draftId = ApplicationStatus::idForDraft();
-        $query->whereNull('archived_at')
+        $query->notArchived()
             ->where('application_status_id', '!=', $draftId)
             ->whereExists(self::boilerChiefSubdivisionExistsSubquery())
             ->whereDoesntHave('user', function (Builder $userQuery): void {
@@ -148,7 +140,7 @@ final class ApplicationApprovalListingFilter
     private static function applyAtManagement(Builder $query): void
     {
         $draftId = ApplicationStatus::idForDraft();
-        $query->whereNull('archived_at')
+        $query->notArchived()
             ->where('application_status_id', '!=', $draftId)
             ->whereExists(self::boilerChiefSubdivisionExistsSubquery())
             ->whereHas('items')
@@ -172,7 +164,7 @@ final class ApplicationApprovalListingFilter
     {
         $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
         $draftId = ApplicationStatus::idForDraft();
-        $query->whereNull('archived_at')
+        $query->notArchived()
             ->where('application_status_id', '!=', $draftId)
             ->where(function (Builder $statusQuery) use ($pendingId): void {
                 $statusQuery
@@ -196,7 +188,7 @@ final class ApplicationApprovalListingFilter
     private static function applyApproved(Builder $query): void
     {
         self::applyStatus($query, ApplicationStatus::NAME_APPROVED);
-        $query->whereNull('archived_at')
+        $query->notArchived()
             ->whereNotNull('approved_by_user_id');
         self::excludeInTransit($query);
     }
@@ -206,7 +198,7 @@ final class ApplicationApprovalListingFilter
      */
     private static function applyInTransit(Builder $query): void
     {
-        $query->whereNull('archived_at')
+        $query->notArchived()
             ->whereNotNull('approved_by_user_id')
             ->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('is_checked', true));
 
@@ -236,7 +228,7 @@ final class ApplicationApprovalListingFilter
      */
     private static function applyNeedsCustomOrder(Builder $query): void
     {
-        $query->whereNull('archived_at');
+        $query->notArchived();
         $query->whereSupplyApprovedForCustomEquipmentWorkflow();
         $query->whereHas('items', function (Builder $itemQuery): void {
             $itemQuery
@@ -256,7 +248,7 @@ final class ApplicationApprovalListingFilter
     {
         $completedId = ApplicationStatus::idFor(ApplicationStatus::NAME_COMPLETED);
         $query->where(function (Builder $w) use ($completedId): void {
-            $w->whereNotNull('archived_at')
+            $w->archived()
                 ->orWhere('application_status_id', $completedId);
         });
     }

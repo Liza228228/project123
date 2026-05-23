@@ -13,14 +13,87 @@
     </x-slot>
 
     <div class="py-2 sm:py-8 md:py-12"
-         x-data="{ blockFormId: null, blockUserName: '' }">
+         x-data="{
+            blockUserName: '',
+            blockActionUrl: '',
+            blockPreviewLoading: false,
+            blockPreviewError: '',
+            requiresReassignment: false,
+            blockApplications: [],
+            bulkForemanId: '',
+            normalizeApplications(apps) {
+                return (apps || []).map((app) => ({
+                    ...app,
+                    reassignment_foreman_id: app.reassignment_foreman_id ?? '',
+                }));
+            },
+            get bulkForemanOptions() {
+                const optionsById = new Map();
+                this.blockApplications
+                    .filter((app) => app.can_reassign)
+                    .forEach((app) => {
+                        (app.foremen || []).forEach((foreman) => {
+                            optionsById.set(String(foreman.id), foreman);
+                        });
+                    });
+                return Array.from(optionsById.values()).sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+            },
+            applyBulkForeman() {
+                const id = String(this.bulkForemanId || '');
+                if (id === '') {
+                    return;
+                }
+                this.blockApplications.forEach((app) => {
+                    if (! app.can_reassign) {
+                        return;
+                    }
+                    const eligible = (app.foremen || []).some((foreman) => String(foreman.id) === id);
+                    if (eligible) {
+                        app.reassignment_foreman_id = id;
+                    }
+                });
+            },
+            get canConfirmBlock() {
+                if (! this.requiresReassignment) {
+                    return true;
+                }
+                return this.blockApplications.length > 0
+                    && this.blockApplications.every((app) => app.can_reassign);
+            },
+            async startBlock(name, previewUrl, actionUrl) {
+                this.blockUserName = name;
+                this.blockActionUrl = actionUrl;
+                this.blockPreviewLoading = true;
+                this.blockPreviewError = '';
+                this.requiresReassignment = false;
+                this.blockApplications = [];
+                this.bulkForemanId = '';
+                try {
+                    const response = await fetch(previewUrl, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (! response.ok) {
+                        throw new Error('Не удалось загрузить данные для блокировки.');
+                    }
+                    const data = await response.json();
+                    this.requiresReassignment = Boolean(data.requires_reassignment);
+                    this.blockApplications = this.normalizeApplications(
+                        Array.isArray(data.applications) ? data.applications : []
+                    );
+                    if (this.requiresReassignment) {
+                        $dispatch('open-modal', 'confirm-user-block-reassign');
+                    } else {
+                        $dispatch('open-modal', 'confirm-user-block');
+                    }
+                } catch (error) {
+                    this.blockPreviewError = error?.message || 'Ошибка загрузки.';
+                    $dispatch('open-modal', 'confirm-user-block-error');
+                } finally {
+                    this.blockPreviewLoading = false;
+                }
+            },
+         }">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            @if (session('status'))
-                <div class="mb-4 px-4 py-3 rounded-md bg-stone-100 dark:bg-stone-900/40 text-black dark:text-white text-sm">
-                    {{ session('status') }}
-                </div>
-            @endif
-
             <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('users.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
@@ -170,18 +243,12 @@
                                                     </button>
                                                 </form>
                                             @else
-                                                <form id="block-user-mobile-{{ $user->id }}" action="{{ route('users.block', $user) }}" method="POST">
-                                                    @csrf
-                                                    <button type="button"
-                                                        x-on:click="
-                                                            blockFormId = 'block-user-mobile-{{ $user->id }}';
-                                                            blockUserName = '{{ trim($user->surname.' '.$user->name.' '.$user->patronymic) }}';
-                                                            $dispatch('open-modal', 'confirm-user-block');
-                                                        "
-                                                        class="ui-btn ui-btn--danger w-full [touch-action:manipulation]">
-                                                        Заблокировать
-                                                    </button>
-                                                </form>
+                                                <button type="button"
+                                                    class="ui-btn ui-btn--danger w-full [touch-action:manipulation]"
+                                                    :disabled="blockPreviewLoading"
+                                                    x-on:click="startBlock(@js(trim($user->surname.' '.$user->name.' '.$user->patronymic)), @js(route('users.block.preview', $user)), @js(route('users.block', $user)))">
+                                                    Заблокировать
+                                                </button>
                                             @endif
                                         @endunless
                                     </div>
@@ -234,18 +301,12 @@
                                                             </button>
                                                         </form>
                                                     @else
-                                                        <form id="block-user-desktop-{{ $user->id }}" action="{{ route('users.block', $user) }}" method="POST" class="inline">
-                                                            @csrf
-                                                            <button type="button"
-                                                                x-on:click="
-                                                                    blockFormId = 'block-user-desktop-{{ $user->id }}';
-                                                                    blockUserName = '{{ trim($user->surname.' '.$user->name.' '.$user->patronymic) }}';
-                                                                    $dispatch('open-modal', 'confirm-user-block');
-                                                                "
-                                                                class="ui-btn ui-btn--danger w-full sm:w-auto [touch-action:manipulation]">
-                                                                Заблокировать
-                                                            </button>
-                                                        </form>
+                                                        <button type="button"
+                                                            class="ui-btn ui-btn--danger w-full sm:w-auto [touch-action:manipulation]"
+                                                            :disabled="blockPreviewLoading"
+                                                            x-on:click="startBlock(@js(trim($user->surname.' '.$user->name.' '.$user->patronymic)), @js(route('users.block.preview', $user)), @js(route('users.block', $user)))">
+                                                            Заблокировать
+                                                        </button>
                                                     @endif
                                                 @endunless
                                             </div>
@@ -275,8 +336,21 @@
             </div>
         </div>
 
-        <x-modal name="confirm-user-block" :show="false" maxWidth="md" focusable>
+        <x-modal name="confirm-user-block-error" :show="false" maxWidth="md" focusable>
             <div class="p-5 sm:p-6 space-y-4">
+                <h3 class="text-base sm:text-lg font-semibold text-black dark:text-white">Ошибка</h3>
+                <p class="text-sm text-rose-800 dark:text-rose-200" x-text="blockPreviewError || 'Не удалось подготовить блокировку.'"></p>
+                <div class="flex justify-end">
+                    <button type="button" x-on:click="$dispatch('close-modal', 'confirm-user-block-error')" class="ui-btn ui-btn--secondary">
+                        Закрыть
+                    </button>
+                </div>
+            </div>
+        </x-modal>
+
+        <x-modal name="confirm-user-block" :show="false" maxWidth="md" focusable>
+            <form method="post" x-bind:action="blockActionUrl" class="p-5 sm:p-6 space-y-4">
+                @csrf
                 <h3 class="text-base sm:text-lg font-semibold text-black dark:text-white">
                     Подтверждение блокировки
                 </h3>
@@ -290,17 +364,112 @@
                         class="ui-btn ui-btn--secondary w-full sm:w-auto">
                         Отмена
                     </button>
-                    <button type="button"
-                        x-on:click="
-                            if (blockFormId) {
-                                document.getElementById(blockFormId)?.submit();
-                            }
-                        "
-                        class="ui-btn ui-btn--danger w-full sm:w-auto">
+                    <button type="submit" class="ui-btn ui-btn--danger w-full sm:w-auto">
                         Да, заблокировать
                     </button>
                 </div>
-            </div>
+            </form>
+        </x-modal>
+
+        <x-modal name="confirm-user-block-reassign" :show="false" maxWidth="2xl" focusable>
+            <form method="post" x-bind:action="blockActionUrl" class="p-5 sm:p-6 space-y-4 max-h-[min(90vh,42rem)] overflow-y-auto">
+                @csrf
+                <h3 class="text-base sm:text-lg font-semibold text-black dark:text-white">
+                    Блокировка и переназначение заявок
+                </h3>
+                <p class="text-sm text-black dark:text-white/85">
+                    Перед блокировкой мастера
+                    <span class="font-semibold" x-text="blockUserName || '—'"></span>
+                    переназначьте его активные заявки другому мастеру из того же подразделения, что и заявка.
+                </p>
+
+                <div class="rounded-xl border border-orange-200/80 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/25"
+                     x-show="blockApplications.some((app) => app.can_reassign)">
+                    <label for="bulk-foreman-block" class="app-form-label">Мастер для всех заявок</label>
+                    <select
+                        id="bulk-foreman-block"
+                        class="app-select text-sm w-full max-w-md mt-1"
+                        x-model="bulkForemanId"
+                        x-on:change="applyBulkForeman()"
+                    >
+                        <option value="">— выберите мастера —</option>
+                        <template x-for="foreman in bulkForemanOptions" :key="foreman.id">
+                            <option :value="foreman.id" x-text="foreman.label"></option>
+                        </template>
+                    </select>
+                    <p class="mt-2 text-xs text-stone-600 dark:text-stone-400">
+                        Выбор сразу заполнит все строки, где этот мастер допустим для подразделения заявки.
+                    </p>
+                </div>
+
+                <div class="app-table-shell">
+                    <table class="text-sm min-w-full">
+                        <thead class="bg-orange-100/70 dark:bg-orange-900/35">
+                            <tr>
+                                <th class="px-3 py-2 text-left font-semibold">Заявка</th>
+                                <th class="px-3 py-2 text-left font-semibold">Подразделение</th>
+                                <th class="px-3 py-2 text-left font-semibold">Роль</th>
+                                <th class="px-3 py-2 text-left font-semibold">Новый мастер</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/30">
+                            <template x-for="app in blockApplications" :key="app.id">
+                                <tr class="bg-white/90 dark:bg-stone-900/40 align-top">
+                                    <td class="px-3 py-3 whitespace-nowrap">
+                                        <span class="font-medium" x-text="'№' + app.id"></span>
+                                        <p class="text-xs text-stone-500 dark:text-stone-400 mt-0.5" x-show="app.desired_delivery_date" x-text="app.desired_delivery_date"></p>
+                                    </td>
+                                    <td class="px-3 py-3" x-text="app.subdivision_name"></td>
+                                    <td class="px-3 py-3 text-xs" x-text="app.involvement_label"></td>
+                                    <td class="px-3 py-3 min-w-[10rem]">
+                                        <template x-if="! app.can_reassign">
+                                            <p class="text-xs text-amber-800 dark:text-amber-200" x-text="app.message"></p>
+                                        </template>
+                                        <template x-if="app.can_reassign">
+                                            <select
+                                                class="app-select text-sm w-full"
+                                                :name="'reassignments[' + app.id + ']'"
+                                                x-model="app.reassignment_foreman_id"
+                                                required
+                                            >
+                                                <option value="">— выберите мастера —</option>
+                                                <template x-for="foreman in app.foremen" :key="foreman.id">
+                                                    <option :value="String(foreman.id)" x-text="foreman.label"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="text-xs text-amber-800 dark:text-amber-200" x-show="requiresReassignment && ! canConfirmBlock">
+                    Блокировка невозможна: для одной или нескольких заявок нет другого мастера в подразделении. Назначьте мастеров в разделе «Назначение подразделений мастерам».
+                </p>
+
+                @if ($errors->any())
+                    <x-app-alert type="error">
+                        @foreach($errors->all() as $message)
+                            <p>{{ $message }}</p>
+                        @endforeach
+                    </x-app-alert>
+                @endif
+
+                <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1 sticky bottom-0 bg-white dark:bg-stone-950 pb-1">
+                    <button type="button"
+                        x-on:click="$dispatch('close-modal', 'confirm-user-block-reassign')"
+                        class="ui-btn ui-btn--secondary w-full sm:w-auto">
+                        Отмена
+                    </button>
+                    <button type="submit"
+                        class="ui-btn ui-btn--danger w-full sm:w-auto"
+                        :disabled="! canConfirmBlock">
+                        Переназначить и заблокировать
+                    </button>
+                </div>
+            </form>
         </x-modal>
     </div>
 </x-app-layout>

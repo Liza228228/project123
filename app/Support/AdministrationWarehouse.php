@@ -6,6 +6,7 @@ use App\Models\Subdivision;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 
 class AdministrationWarehouse
 {
@@ -14,11 +15,17 @@ class AdministrationWarehouse
     public const WAREHOUSE_NAME = 'Администрация офис';
 
     /** @var list<int> */
-    public const ACCESS_ROLE_IDS = [1, 6, 2, User::ACCOUNTANT_ROLE_ID];
+    public const ACCESS_ROLE_IDS = [1, 6, 2, User::ACCOUNTANT_ROLE_ID, User::ADMINISTRATOR_ROLE_ID];
 
     public static function userCanAccess(?User $user): bool
     {
         return $user?->hasAnyRoleId(self::ACCESS_ROLE_IDS) ?? false;
+    }
+
+    /** Добавление складов подразделения «Администрация» (без технического директора). */
+    public static function userCanManageWarehouses(?User $user): bool
+    {
+        return $user?->hasAnyRoleId(User::SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS) ?? false;
     }
 
     public static function subdivisionId(): ?int
@@ -40,6 +47,34 @@ class AdministrationWarehouse
     public static function normalizeWarehouseName(string $name): string
     {
         return mb_strtolower(trim($name));
+    }
+
+    public static function rejectForemanAssignmentToAdministration(array $subdivisionIds, string $field = 'subdivision_ids'): void
+    {
+        foreach ($subdivisionIds as $subdivisionId) {
+            if (self::isAdministrationSubdivisionId((int) $subdivisionId)) {
+                throw ValidationException::withMessages([
+                    $field => 'Подразделение «'.self::SUBDIVISION_NAME.'» нельзя назначать мастерам участка.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  list<int>  $subdivisionIds
+     * @return list<int>
+     */
+    public static function withoutAdministrationSubdivisionIds(array $subdivisionIds): array
+    {
+        $adminId = self::subdivisionId();
+        if ($adminId === null) {
+            return array_values(array_map(fn ($id): int => (int) $id, $subdivisionIds));
+        }
+
+        return array_values(array_filter(
+            array_map(fn ($id): int => (int) $id, $subdivisionIds),
+            fn (int $id): bool => $id !== $adminId,
+        ));
     }
 
     public static function isReservedWarehouseName(string $name): bool

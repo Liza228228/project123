@@ -59,8 +59,7 @@
                                 </select>
                                 <x-input-error :messages="$errors->get('application_id')" class="mt-1.5" />
                                 @if($applications->isEmpty())
-                                    <p class="mt-2 text-xs text-amber-800 dark:text-amber-200">Нет заявок, к которым вам разрешено прикрепить акт: либо нет доступных заявок, либо ни одна ещё не полностью согласована и не доставлена на склады получателей по всем позициям.</p>
-                                @endif
+                                          @endif
                             </div>
 
                             @if($selectedApplication)
@@ -69,7 +68,7 @@
                                         Оборудование по заявке №{{ $selectedApplication->id }} и списание со склада получателя
                                     </h4>
                                     <p class="mt-1 text-xs text-stone-600 dark:text-stone-300">
-                                        Отметьте позиции для списания. Списание выбранного оборудования выполняется вместе с сохранением акта.
+                                        Отметьте позиции и укажите, сколько списать со склада получателя (можно меньше заказанного — остаток останется на складе). Списание выполняется вместе с сохранением акта.
                                     </p>
                                     @if($deliveredWarehouseIssueCandidates->isNotEmpty())
                                         <div class="mt-3 flex md:hidden items-center gap-2 rounded-lg border border-orange-200/80 bg-white/80 px-3 py-2 dark:border-orange-800/50 dark:bg-stone-900/50">
@@ -87,9 +86,7 @@
                                     @endif
 
                                     @error('issue_item_ids')
-                                        <div class="mt-3 rounded-lg border border-red-200/80 bg-red-50/80 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                                            {{ $message }}
-                                        </div>
+                                        <x-app-alert type="error" class="mt-3 text-xs">{{ $message }}</x-app-alert>
                                     @enderror
 
                                     <div class="mt-3 md:hidden app-card-list">
@@ -97,6 +94,14 @@
                                             @php
                                                 $canIssueHere = $deliveredWarehouseIssueCandidates->contains(fn ($candidate) => (int) $candidate->id === (int) $item->id);
                                                 $checkedIssue = collect(old('issue_item_ids', []))->contains((string) $item->id) || collect(old('issue_item_ids', []))->contains((int) $item->id);
+                                                $orderedQty = (int) $item->quantity;
+                                                $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $orderedQty);
+                                                if ($defaultIssueQty < 1) {
+                                                    $defaultIssueQty = $orderedQty;
+                                                }
+                                                if ($defaultIssueQty > $orderedQty) {
+                                                    $defaultIssueQty = $orderedQty;
+                                                }
                                             @endphp
                                             <article class="app-card-list__item">
                                                 <div class="flex items-start gap-3">
@@ -134,6 +139,33 @@
                                                         <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/55">Кол-во в заявке</p>
                                                         <p class="text-black dark:text-white">{{ $item->quantity_with_unit }}</p>
                                                     </div>
+                                                    @if($canIssueHere)
+                                                        <input
+                                                            type="hidden"
+                                                            name="issue_quantities[{{ $item->id }}]"
+                                                            value="{{ $defaultIssueQty }}"
+                                                            class="js-installation-act-issue-qty-hidden"
+                                                            data-item-id="{{ $item->id }}"
+                                                            @disabled(! $checkedIssue)
+                                                        >
+                                                        <div>
+                                                            <label for="issue_quantities_{{ $item->id }}_mobile" class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/55">Списать, {{ $item->quantityUnitLabelForDisplay() }}</label>
+                                                            <input
+                                                                id="issue_quantities_{{ $item->id }}_mobile"
+                                                                type="number"
+                                                                value="{{ $defaultIssueQty }}"
+                                                                min="1"
+                                                                max="{{ $orderedQty }}"
+                                                                step="1"
+                                                                inputmode="numeric"
+                                                                data-item-id="{{ $item->id }}"
+                                                                data-max-qty="{{ $orderedQty }}"
+                                                                class="js-installation-act-issue-qty app-input mt-1 w-full max-w-[8rem] min-h-0 py-1.5 text-sm"
+                                                                @disabled(! $checkedIssue)
+                                                            >
+                                                            <x-input-error :messages="$errors->get('issue_quantities.'.$item->id)" class="mt-1" />
+                                                        </div>
+                                                    @endif
                                                 </div>
                                             </article>
                                         @endforeach
@@ -161,6 +193,7 @@
                                                     <th class="px-3 py-2 text-left font-semibold">Оборудование</th>
                                                     <th class="px-3 py-2 text-left font-semibold">Склад получателя</th>
                                                     <th class="px-3 py-2 text-right font-semibold">Кол-во в заявке</th>
+                                                    <th class="px-3 py-2 text-right font-semibold">Списать</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/30">
@@ -168,6 +201,14 @@
                                                     @php
                                                         $canIssueHere = $deliveredWarehouseIssueCandidates->contains(fn ($candidate) => (int) $candidate->id === (int) $item->id);
                                                         $checkedIssue = collect(old('issue_item_ids', []))->contains((string) $item->id) || collect(old('issue_item_ids', []))->contains((int) $item->id);
+                                                        $orderedQty = (int) $item->quantity;
+                                                        $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $orderedQty);
+                                                        if ($defaultIssueQty < 1) {
+                                                            $defaultIssueQty = $orderedQty;
+                                                        }
+                                                        if ($defaultIssueQty > $orderedQty) {
+                                                            $defaultIssueQty = $orderedQty;
+                                                        }
                                                     @endphp
                                                     <tr class="bg-white/90 dark:bg-stone-900/40">
                                                         <td class="px-3 py-2">
@@ -195,6 +236,30 @@
                                                             @endif
                                                         </td>
                                                         <td class="px-3 py-2 text-right">{{ $item->quantity_with_unit }}</td>
+                                                        <td class="px-3 py-2 text-right">
+                                                            @if($canIssueHere)
+                                                                <div class="inline-flex flex-col items-end gap-1">
+                                                                    <input
+                                                                        id="issue_quantities_{{ $item->id }}_desktop"
+                                                                        type="number"
+                                                                        value="{{ $defaultIssueQty }}"
+                                                                        min="1"
+                                                                        max="{{ $orderedQty }}"
+                                                                        step="1"
+                                                                        inputmode="numeric"
+                                                                        data-item-id="{{ $item->id }}"
+                                                                        data-max-qty="{{ $orderedQty }}"
+                                                                        class="js-installation-act-issue-qty app-input w-24 min-h-0 py-1 text-right text-sm"
+                                                                        aria-label="Количество к списанию, {{ $item->quantityUnitLabelForDisplay() }}"
+                                                                        @disabled(! $checkedIssue)
+                                                                    >
+                                                                    <span class="text-[10px] text-stone-500 dark:text-stone-400">макс. {{ $orderedQty }} {{ $item->quantityUnitLabelForDisplay() }}</span>
+                                                                    <x-input-error :messages="$errors->get('issue_quantities.'.$item->id)" class="text-left" />
+                                                                </div>
+                                                            @else
+                                                                <span class="text-stone-400">—</span>
+                                                            @endif
+                                                        </td>
                                                     </tr>
                                                 @endforeach
                                             </tbody>
@@ -204,7 +269,7 @@
                                     <div class="mt-3">
                                         @if($deliveredWarehouseIssueCandidates->isNotEmpty())
                                             <p class="text-xs text-amber-800 dark:text-amber-200">
-                                                Доступно к списанию позиций: {{ $deliveredWarehouseIssueCandidates->count() }}. Выберите нужные и нажмите «Сохранить».
+                                                Доступно к списанию позиций: {{ $deliveredWarehouseIssueCandidates->count() }}. Выберите позиции, укажите количество (не больше заказанного) и нажмите «Сохранить».
                                             </p>
                                         @else
                                             <p class="text-xs text-emerald-700 dark:text-emerald-200">
@@ -320,11 +385,65 @@
         (function () {
             const masters = document.querySelectorAll('.js-installation-act-issue-select-all');
             const items = document.querySelectorAll('.js-installation-act-issue-item');
-            if (!masters.length || !items.length) {
+            if (!items.length) {
                 return;
             }
 
+            const qtyInputsForItem = (itemId) => {
+                return Array.from(document.querySelectorAll('.js-installation-act-issue-qty[data-item-id="' + itemId + '"]'));
+            };
+
+            const hiddenQtyForItem = (itemId) => {
+                return document.querySelector('.js-installation-act-issue-qty-hidden[data-item-id="' + itemId + '"]');
+            };
+
+            const syncQtyToHidden = (itemId) => {
+                const hidden = hiddenQtyForItem(itemId);
+                const visible = qtyInputsForItem(itemId)[0];
+                if (!hidden || !visible) {
+                    return;
+                }
+                hidden.value = visible.value;
+            };
+
+            const setQtyEnabled = (checkbox, enabled) => {
+                const itemId = checkbox.value;
+                const maxQty = checkbox.closest('article, tr')?.querySelector('.js-installation-act-issue-qty')?.dataset.maxQty;
+                qtyInputsForItem(itemId).forEach((input) => {
+                    input.disabled = !enabled;
+                    if (!enabled && maxQty) {
+                        input.value = maxQty;
+                    }
+                });
+                const hidden = hiddenQtyForItem(itemId);
+                if (hidden) {
+                    hidden.disabled = !enabled;
+                    if (!enabled && maxQty) {
+                        hidden.value = maxQty;
+                    } else if (enabled) {
+                        syncQtyToHidden(itemId);
+                    }
+                }
+            };
+
+            document.querySelectorAll('.js-installation-act-issue-qty').forEach((input) => {
+                const itemId = input.dataset.itemId;
+                const syncAllVisible = () => {
+                    qtyInputsForItem(itemId).forEach((peer) => {
+                        if (peer !== input) {
+                            peer.value = input.value;
+                        }
+                    });
+                    syncQtyToHidden(itemId);
+                };
+                input.addEventListener('input', syncAllVisible);
+                input.addEventListener('change', syncAllVisible);
+            });
+
             const syncMasters = () => {
+                if (!masters.length) {
+                    return;
+                }
                 const total = items.length;
                 const checked = Array.from(items).filter((c) => c.checked).length;
                 masters.forEach((m) => {
@@ -333,11 +452,20 @@
                 });
             };
 
+            items.forEach((checkbox) => {
+                setQtyEnabled(checkbox, checkbox.checked);
+                checkbox.addEventListener('change', () => {
+                    setQtyEnabled(checkbox, checkbox.checked);
+                    syncMasters();
+                });
+            });
+
             masters.forEach((master) => {
                 master.addEventListener('change', () => {
                     const on = master.checked;
                     items.forEach((c) => {
                         c.checked = on;
+                        setQtyEnabled(c, on);
                     });
                     masters.forEach((m) => {
                         m.checked = on;
@@ -346,7 +474,6 @@
                 });
             });
 
-            items.forEach((c) => c.addEventListener('change', syncMasters));
             syncMasters();
         })();
     </script>

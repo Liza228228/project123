@@ -1,51 +1,75 @@
 @php
-    $needsSubmitToApproval = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
+    $statusKey = $application->index_list_status ?? null;
+    if ($statusKey === null) {
+        $statusKey = match (true) {
+            $application->isAdminArchived() => 'archived_admin',
+            $application->isCreatorDraftApplication() => 'draft',
+            $application->items->isEmpty() => 'empty',
+            $application->isLifecycleCompleted() => 'completed',
+            $application->isApprovedDeliveryFullyInTransit() => 'in_transit',
+            $application->isStatusApproved() => 'approved',
+            $application->isStatusPartial() => 'partial',
+            $application->needsBoilerChiefReviewBeforeManagement() => 'boiler',
+            $application->awaitsManagementEquipmentApproval() => 'management',
+            $application->isStatusRejected() => 'rejected',
+            default => 'pending',
+        };
+    }
+
     $badgeClass = 'applications-index-status-badge';
-    $badgeClassMobile = 'inline-flex items-center rounded-full px-2.5 py-1 text-sm font-medium leading-snug';
+    $badgeClassMobile = 'inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-sm font-medium leading-snug ring-1 ring-inset';
+    $badge = ($compact ?? false) ? $badgeClassMobile : $badgeClass;
 @endphp
-@if($application->items->isEmpty())
+@if($statusKey === 'empty')
     <span class="text-black dark:text-white opacity-50">—</span>
-@elseif($needsSubmitToApproval)
+@elseif($statusKey === 'archived_admin')
     <span
-        class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} applications-index-status-badge--submit"
-        title="Отправьте заявку на следующий этап согласования"
+        class="{{ $badge }} applications-index-status-badge--rejected"
+        title="Заявка перенесена в архив. Изменения недоступны."
     >
-        Нужна отправка
+        В архиве
     </span>
-@elseif($application->isLifecycleCompleted())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} border border-emerald-300/90 bg-emerald-50/90 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
-        Выполнена
-    </span>
-@elseif($application->isApprovedDeliveryFullyInTransit())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} border border-orange-300/90 bg-orange-50/90 text-orange-950 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-100">
-        В пути
-    </span>
-@elseif($application->isStatusApproved())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-stone-200 text-black dark:bg-stone-900/60 dark:text-white">
-        Согласована
-    </span>
-@elseif($application->isStatusPartial())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-stone-200/90 text-black dark:bg-stone-900/50 dark:text-white">
-        Частично
-    </span>
-@elseif($application->isCreatorDraftApplication())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-stone-200/90 text-stone-800 dark:bg-stone-800/60 dark:text-stone-200">
+@elseif($statusKey === 'needs_submit')
+    <span
+        class="{{ $badge }} applications-index-status-badge--draft"
+        title="Заявка ещё не отправлена на согласование"
+    >
         Черновик
     </span>
-@elseif($application->needsBoilerChiefReviewBeforeManagement())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
+@elseif($statusKey === 'completed')
+    <span class="{{ $badge }} applications-index-status-badge--completed">
+        Выполнена
+    </span>
+@elseif($statusKey === 'in_transit')
+    <span class="{{ $badge }} applications-index-status-badge--transit">
+        В пути
+    </span>
+@elseif($statusKey === 'approved')
+    <span class="{{ $badge }} applications-index-status-badge--approved">
+        Согласована
+    </span>
+@elseif($statusKey === 'partial')
+    <span class="{{ $badge }} applications-index-status-badge--partial">
+        Частично
+    </span>
+@elseif($statusKey === 'draft')
+    <span class="{{ $badge }} applications-index-status-badge--draft">
+        Черновик
+    </span>
+@elseif($statusKey === 'boiler')
+    <span class="{{ $badge }} applications-index-status-badge--boiler">
         У котельной
     </span>
-@elseif($application->awaitsManagementEquipmentApproval())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-sky-100 text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">
+@elseif($statusKey === 'management')
+    <span class="{{ $badge }} applications-index-status-badge--management">
         У руководства
     </span>
-@elseif($application->isStatusRejected())
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-stone-300/90 text-black dark:bg-stone-900/70 dark:text-white">
+@elseif($statusKey === 'rejected')
+    <span class="{{ $badge }} applications-index-status-badge--rejected">
         Не согласована
     </span>
 @else
-    <span class="{{ ($compact ?? false) ? $badgeClassMobile : $badgeClass }} bg-stone-100 text-black dark:bg-stone-900/50 dark:text-white">
+    <span class="{{ $badge }} applications-index-status-badge--pending">
         На согласовании
     </span>
 @endif

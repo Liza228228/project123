@@ -24,6 +24,7 @@
             ->all();
         $items = old('items', $defaultItems);
         $equipmentNameMax = \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH;
+        $equipmentCatalogSearchMax = \App\Models\Equipment::NAME_MAX_LENGTH;
         if (empty($items)) {
             $items = [[
                 'item_id' => null,
@@ -49,9 +50,13 @@
     <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8">
-                
+                @if (request()->boolean('commercial_offer_ready'))
+                    <div class="mb-6 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-100">
+                        Коммерческое предложение сформировано. Нажмите «Сохранить изменения», чтобы заменить текущий файл.
+                    </div>
+                @endif
 
-                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" class="max-sm:pb-40 space-y-8 sm:space-y-10">
+                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" enctype="multipart/form-data" class="max-sm:pb-40 space-y-8 sm:space-y-10">
                     @csrf
                     @method('PUT')
 
@@ -94,7 +99,7 @@
                             <div>
                                 <h3 id="edit-section-equipment" class="app-section-title">Оборудование</h3>
                                 <p class="mt-1 max-w-2xl text-xs text-stone-500 dark:text-stone-400">
-                                    Позиции из справочника или своё название. Своё: после согласования — «Заказано» → «На складе», приход в «Материалах».
+                                    Позиции из справочника или своё название. 
                                 </p>
                             </div>
                         </div>
@@ -234,6 +239,7 @@
                                                         type="text"
                                                         value="{{ $selectedEq?->name ?? '' }}"
                                                         placeholder="От 2 букв названия…"
+                                                        maxlength="{{ $equipmentCatalogSearchMax }}"
                                                         autocomplete="off"
                                                         autocorrect="off"
                                                         autocapitalize="off"
@@ -271,6 +277,14 @@
                         </div>
                         <x-input-error :messages="$errors->get('equipment')" class="mt-1.5" />
                     </section>
+
+                    @if (filled($application->commercial_offer))
+                        @include('applications.partials.commercial-offer-edit', [
+                            'application' => $application,
+                            'commercialOfferDraftReady' => $commercialOfferDraftReady ?? false,
+                            'commercialProposalFillUrl' => $commercialProposalFillUrl ?? route('applications.commercial-proposal.fill.edit', $application),
+                        ])
+                    @endif
 
                     <section class="space-y-4 border-t border-stone-100 pt-8 dark:border-stone-800" aria-labelledby="edit-section-date">
                         <h3 id="edit-section-date" class="app-section-title">Срок</h3>
@@ -322,7 +336,7 @@
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </span>
                         <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
-                        <input type="text" placeholder="От 2 букв названия…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
+                        <input type="text" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
                         <div class="equipment-suggestions app-suggestions hidden"></div>
                     </div>
                 </div>
@@ -356,7 +370,7 @@
                 <div class="md:col-span-12">
                     <label class="app-form-label !normal-case">Наименование</label>
                     <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Как в заявке у поставщика" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
-                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. Цепочка: согласование → «Заказано» → «На складе».</p>
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. </p>
                 </div>
                 <div class="custom-type-wrap md:col-span-4 min-w-0">
                     <label class="app-form-label !normal-case">Тип</label>
@@ -535,7 +549,7 @@
             var measurementUnits = @json($measurementMeta['unitsByType'] ?? ['piece' => ['шт']]);
             var catalogById = @json($measurementMeta['catalogById'] ?? []);
             var DUPLICATE_EQUIPMENT_MSG = 'Нельзя добавить две строки с одним и тем же наименованием и размером.';
-            var DUPLICATE_EQUIPMENT_GENERIC_MSG = 'Нельзя добавить одно и то же оборудование дважды.';
+            var DUPLICATE_EQUIPMENT_GENERIC_MSG = 'Нельзя добавить две строки с одинаковым наименованием и типом измерения.';
 
             function catalogIdForFreeTextLabel(raw) {
                 var text = String(raw || '').trim();
@@ -603,7 +617,8 @@
                     }
                 }
 
-                return baseKey;
+                var mt = measurementTypeFromRow(row) || 'piece';
+                return baseKey + ':mt:' + mt;
             }
 
             function nameInputForEquipmentRow(row) {
@@ -679,7 +694,7 @@
 
             function bindDuplicateEquipmentChecks(root) {
                 var scope = root || container;
-                scope.querySelectorAll('.custom-equipment-input, .equipment-search, .list-amount-size, .custom-amount-size, .list-amount-number, .custom-amount-number').forEach(function(input) {
+                scope.querySelectorAll('.custom-equipment-input, .equipment-search, .measurement-type, .list-amount-size, .custom-amount-size, .list-amount-number, .custom-amount-number').forEach(function(input) {
                     if (input.dataset.duplicateBound === '1') {
                         return;
                     }
@@ -1273,6 +1288,84 @@
             bindDuplicateEquipmentChecks(container);
             syncAllCatalogSearchHiddenIds();
             refreshDuplicateEquipmentErrors();
+
+            var replaceCommercialOfferFileBtn = document.getElementById('replace-commercial-offer-file-btn');
+            var cancelCommercialOfferReplaceBtn = document.getElementById('cancel-commercial-offer-replace-btn');
+            var commercialOfferReplaceBlock = document.getElementById('commercial-offer-replace-block');
+            var commercialOfferReplaceActions = document.getElementById('commercial-offer-replace-actions');
+            var replaceCommercialOfferInput = document.getElementById('replace-commercial-offer-input');
+            var useCommercialOfferDraftInput = document.getElementById('use-commercial-offer-draft-input');
+            var fillCommercialProposalEditBtn = document.getElementById('fill-commercial-proposal-edit-btn');
+            var subdivisionSelectForCp = document.getElementById('subdivision_id');
+            var commercialOfferFileInput = document.getElementById('commercial_offer');
+            var discardCommercialOfferDraftUrl = @json(route('applications.edit', ['application' => $application, 'discard_commercial_offer_draft' => 1]));
+
+            function showCommercialOfferReplaceBlock() {
+                if (commercialOfferReplaceBlock) {
+                    commercialOfferReplaceBlock.classList.remove('hidden');
+                }
+                if (commercialOfferReplaceActions) {
+                    commercialOfferReplaceActions.classList.add('hidden');
+                }
+                if (replaceCommercialOfferInput) {
+                    replaceCommercialOfferInput.value = '1';
+                }
+            }
+
+            if (replaceCommercialOfferFileBtn) {
+                replaceCommercialOfferFileBtn.addEventListener('click', function() {
+                    if (useCommercialOfferDraftInput) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                    showCommercialOfferReplaceBlock();
+                });
+            }
+            if (commercialOfferReplaceBlock && !commercialOfferReplaceBlock.classList.contains('hidden')) {
+                showCommercialOfferReplaceBlock();
+            }
+            if (fillCommercialProposalEditBtn && subdivisionSelectForCp) {
+                fillCommercialProposalEditBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var subId = subdivisionSelectForCp.value || '';
+                    if (!subId) {
+                        window.alert('Сначала выберите подразделение в разделе «Основное».');
+                        return;
+                    }
+                    var base = fillCommercialProposalEditBtn.getAttribute('href') || '';
+                    var sep = base.indexOf('?') >= 0 ? '&' : '?';
+                    window.location.href = base + sep + 'subdivision_id=' + encodeURIComponent(subId);
+                });
+            }
+            if (commercialOfferFileInput && useCommercialOfferDraftInput) {
+                commercialOfferFileInput.addEventListener('change', function() {
+                    if (commercialOfferFileInput.files && commercialOfferFileInput.files.length > 0) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                });
+            }
+            if (cancelCommercialOfferReplaceBtn) {
+                cancelCommercialOfferReplaceBtn.addEventListener('click', function() {
+                    var hadDraft = useCommercialOfferDraftInput && useCommercialOfferDraftInput.value === '1';
+                    if (commercialOfferReplaceBlock) {
+                        commercialOfferReplaceBlock.classList.add('hidden');
+                    }
+                    if (commercialOfferReplaceActions) {
+                        commercialOfferReplaceActions.classList.remove('hidden');
+                    }
+                    if (replaceCommercialOfferInput) {
+                        replaceCommercialOfferInput.value = '0';
+                    }
+                    if (useCommercialOfferDraftInput) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                    if (commercialOfferFileInput) {
+                        commercialOfferFileInput.value = '';
+                    }
+                    if (hadDraft) {
+                        window.location.href = discardCommercialOfferDraftUrl;
+                    }
+                });
+            }
 
             var editForm = document.getElementById('application-edit-form');
             if (editForm) {

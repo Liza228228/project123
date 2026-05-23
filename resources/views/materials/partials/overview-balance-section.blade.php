@@ -45,16 +45,16 @@
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyIn, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </dd>
                     </div>
-                    <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
-                        <dt class="font-medium uppercase tracking-wide text-black/50 dark:text-white/50">Списано</dt>
-                        <dd class="mt-1 text-sm font-medium text-red-700 dark:text-red-300/90">
-                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
-                        </dd>
-                    </div>
                     <div class="rounded-lg bg-emerald-50/90 px-2 py-2 dark:bg-emerald-950/35">
                         <dt class="font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Остаток</dt>
                         <dd class="mt-1 text-sm font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/50 dark:text-white/50 @else text-emerald-900 dark:text-emerald-100 @endif">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </dd>
+                    </div>
+                    <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
+                        <dt class="font-medium uppercase tracking-wide text-black/50 dark:text-white/50">Списано</dt>
+                        <dd class="mt-1 text-sm font-medium text-red-700 dark:text-red-300/90">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </dd>
                     </div>
                 </dl>
@@ -70,8 +70,8 @@
                 <tr>
                     <th class="text-left py-3 px-4">Оборудование</th>
                     <th class="text-right py-3 px-4">Приход</th>
-                    <th class="text-right py-3 px-4">Списано</th>
                     <th class="text-right py-3 px-4">Остаток</th>
+                    <th class="text-right py-3 px-4">Списано</th>
                 </tr>
             </thead>
             <tbody>
@@ -94,11 +94,11 @@
                         <td class="py-3 px-4 text-right">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyIn, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </td>
-                        <td class="py-3 px-4 text-right text-red-700 dark:text-red-300/90">
-                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
-                        </td>
                         <td class="py-3 px-4 text-right font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/55 dark:text-white/55 @endif">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </td>
+                        <td class="py-3 px-4 text-right text-red-700 dark:text-red-300/90">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </td>
                     </tr>
                 @empty

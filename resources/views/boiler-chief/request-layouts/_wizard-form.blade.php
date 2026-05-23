@@ -259,16 +259,7 @@
         <input type="hidden" name="footer_stamp" :value="footerStamp ? 1 : 0"/>
         <input type="hidden" name="pdf_footer_preset" value="{{ old('pdf_footer_preset', (string) ($schema['pdf_footer_preset'] ?? 'one_signer_author')) }}"/>
 
-        @if ($errors->any())
-            <div class="mx-5 mt-5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-900 dark:text-rose-100" role="alert">
-                <p class="font-medium mb-1">Исправьте ошибки:</p>
-                <ul class="list-disc list-inside space-y-0.5">
-                    @foreach ($errors->all() as $message)
-                        <li>{{ $message }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+        <x-validation-errors class="mx-5 mt-5" />
 
         <div class="space-y-5 border-b border-orange-100/90 px-5 pb-4 pt-6 sm:px-8 dark:border-orange-900/40">
             <div>

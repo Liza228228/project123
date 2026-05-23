@@ -7,9 +7,27 @@ use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\MeasurementUnit;
 use App\Models\User;
+use App\Models\Subdivision;
+use App\Models\Warehouse;
+use App\Support\AdministrationWarehouse;
 use App\Support\ApplicationCatalogStockAvailability;
+use App\Support\CommercialOfferOrderStockSplit;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;
+
+function ensureAdministrationWarehouseForStockTest(): Warehouse
+{
+    $subdivision = Subdivision::query()->firstOrCreate(['name' => AdministrationWarehouse::SUBDIVISION_NAME]);
+    Warehouse::query()->update(['is_primary' => false]);
+
+    return Warehouse::query()->updateOrCreate(
+        [
+            'subdivision_id' => $subdivision->id,
+            'name' => AdministrationWarehouse::WAREHOUSE_NAME,
+        ],
+        ['is_primary' => true]
+    );
+}
 
 test('approved catalog quantity reserves main warehouse stock for other applications', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
@@ -202,4 +220,217 @@ test('size-type catalog stock and reservation are tracked per size variant', fun
     $orderLine = $items2->firstWhere('equipment_id', null);
     expect($orderLine)->not->toBeNull();
     expect((int) $orderLine->quantity)->toBe(2);
+});
+
+test('commercial offer order reserves catalog piece stock on administration warehouse', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-резерв');
+    $mainWarehouse = ensureAdministrationWarehouseForStockTest();
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->where('code', 'шт')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+
+    $nails = Equipment::query()->create([
+        'name' => 'Гвозди',
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'is_catalog' => true,
+    ]);
+
+    $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+    MaterialStockMovement::query()->create([
+        'equipment_id' => $nails->id,
+        'warehouse_id' => (int) $mainWarehouse->id,
+        'material_stock_movement_type_id' => $receiptTypeId,
+        'quantity' => 100,
+    ]);
+
+    $chief = User::query()->create([
+        'surname' => 'НачКот',
+        'name' => 'КП',
+        'patronymic' => 'Тест',
+        'email' => 'chief-co-reserve-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => '2026-07-01',
+        'items' => [
+            [
+                'equipment_id' => '',
+                'equipment_name' => '',
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp-nails.pdf', 100, 'application/pdf'),
+    ]);
+
+    $app = Application::query()->orderByDesc('id')->first();
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '1',
+    ])->assertRedirect(route('applications.show', $app));
+
+    $director = User::query()->create([
+        'surname' => 'Дир',
+        'name' => 'КП',
+        'patronymic' => 'Резерв',
+        'email' => 'director-co-reserve-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 1,
+    ]);
+
+    $this->actingAs($director)->post(route('applications.approval', $app), [
+        'commercial_offer_management_is_checked' => '1',
+    ])->assertRedirect(route('applications.show', $app));
+
+    $coRow = [
+        'equipment_name' => 'Гвозди',
+        'measurement_type' => 'piece',
+        'quantity' => 55,
+        'quantity_unit' => 'шт',
+    ];
+    expect(CommercialOfferOrderStockSplit::resolveCatalogEquipmentIdForRow($coRow, 'Гвозди'))
+        ->toBe((int) $nails->id);
+    expect(ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse((int) $nails->id, (int) $mainWarehouse->id))
+        ->toEqual(100.0);
+    $expanded = CommercialOfferOrderStockSplit::expandRows([$coRow], (int) $app->id);
+    expect($expanded)->toHaveCount(1);
+    expect((int) ($expanded[0]['equipment_id'] ?? 0))->toBe((int) $nails->id);
+
+    $this->actingAs($director)->post(route('applications.commercial-offer-order-lines.store', $app), [
+        'items' => [
+            [
+                'equipment_name' => 'Гвозди',
+                'measurement_type' => 'piece',
+                'quantity' => 55,
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.show', $app))
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('status');
+
+    $items = ApplicationItem::query()->where('application_id', $app->id)->orderBy('id')->get();
+    expect($items)->toHaveCount(1);
+
+    $reserved = $items->firstWhere(fn (ApplicationItem $i) => (int) $i->equipment_id === (int) $nails->id);
+    expect($reserved)->not->toBeNull();
+    expect((int) $reserved->equipment_id)->toBe((int) $nails->id);
+    expect((int) $reserved->quantity)->toBe(55);
+    expect($reserved->is_checked)->toBeTrue();
+    expect($reserved->isCommercialOfferWarehouseReserved())->toBeTrue();
+    expect($reserved->custom_equipment_supply_status_id)->toBeNull();
+
+    expect(ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId()[(int) $nails->id] ?? 0.0)
+        ->toEqual(55.0);
+});
+
+test('commercial offer order splits catalog stock and overflow to supplier order', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КП-сплит');
+    $mainWarehouse = ensureAdministrationWarehouseForStockTest();
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->where('code', 'шт')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+
+    $nails = Equipment::query()->create([
+        'name' => 'Гвозди сплит',
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'is_catalog' => true,
+    ]);
+
+    $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
+    MaterialStockMovement::query()->create([
+        'equipment_id' => $nails->id,
+        'warehouse_id' => (int) $mainWarehouse->id,
+        'material_stock_movement_type_id' => $receiptTypeId,
+        'quantity' => 40,
+    ]);
+
+    $chief = User::query()->create([
+        'surname' => 'Нач',
+        'name' => 'Сплит',
+        'patronymic' => 'КП',
+        'email' => 'chief-co-split-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    \Illuminate\Support\Facades\Storage::fake('public');
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => '2026-07-02',
+        'items' => [
+            [
+                'equipment_id' => '',
+                'equipment_name' => '',
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+        'commercial_offer' => \Illuminate\Http\UploadedFile::fake()->create('kp-split.pdf', 100, 'application/pdf'),
+    ]);
+
+    $app = Application::query()->orderByDesc('id')->first();
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app));
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'commercial_offer_chief_is_checked' => '1',
+    ]);
+
+    $director = User::query()->create([
+        'surname' => 'Дир',
+        'name' => 'Сплит',
+        'patronymic' => 'КП',
+        'email' => 'director-co-split-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 1,
+    ]);
+
+    $this->actingAs($director)->post(route('applications.approval', $app), [
+        'commercial_offer_management_is_checked' => '1',
+    ]);
+
+    $this->actingAs($director)->post(route('applications.commercial-offer-order-lines.store', $app), [
+        'items' => [
+            [
+                'equipment_name' => 'Гвозди сплит',
+                'measurement_type' => 'piece',
+                'quantity' => 55,
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertSessionHasNoErrors();
+
+    $items = ApplicationItem::query()->where('application_id', $app->id)->orderBy('id')->get();
+    expect($items)->toHaveCount(2);
+
+    $fromStock = $items->firstWhere('equipment_id', $nails->id);
+    expect($fromStock)->not->toBeNull();
+    expect((int) $fromStock->quantity)->toBe(40);
+    expect($fromStock->isCommercialOfferWarehouseReserved())->toBeTrue();
+
+    $toOrder = $items->firstWhere('equipment_id', null);
+    expect($toOrder)->not->toBeNull();
+    expect((int) $toOrder->quantity)->toBe(15);
+    expect($toOrder->isOrderedFromCommercialOffer())->toBeTrue();
 });

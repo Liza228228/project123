@@ -8,6 +8,8 @@ class UpdateLayoutApplicationRequest extends StoreLayoutApplicationRequest
 {
     protected function prepareForValidation(): void
     {
+        parent::prepareForValidation();
+
         $submission = $this->route('submission');
         if ($submission instanceof RequestSubmission) {
             $this->merge([

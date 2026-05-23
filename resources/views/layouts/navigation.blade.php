@@ -3,7 +3,7 @@
         $user = Auth::user();
         $topNavBtnClass = 'ui-btn ui-btn--secondary px-3 py-2 whitespace-nowrap';
         $canManageBoilerChiefAssignments = $user->hasAnyRoleId(\App\Models\User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS);
-        $canManageForemanAssignments = $canManageBoilerChiefAssignments || $user->hasRoleId(7);
+        $canManageForemanAssignments = $canManageBoilerChiefAssignments;
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS);
         $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
         $canManageReportLayoutTemplates = $user->hasAnyRoleId(\App\Models\User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
@@ -13,7 +13,7 @@
         $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6]);
         // Директор, ТД, начальник снабжения и мастер участка — без отдельной кнопки «Отчет».
         $showStandaloneLayoutFillReport = $canFillReport && ! $user->hasAnyRoleId([1, 2, 4, 6]);
-        // Мастер участка, начальник котельной и начальник снабжения: в «Генератор отчётов» только «Отчеты по макетам».
+        // Мастер участка, начальник котельной и начальник снабжения: в меню только «Отчеты по макетам».
         $foremanLayoutReportsGeneratorOnly = $user->hasRoleId(4) && $canLayoutApplicationReports;
         $boilerChiefLayoutReportsGeneratorOnly = $user->hasRoleId(7) && $canLayoutApplicationReports;
         $supplyHeadLayoutReportsGeneratorOnly = $user->hasRoleId(2) && $canLayoutApplicationReports;
@@ -45,7 +45,7 @@
                         </a>
                     @endif
 
-                    @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7]))
+                    @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7, \App\Models\User::ADMINISTRATOR_ROLE_ID]))
                         <a href="{{ route('applications.index') }}"
                            class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.*') && ! request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store', 'applications.installation-act.browse', 'applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')) aria-current="page" @endif>
@@ -56,8 +56,8 @@
                     @if (Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
                         <a href="{{ route('applications.custom-equipment-to-order') }}"
                            class="{{ $topNavBtnClass }}"
-                           @if(request()->routeIs('applications.custom-equipment-to-order')) aria-current="page" @endif>
-                            К заказу: своё оборудование
+                           @if(request()->routeIs('applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')) aria-current="page" @endif>
+                            Оборудование к заказу
                         </a>
                     @endif
 
@@ -112,20 +112,11 @@
                                 Отчеты по макетам
                             </a>
                         @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly || $supplyHeadLayoutReportsGeneratorOnly)
-                            <x-dropdown align="left" width="64">
-                                <x-slot name="trigger">
-                                    <button type="button" class="{{ $topNavBtnClass }} gap-2"
-                                        @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
-                                        Генератор отчётов
-                                        <svg class="h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                </x-slot>
-                                <x-slot name="content">
-                                    <x-dropdown-link :href="route('boiler-chief.layout-applications.index')">Отчеты по макетам</x-dropdown-link>
-                                </x-slot>
-                            </x-dropdown>
+                            <a href="{{ route('boiler-chief.layout-applications.index') }}"
+                               class="{{ $topNavBtnClass }}"
+                               @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
+                                Отчеты по макетам
+                            </a>
                         @else
                             <x-dropdown align="left" width="64">
                                 <x-slot name="trigger">
@@ -266,15 +257,15 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7]))
+            @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7, \App\Models\User::ADMINISTRATOR_ROLE_ID]))
                 <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*') && ! request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store', 'applications.installation-act.browse', 'applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')">
                     Заявки
                 </x-responsive-nav-link>
             @endif
 
             @if (Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
-                <x-responsive-nav-link :href="route('applications.custom-equipment-to-order')" :active="request()->routeIs('applications.custom-equipment-to-order')">
-                    К заказу: своё оборудование
+                <x-responsive-nav-link :href="route('applications.custom-equipment-to-order')" :active="request()->routeIs('applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')">
+                    Оборудование к заказу
                 </x-responsive-nav-link>
             @endif
 
@@ -317,9 +308,6 @@
                         Отчеты по макетам
                     </x-responsive-nav-link>
                 @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly || $supplyHeadLayoutReportsGeneratorOnly)
-                    <div class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-black/45 dark:text-white/45">
-                        Генератор отчётов
-                    </div>
                     <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
                         Отчеты по макетам
                     </x-responsive-nav-link>

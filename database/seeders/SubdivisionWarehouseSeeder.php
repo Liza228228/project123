@@ -21,6 +21,8 @@ class SubdivisionWarehouseSeeder extends Seeder
             []
         );
 
+        $addressCatalog = WarehouseSeeder::subdivisionAddressCatalog();
+
         foreach (Subdivision::query()->orderBy('id')->cursor() as $subdivision) {
             $existing = Warehouse::query()
                 ->where('subdivision_id', $subdivision->id)
@@ -43,16 +45,22 @@ class SubdivisionWarehouseSeeder extends Seeder
                     ? 'Склад'
                     : 'Склад №'.$slot;
 
+                $address = $addressCatalog[$subdivision->name] ?? [];
+                $address['address_house'] = (string) $slot;
+
                 Warehouse::query()->updateOrCreate(
                     [
                         'subdivision_id' => $subdivision->id,
                         'name' => $name,
                     ],
-                    [
-                        'warehouse_type_id' => $defaultType->id,
-                        'is_primary' => false,
-                        'comment' => 'Подразделение: '.$subdivision->name,
-                    ]
+                    array_merge(
+                        [
+                            'warehouse_type_id' => $defaultType->id,
+                            'is_primary' => false,
+                            'comment' => 'Подразделение: '.$subdivision->name,
+                        ],
+                        $address
+                    )
                 );
             }
         }

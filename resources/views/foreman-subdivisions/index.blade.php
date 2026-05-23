@@ -9,12 +9,6 @@
     </x-slot>
 
     <div class="mx-auto max-w-6xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
-        @if (session('status'))
-            <div class="mb-4 rounded-xl border border-stone-200/90 bg-stone-50/90 px-4 py-3 text-sm text-stone-800 dark:border-stone-600 dark:bg-stone-800/40 dark:text-stone-100 sm:mb-6">
-                {{ session('status') }}
-            </div>
-        @endif
-
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8">
                 <div class="mb-6 border-b border-stone-100 pb-4 dark:border-stone-800 sm:pb-6">

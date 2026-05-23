@@ -22,7 +22,7 @@ final class ApplicationCatalogStockAvailability
     public static function reservedQuantitiesByEquipmentId(?int $excludeApplicationId = null): array
     {
         $applicationIds = Application::query()
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereSupplyApprovedForCustomEquipmentWorkflow()
             ->pluck('id');
 

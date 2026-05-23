@@ -1,6 +1,8 @@
 @php
     $isAccountant = Auth::user()?->hasRoleId(\App\Models\User::ACCOUNTANT_ROLE_ID) ?? false;
-    $archiveFilterValue = $archiveFilter ?? ($isAccountant ? 'all' : 'active');
+    $isAdministratorViewer = $isAdministratorViewer ?? (Auth::user()?->hasRoleId(\App\Models\User::ADMINISTRATOR_ROLE_ID) ?? false);
+    $canForceArchiveApplications = $canForceArchiveApplications ?? false;
+    $archiveFilterValue = $archiveFilter ?? (($isAccountant || $isAdministratorViewer) ? 'all' : 'active');
 @endphp
 <x-app-layout :wide="true">
     <x-slot name="header">
@@ -18,7 +20,7 @@
                 @endif
             </div>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:shrink-0">
-                @if($isAccountant)
+                @if($isAccountant || $isAdministratorViewer)
                     @if($archiveFilterValue !== 'all')
                         <a href="{{ route('applications.index', array_merge(request()->except('page', 'archive'), ['archive' => 'all'])) }}" class="ui-btn ui-btn--secondary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
                             Все заявки
@@ -52,7 +54,7 @@
                         Своё оборудование к заказу
                     </a>
                 @endif
-                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
+                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]) && ! $isAdministratorViewer)
                     <a href="{{ route('applications.create') }}" class="ui-btn ui-btn--primary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
                         Создать заявку
                     </a>
@@ -62,18 +64,12 @@
     </x-slot>
 
     <div class="w-full max-w-[min(100%,1920px)] mx-auto px-0 py-2 max-sm:-mx-4 sm:px-4 lg:px-6 xl:px-8">
-            @if (session('status'))
-                <div class="mb-4 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-900 dark:border-stone-700 dark:bg-stone-900/40 dark:text-stone-100">
-                    {{ session('status') }}
-                </div>
-            @endif
-
             <div class="app-form-card">
                 <div class="px-4 py-5 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
                         <input type="hidden" name="archive" value="{{ $archiveFilterValue }}">
                         <div class="app-filter-panel">
-                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:items-end">
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-6 lg:items-end">
                             <div class="min-w-0 lg:col-span-2">
                                 <label for="applications-q" class="app-form-label">Поиск</label>
                                 <div class="relative">
@@ -91,6 +87,15 @@
                                     class="app-select">
                                     @foreach($approvalFilterOptions as $value => $label)
                                         <option value="{{ $value }}" @selected($approvalFilter === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="min-w-0">
+                                <label for="applications-commercial-offer-filter" class="app-form-label">Коммерческое предложение</label>
+                                <select name="commercial_offer_filter" id="applications-commercial-offer-filter"
+                                    class="app-select">
+                                    @foreach($commercialOfferFilterOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected($commercialOfferFilter === $value)>{{ $label }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -117,7 +122,7 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="min-w-0 lg:col-span-4">
+                            <div class="min-w-0 lg:col-span-6">
                                 <p class="app-form-label">Сортировка</p>
                                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -164,6 +169,7 @@
                             @if(
                                 $search !== ''
                                 || $approvalFilter !== 'all'
+                                || ($commercialOfferFilter ?? 'all') !== 'all'
                                 || (($archiveFilter ?? 'active') !== 'active')
                                 || $selectedForemanId !== null
                                 || (($sortState['primary_field'] ?? 'created_at') !== 'created_at')
@@ -180,7 +186,7 @@
 
                     @if($applications->isEmpty())
                         <p class="md:hidden py-6 text-center text-sm text-black dark:text-white">
-                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                            @if($search !== '' || $approvalFilter !== 'all' || ($commercialOfferFilter ?? 'all') !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                 По заданным условиям заявок не найдено.
                             @else
                                 Заявок пока нет.
@@ -197,15 +203,16 @@
                         <div class="md:hidden space-y-4">
                             @foreach($applications as $application)
                                 @php
-                                    $needsIndexSubmit = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
+                                    $needsIndexSubmit = (bool) ($application->index_needs_submit ?? (Auth::check() && $application->needsSubmitToApprovalBy(Auth::user())));
+                                    $needsCustomOrder = (bool) ($application->index_needs_custom_order ?? $application->needsCustomEquipmentOrder());
                                 @endphp
-                                <article class="rounded-xl border p-5 space-y-4 shadow-sm {{ $application->needsCustomEquipmentOrder() ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : ($needsIndexSubmit ? 'border-indigo-300/90 bg-indigo-50/30 dark:border-indigo-800/60 dark:bg-indigo-950/20' : 'border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20') }}">
+                                <article class="rounded-xl border p-5 space-y-4 shadow-sm {{ $needsCustomOrder ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : ($needsIndexSubmit ? 'border-orange-300/90 bg-orange-50/40 dark:border-orange-800/60 dark:bg-orange-950/25' : 'border-orange-100/90 dark:border-orange-900/40 bg-orange-50/20 dark:bg-stone-900/20') }}">
                                     <p class="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">Заявка № {{ $application->id }}</p>
                                     <div class="flex justify-between gap-3 items-start">
                                         <div class="min-w-0 flex-1">
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Подразделение</p>
                                             <p class="text-sm font-medium text-black dark:text-white break-words">{{ $application->subdivision->name }}</p>
-                                            @if($application->needsCustomEquipmentOrder())
+                                            @if($needsCustomOrder)
                                                 <span class="mt-1 inline-flex w-fit items-center rounded-full border border-amber-400/80 bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                                                     Нужно заказать своё оборудование
                                                 </span>
@@ -215,7 +222,9 @@
                                                     Повторная к №{{ $application->source_application_id }}
                                                 </span>
                                             @endif
-                                            @if($application->archived_at)
+                                            @if($application->isAdminArchived())
+                                                @include('applications.partials.admin-archived-badge', ['class' => 'mt-1'])
+                                            @elseif($application->archived_at)
                                                 <span class="mt-1 inline-flex w-fit items-center rounded-full border border-emerald-300/90 bg-emerald-50/90 px-2 py-0.5 text-[11px] font-medium text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
                                                     В архиве (выполнена)
                                                 </span>
@@ -269,7 +278,17 @@
                                             </p>
                                         </div>
                                     </div>
-                                    @if($isAccountant)
+                                    @if($isAdministratorViewer)
+                                        <div class="flex flex-col gap-2">
+                                            <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary flex w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]">
+                                                Просмотр
+                                            </a>
+                                            @include('applications.partials.force-archive-actions', [
+                                                'application' => $application,
+                                                'stacked' => true,
+                                            ])
+                                        </div>
+                                    @elseif($isAccountant)
                                         @php
                                             $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                 || (int) ($application->installation_act_photos_count ?? 0) > 0;
@@ -285,11 +304,27 @@
                                             @endif
                                         </div>
                                     @elseif(Auth::user()->hasAnyRoleId([4, 7]))
-                                        @include('applications.partials.index-row-actions', ['application' => $application, 'stacked' => true])
+                                        <div class="flex flex-col gap-2">
+                                            @include('applications.partials.index-row-actions', ['application' => $application, 'stacked' => true])
+                                            @if($canForceArchiveApplications)
+                                                @include('applications.partials.force-archive-actions', [
+                                                    'application' => $application,
+                                                    'stacked' => true,
+                                                ])
+                                            @endif
+                                        </div>
                                     @else
-                                        <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary flex w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]">
-                                            Просмотр
-                                        </a>
+                                        <div class="flex flex-col gap-2">
+                                            <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary flex w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]">
+                                                Просмотр
+                                            </a>
+                                            @if($canForceArchiveApplications)
+                                                @include('applications.partials.force-archive-actions', [
+                                                    'application' => $application,
+                                                    'stacked' => true,
+                                                ])
+                                            @endif
+                                        </div>
                                     @endif
                                 </article>
                             @endforeach
@@ -335,14 +370,15 @@
                             <tbody>
                                 @forelse($applications as $application)
                                     @php
-                                        $needsIndexSubmit = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
+                                        $needsIndexSubmit = (bool) ($application->index_needs_submit ?? (Auth::check() && $application->needsSubmitToApprovalBy(Auth::user())));
+                                        $needsCustomOrder = (bool) ($application->index_needs_custom_order ?? $application->needsCustomEquipmentOrder());
                                     @endphp
-                                    <tr class="align-top {{ $application->needsCustomEquipmentOrder() ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-400 dark:border-l-amber-600' : ($needsIndexSubmit ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-l-4 border-l-indigo-400 dark:border-l-indigo-600' : '') }}">
+                                    <tr class="align-top {{ $needsCustomOrder ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-400 dark:border-l-amber-600' : ($needsIndexSubmit ? 'bg-orange-50/45 dark:bg-orange-950/25 border-l-4 border-l-orange-400 dark:border-l-orange-600' : '') }}">
                                         <td class="font-semibold tabular-nums text-black dark:text-white" title="Номер заявки">№ {{ $application->id }}</td>
                                         <td class="text-black dark:text-white">
                                             <div class="flex flex-col gap-1 min-w-0">
                                                 <span class="break-words">{{ $application->subdivision->name }}</span>
-                                                @if($application->needsCustomEquipmentOrder())
+                                                @if($needsCustomOrder)
                                                     <span class="inline-flex w-fit items-center rounded-full border border-amber-400/80 bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                                                         К заказу
                                                     </span>
@@ -352,9 +388,11 @@
                                                         Повторная к заявке №{{ $application->source_application_id }}
                                                     </span>
                                                 @endif
-                                                @if($application->archived_at)
+                                                @if($application->isAdminArchived())
+                                                    @include('applications.partials.admin-archived-badge')
+                                                @elseif($application->archived_at)
                                                     <span class="inline-flex w-fit items-center rounded-full border border-emerald-300/90 bg-emerald-50/90 px-2 py-0.5 text-[11px] font-medium text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
-                                                        В архиве
+                                                        В архиве (выполнена)
                                                     </span>
                                                 @endif
                                             </div>
@@ -399,7 +437,17 @@
                                             @include('applications.partials.index-approval-status-badge', ['application' => $application])
                                         </td>
                                         <td class="text-right align-top">
-                                            @if($isAccountant)
+                                            @if($isAdministratorViewer)
+                                                <div class="applications-index-actions ms-auto">
+                                                    <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary">
+                                                        Просмотр
+                                                    </a>
+                                                    @include('applications.partials.force-archive-actions', [
+                                                        'application' => $application,
+                                                        'inline' => true,
+                                                    ])
+                                                </div>
+                                            @elseif($isAccountant)
                                                 @php
                                                     $hasInstallationDocs = filled(trim((string) ($application->act_of_installation ?? '')))
                                                         || (int) ($application->installation_act_photos_count ?? 0) > 0;
@@ -415,14 +463,26 @@
                                                     @endif
                                                 </div>
                                             @elseif(Auth::user()->hasAnyRoleId([4, 7]))
-                                                <div class="ms-auto min-w-0 max-w-full">
+                                                <div class="applications-index-actions ms-auto">
                                                     @include('applications.partials.index-row-actions', ['application' => $application, 'tableCompact' => true])
+                                                    @if($canForceArchiveApplications)
+                                                        @include('applications.partials.force-archive-actions', [
+                                                            'application' => $application,
+                                                            'inline' => true,
+                                                        ])
+                                                    @endif
                                                 </div>
                                             @else
                                                 <div class="applications-index-actions ms-auto">
                                                     <a href="{{ route('applications.show', $application) }}" class="ui-btn ui-btn--primary">
                                                         Просмотр
                                                     </a>
+                                                    @if($canForceArchiveApplications)
+                                                        @include('applications.partials.force-archive-actions', [
+                                                            'application' => $application,
+                                                            'inline' => true,
+                                                        ])
+                                                    @endif
                                                 </div>
                                             @endif
                                         </td>
@@ -430,7 +490,7 @@
                                 @empty
                                     <tr>
                                         <td colspan="10" class="px-4 py-6 text-center text-sm text-black dark:text-white">
-                                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                                            @if($search !== '' || $approvalFilter !== 'all' || ($commercialOfferFilter ?? 'all') !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                                 По заданным условиям заявок не найдено.
                                             @else
                                                 Заявок пока нет.

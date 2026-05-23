@@ -16,6 +16,8 @@ use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
 use App\Support\ListingPerPage;
+use App\Support\ReportLayoutCommercialProposal;
+use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutDocumentBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -110,10 +112,14 @@ class BoilerChiefRequestLayoutController extends Controller
         $isDesigner = $user instanceof User && $user->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
         $isBoilerChief = $user instanceof User && $user->hasRoleId(7);
 
+        $schema = is_array($requestLayout->schema) ? $requestLayout->schema : [];
+
         return view('boiler-chief.request-layouts.fill', [
             'layout' => $requestLayout,
             'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
-            'applications' => $this->reportEquipmentApplications($request->user()),
+            'applicationOptions' => RequestLayout::allowsApplicationEquipmentInsert($schema)
+                ? ReportLayoutEquipmentApplications::clientOptionsForUser($request->user())
+                : [],
             'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
             'allowEditLayout' => $isDesigner,
             'backRoute' => ($isDesigner || $isBoilerChief)
@@ -127,6 +133,7 @@ class BoilerChiefRequestLayoutController extends Controller
                 ? route('boiler-chief.request-layouts.index')
                 : route('boiler-chief.layout-applications.index'),
             'formAction' => route('boiler-chief.request-layouts.filled-pdf', $requestLayout),
+            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
         ]);
     }
 
@@ -227,7 +234,7 @@ class BoilerChiefRequestLayoutController extends Controller
         return view('applications.installation-act-layout-fill-rich', [
             'layout' => $requestLayout,
             'users' => User::query()->with(['role', 'assignedSubdivisions:id'])->orderBy('surname')->orderBy('name')->limit(500)->get(),
-            'applications' => $this->reportEquipmentApplications($request->user()),
+            'applicationOptions' => ReportLayoutEquipmentApplications::clientOptionsForUser($request->user()),
             'allowEditLayout' => false,
             'backRoute' => route('applications.installation-act.layout-fill.index'),
             'backLabel' => 'К списку макетов отчетов',
@@ -469,33 +476,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'href' => route('dashboard'),
             'label' => 'Главная',
         ];
-    }
-
-    /**
-     * @return \Illuminate\Support\Collection<int, Application>
-     */
-    private function reportEquipmentApplications(?User $user)
-    {
-        if (! $user) {
-            return collect();
-        }
-        $query = Application::query()
-            ->with(['subdivision:id,name', 'items'])
-            ->orderByDesc('id')
-            ->limit(300);
-
-        if ($user->hasRoleId(4)) {
-            $query->forSiteForemanAccess($user);
-        } elseif ($user->hasRoleId(7)) {
-            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
-            $query->whereIn('subdivision_id', $subdivisionIds);
-        } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
-            // Бухгалтер, директор, ТД и снабжение — все заявки для подстановки в PDF (без сохранения заявки в БД).
-        } else {
-            $query->whereRaw('1 = 0');
-        }
-
-        return $query->get();
     }
 
     /**

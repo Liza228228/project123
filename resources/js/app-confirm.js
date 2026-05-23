@@ -81,6 +81,20 @@ function readConfirmOptionsFromDataset(el) {
     };
 }
 
+async function confirmAndSubmitForm(form) {
+    const confirmed = await showAppConfirm(readConfirmOptionsFromDataset(form));
+    if (!confirmed) {
+        return;
+    }
+
+    form.setAttribute(BYPASS_ATTR, '1');
+    if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+    } else {
+        form.submit();
+    }
+}
+
 function bindFormConfirm(form) {
     if (form.dataset.appConfirmBound === '1') {
         return;
@@ -98,13 +112,26 @@ function bindFormConfirm(form) {
         }
 
         event.preventDefault();
-        const confirmed = await showAppConfirm(readConfirmOptionsFromDataset(form));
-        if (!confirmed) {
+        event.stopPropagation();
+        await confirmAndSubmitForm(form);
+    });
+}
+
+function bindFormConfirmButton(button) {
+    const form = button.closest('form[data-app-confirm]');
+    if (!form || button.dataset.appConfirmBound === '1') {
+        return;
+    }
+    button.dataset.appConfirmBound = '1';
+
+    button.addEventListener('click', async (event) => {
+        if (form.getAttribute(BYPASS_ATTR) === '1') {
             return;
         }
 
-        form.setAttribute(BYPASS_ATTR, '1');
-        form.requestSubmit();
+        event.preventDefault();
+        event.stopPropagation();
+        await confirmAndSubmitForm(form);
     });
 }
 
@@ -156,5 +183,6 @@ export function migrateLegacyConfirmHandlers(root = document) {
 export function bindAppConfirmHandlers(root = document) {
     migrateLegacyConfirmHandlers(root);
     root.querySelectorAll('form[data-app-confirm]').forEach(bindFormConfirm);
+    root.querySelectorAll('form[data-app-confirm] button').forEach(bindFormConfirmButton);
     root.querySelectorAll('a[data-app-confirm]').forEach(bindLinkConfirm);
 }

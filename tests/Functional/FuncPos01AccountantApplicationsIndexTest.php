@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ApplicationArchive;
 use App\Models\Application;
 use App\Models\ApplicationStatus;
 use App\Models\User;
@@ -52,6 +53,9 @@ test('accountant applications index includes active archived and draft by defaul
         'desired_delivery_date' => now()->addDays(3),
         'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_COMPLETED),
         'approved_by_user_id' => $ctx['foreman']->id,
+    ]);
+    ApplicationArchive::query()->create([
+        'application_id' => $archived->id,
         'archived_at' => now(),
     ]);
 

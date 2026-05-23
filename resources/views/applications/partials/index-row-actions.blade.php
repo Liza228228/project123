@@ -26,6 +26,7 @@
             data-app-confirm-label="Да, отправить"
         >
             @csrf
+            <input type="hidden" name="_return_url" value="{{ request()->fullUrl() }}">
             <button type="submit" class="{{ $btnClass }} ui-btn--secondary font-semibold">
                 {{ ($tableCompact ?? false) ? 'На согласование' : 'Отправить на согласование' }}
             </button>

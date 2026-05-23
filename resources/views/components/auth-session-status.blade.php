@@ -1,7 +1,7 @@
 @props(['status'])
 
 @if ($status)
-    <div {{ $attributes->merge(['class' => 'font-medium text-sm text-black dark:text-white']) }}>
+    <x-app-alert type="info" {{ $attributes }}>
         {{ $status }}
-    </div>
+    </x-app-alert>
 @endif

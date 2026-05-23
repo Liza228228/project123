@@ -31,7 +31,31 @@ class DadataAddressService
 
         $items = $response->json('suggestions', []);
 
-        return is_array($items) ? $items : [];
+        if (! is_array($items)) {
+            return [];
+        }
+
+        return array_map(
+            fn (mixed $item): array => $this->normalizeSuggestionItem(is_array($item) ? $item : []),
+            $items
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{value: string, unrestricted_value: mixed, postal_code: ?string, data: array<string, mixed>}
+     */
+    private function normalizeSuggestionItem(array $item): array
+    {
+        $data = is_array($item['data'] ?? null) ? $item['data'] : [];
+        $postalCode = trim((string) ($data['postal_code'] ?? ''));
+
+        return [
+            'value' => (string) ($item['value'] ?? ''),
+            'unrestricted_value' => $item['unrestricted_value'] ?? null,
+            'postal_code' => $postalCode !== '' ? $postalCode : null,
+            'data' => $data,
+        ];
     }
 
     /**

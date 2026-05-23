@@ -42,13 +42,16 @@
             </button>
 
             @if (session('status') === 'profile-updated')
-                <p
+                <x-app-alert
+                    type="success"
+                    class="w-full sm:flex-1"
                     x-data="{ show: true }"
                     x-show="show"
                     x-transition
-                    x-init="setTimeout(() => show = false, 2000)"
-                    class="text-sm text-center text-black dark:text-white sm:text-left"
-                >Сохранено.</p>
+                    x-init="setTimeout(() => show = false, 4000)"
+                >
+                    Профиль сохранён.
+                </x-app-alert>
             @endif
         </div>
     </form>

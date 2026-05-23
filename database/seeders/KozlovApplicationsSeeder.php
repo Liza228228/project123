@@ -9,6 +9,7 @@ use App\Models\Equipment;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\User;
+use App\Support\AdministrationWarehouse;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Schema;
@@ -31,12 +32,26 @@ class KozlovApplicationsSeeder extends Seeder
             $transportQuery->whereNull('plate');
         }
         $transportId = (int) ($transportQuery->value('id') ?? 0);
-        $allSubdivisionIds = Subdivision::query()->orderBy('id')->pluck('id')->all();
+        $adminSubdivisionId = AdministrationWarehouse::subdivisionId();
+        $allSubdivisionIds = Subdivision::query()
+            ->when($adminSubdivisionId !== null, fn ($q) => $q->where('id', '!=', $adminSubdivisionId))
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
         if ($allSubdivisionIds === []) {
             return;
         }
 
         $assignedSubdivisionIds = $kozlov->assignedSubdivisions()->pluck('subdivisions.id')->map(fn ($id) => (int) $id)->all();
+        if ($adminSubdivisionId !== null) {
+            $assignedSubdivisionIds = array_values(array_filter(
+                $assignedSubdivisionIds,
+                fn (int $id): bool => $id !== $adminSubdivisionId,
+            ));
+            if ($assignedSubdivisionIds !== []) {
+                $kozlov->assignedSubdivisions()->sync($assignedSubdivisionIds);
+            }
+        }
         if ($assignedSubdivisionIds === []) {
             // Если у мастера ещё нет назначений, назначаем несколько подразделений для тестовых заявок.
             $assignedSubdivisionIds = array_slice($allSubdivisionIds, 0, min(3, count($allSubdivisionIds)));

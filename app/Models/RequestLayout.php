@@ -59,6 +59,16 @@ class RequestLayout extends Model
      * Число слотов подписей для PDF: 0 — макет без подписей (явно в schema).
      * Если ключ отсутствует (старые макеты), число выводится из пресета подвала (минимум 1).
      */
+    public static function allowsApplicationEquipmentInsert(?array $schema): bool
+    {
+        $schema = is_array($schema) ? $schema : [];
+        if (array_key_exists('allow_application_equipment_insert', $schema)) {
+            return (bool) $schema['allow_application_equipment_insert'];
+        }
+
+        return trim((string) ($schema['category'] ?? '')) !== 'commercial-proposal';
+    }
+
     public static function resolvedSignatureSlotsCount(?array $schema): int
     {
         $schema = is_array($schema) ? $schema : [];
@@ -109,6 +119,13 @@ class RequestLayout extends Model
                 $fieldPayload['table_columns'] = is_array($row['table_columns'] ?? null)
                     ? array_values($row['table_columns'])
                     : ['Столбец 1'];
+                $tableMode = trim((string) ($row['table_mode'] ?? ''));
+                if ($tableMode !== '') {
+                    $fieldPayload['table_mode'] = $tableMode;
+                }
+            }
+            if (! empty($row['readonly'])) {
+                $fieldPayload['readonly'] = true;
             }
             $fields[] = $fieldPayload;
         }
@@ -138,11 +155,13 @@ class RequestLayout extends Model
         return [
             'id' => (int) $this->id,
             'title' => (string) $this->title,
+            'category' => trim((string) ($schema['category'] ?? '')),
             'fields' => $fields,
             'pdf_footer_preset' => $preset !== '' ? $preset : 'one_signer_author',
             'signature_slots_count' => $signatureSlotsCount,
             'signature_roles' => $signatureRoles,
             'signature_role_names' => $signatureRoleNames,
+            'allow_application_equipment_insert' => self::allowsApplicationEquipmentInsert($schema),
         ];
     }
 }

@@ -127,16 +127,7 @@
             @method('PUT')
         @endif
 
-        @if ($errors->any())
-            <div class="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-900 dark:text-rose-100" role="alert">
-                <p class="font-medium mb-1">Не удалось сохранить. Исправьте ошибки:</p>
-                <ul class="list-disc list-inside space-y-0.5">
-                    @foreach ($errors->all() as $message)
-                        <li>{{ $message }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+        <x-validation-errors title="Не удалось сохранить. Исправьте ошибки в форме" />
 
         <div class="rounded-xl border border-rose-200/80 bg-rose-50/70 dark:bg-rose-950/25 dark:border-rose-900/40 px-4 py-3 space-y-2">
             <label for="approver_id" class="block text-sm font-medium text-stone-800 dark:text-stone-100">Утверждающий</label>

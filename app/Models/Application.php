@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -26,16 +27,81 @@ class Application extends Model
         'transport_option_id',
         'application_status_id',
         'reason_for_refusal',
-        'archived_at',
+        'commercial_offer_chief_is_checked',
+        'commercial_offer_chief_reason_not_selected',
+        'commercial_offer_management_is_checked',
+        'commercial_offer_management_reason_not_selected',
     ];
 
     protected function casts(): array
     {
         return [
             'desired_delivery_date' => 'date',
-            'archived_at' => 'datetime',
             'management_supply_items_saved_at' => 'datetime',
+            'commercial_offer_chief_is_checked' => 'boolean',
+            'commercial_offer_management_is_checked' => 'boolean',
         ];
+    }
+
+    public function archive(): HasOne
+    {
+        return $this->hasOne(ApplicationArchive::class);
+    }
+
+    public function getArchivedAtAttribute(): ?Carbon
+    {
+        $this->loadMissing('archive');
+
+        return $this->archive?->archived_at;
+    }
+
+    public function getAdminArchivedAtAttribute(): ?Carbon
+    {
+        $this->loadMissing('archive');
+
+        return $this->archive?->admin_archived_at;
+    }
+
+    public static function usesArchiveTable(): bool
+    {
+        return Schema::hasTable('application_archives');
+    }
+
+    /**
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeNotArchived(Builder $query): Builder
+    {
+        if (! static::usesArchiveTable()) {
+            return $query->whereNull('archived_at');
+        }
+
+        return $query->whereDoesntHave('archive');
+    }
+
+    /**
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeArchived(Builder $query): Builder
+    {
+        if (! static::usesArchiveTable()) {
+            return $query->whereNotNull('archived_at');
+        }
+
+        return $query->whereHas('archive');
+    }
+
+    public function isAdminArchived(): bool
+    {
+        if (! static::usesArchiveTable()) {
+            return false;
+        }
+
+        $this->loadMissing('archive');
+
+        return $this->archive?->admin_archived_at !== null;
     }
 
     public function isForemanCreatedApplication(): bool
@@ -45,12 +111,39 @@ class Application extends Model
         return (int) ($this->user?->role_id ?? 0) === 4;
     }
 
+    public function isBoilerChiefCreatedApplication(): bool
+    {
+        $this->loadMissing('user:id,role_id');
+
+        return (int) ($this->user?->role_id ?? 0) === 7;
+    }
+
     /** Заявку создали директор, технический директор или начальник отдела снабжения. */
     public function isManagementCreatedApplication(): bool
     {
         $this->loadMissing('user:id,role_id');
 
         return in_array((int) ($this->user?->role_id ?? 0), User::MANAGEMENT_EDITOR_ROLE_IDS, true);
+    }
+
+    /**
+     * Руководство создало заявку и назначило ответственным мастера участка:
+     * мастер только просматривает, согласование котельной и руководства не требуется.
+     */
+    public function isManagementDelegatedToSiteForeman(): bool
+    {
+        if (! $this->isManagementCreatedApplication()) {
+            return false;
+        }
+
+        $responsibleId = (int) ($this->responsible_user_id ?? 0);
+        if ($responsibleId <= 0 || $responsibleId === (int) $this->user_id) {
+            return false;
+        }
+
+        $this->loadMissing('responsibleUser:id,role_id');
+
+        return (int) ($this->responsibleUser?->role_id ?? 0) === 4;
     }
 
     public function applicationStatus(): BelongsTo
@@ -170,7 +263,7 @@ class Application extends Model
      */
     public function isApprovedDeliveryFullyInTransit(): bool
     {
-        if ($this->archived_at !== null) {
+        if ($this->isArchived()) {
             return false;
         }
 
@@ -231,12 +324,25 @@ class Application extends Model
     {
         $this->loadMissing('items', 'applicationStatus');
 
+        if ($this->isCommercialOfferOnlyApplication()) {
+            return $this->resolvedCommercialOfferOnlyStatusName();
+        }
+
         if ($this->items->isEmpty()) {
             return ApplicationStatus::NAME_PENDING;
         }
 
         if ($this->needsBoilerChiefReviewBeforeManagement()) {
             return ApplicationStatus::NAME_PENDING;
+        }
+
+        if ($this->hasCommercialOfferAttached() && $this->hasCommercialOfferApprovalColumns()) {
+            if ($this->commercialOfferChiefIsRejected() || $this->commercialOfferManagementIsRejected()) {
+                return ApplicationStatus::NAME_REJECTED;
+            }
+            if ($this->commercialOfferManagementReviewPending() && $this->managementMayReviewAfterBoilerChief()) {
+                return ApplicationStatus::NAME_PENDING;
+            }
         }
 
         $checkedCount = $this->items->where('is_checked', true)->count();
@@ -247,7 +353,7 @@ class Application extends Model
         $resolvedCount = $checkedCount + $rejectedWithReasonCount;
 
         if ($resolvedCount === $totalCount) {
-            return ApplicationStatus::NAME_APPROVED;
+            return self::resolvedEquipmentLinesStatusWhenAllResolved($checkedCount, $totalCount);
         }
 
         if ($checkedCount === 0) {
@@ -301,6 +407,70 @@ class Application extends Model
         return $this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement();
     }
 
+    public function hasCommercialOfferAttached(): bool
+    {
+        return filled(trim((string) ($this->commercial_offer ?? '')));
+    }
+
+    public function isCommercialOfferOnlyApplication(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->isEmpty() && $this->hasCommercialOfferAttached();
+    }
+
+    public function commercialOfferChiefReviewPending(): bool
+    {
+        if (! $this->hasCommercialOfferApprovalColumns()) {
+            return $this->isCommercialOfferOnlyApplication();
+        }
+
+        return $this->commercial_offer_chief_is_checked === null;
+    }
+
+    public function commercialOfferManagementReviewPending(): bool
+    {
+        if (! $this->hasCommercialOfferApprovalColumns()) {
+            return false;
+        }
+
+        return $this->commercial_offer_management_is_checked === null;
+    }
+
+    public function commercialOfferChiefIsApproved(): bool
+    {
+        return $this->hasCommercialOfferApprovalColumns()
+            && $this->commercial_offer_chief_is_checked === true;
+    }
+
+    public function commercialOfferChiefIsRejected(): bool
+    {
+        return $this->hasCommercialOfferApprovalColumns()
+            && $this->commercial_offer_chief_is_checked === false;
+    }
+
+    public function commercialOfferManagementIsApproved(): bool
+    {
+        return $this->hasCommercialOfferApprovalColumns()
+            && $this->commercial_offer_management_is_checked === true;
+    }
+
+    public function commercialOfferManagementIsRejected(): bool
+    {
+        return $this->hasCommercialOfferApprovalColumns()
+            && $this->commercial_offer_management_is_checked === false;
+    }
+
+    public function hasCommercialOfferApprovalColumns(): bool
+    {
+        return Schema::hasColumn($this->getTable(), 'commercial_offer_chief_is_checked');
+    }
+
+    public function hasEquipmentOrCommercialOfferForSubmission(): bool
+    {
+        return $this->items()->exists() || $this->hasCommercialOfferAttached();
+    }
+
     /**
      * Директор, ТД или начальник снабжения сохранили согласование по позициям.
      */
@@ -313,6 +483,15 @@ class Application extends Model
         if (! in_array((int) ($this->approvedBy?->role_id ?? 0), User::MANAGEMENT_EDITOR_ROLE_IDS, true)) {
             return false;
         }
+        if ($this->isCommercialOfferOnlyApplication()) {
+            return $this->commercialOfferManagementIsApproved()
+                && $this->management_supply_items_saved_at !== null;
+        }
+
+        if ($this->items->isNotEmpty() && ! $this->items->contains(fn (ApplicationItem $i) => (bool) $i->is_checked)) {
+            return false;
+        }
+
         if ($this->usesBoilerChiefSubdivisionWorkflow()) {
             return $this->management_supply_items_saved_at !== null;
         }
@@ -321,20 +500,58 @@ class Application extends Model
     }
 
     /**
-     * Мастер участка может редактировать заявку (черновик или подразделение без этапа котельной).
+     * Итоговый статус заявки, когда по каждой позиции уже есть решение (согласована или отклонена с причиной).
+     */
+    public static function resolvedEquipmentLinesStatusWhenAllResolved(int $checkedCount, int $totalCount): string
+    {
+        if ($checkedCount === 0) {
+            return ApplicationStatus::NAME_REJECTED;
+        }
+
+        if ($checkedCount === $totalCount) {
+            return ApplicationStatus::NAME_APPROVED;
+        }
+
+        return ApplicationStatus::NAME_PARTIAL;
+    }
+
+    public function hasApprovedEquipmentLines(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(fn (ApplicationItem $i) => (bool) $i->is_checked);
+    }
+
+    /**
+     * Мастер участка может редактировать заявку: свой черновик или подразделение без котельной.
+     * Заявки, созданные начальником котельной, мастеру только для просмотра.
      */
     public function foremanCanEditApplication(): bool
     {
+        if ($this->isAdminArchived()) {
+            return false;
+        }
+
         if ($this->managementHasSavedApproval()) {
             return false;
         }
-        $this->loadMissing('user:id,role_id');
-        if ((int) ($this->user?->role_id ?? 0) !== 4) {
-            return true;
+
+        if ($this->isManagementDelegatedToSiteForeman()) {
+            return false;
         }
+
+        if ($this->isBoilerChiefCreatedApplication()) {
+            return false;
+        }
+
+        if (! $this->isForemanCreatedApplication()) {
+            return false;
+        }
+
         if ($this->isStatusApproved()) {
             return false;
         }
+
         if (Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
             && ! $this->isForemanDraftBeforeBoilerChief()) {
             return false;
@@ -348,6 +565,10 @@ class Application extends Model
      */
     public function boilerChiefCanEditApplication(): bool
     {
+        if ($this->isAdminArchived()) {
+            return false;
+        }
+
         if ($this->managementHasSavedApproval()) {
             return false;
         }
@@ -381,6 +602,9 @@ class Application extends Model
         if ($this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement()) {
             return false;
         }
+        if ($this->isBoilerChiefCreatedApplication()) {
+            return false;
+        }
         if ($this->isManagementCreatedApplication()) {
             return false;
         }
@@ -388,6 +612,14 @@ class Application extends Model
             return false;
         }
         $this->loadMissing('items');
+        if ($this->isCommercialOfferOnlyApplication()) {
+            return $this->commercialOfferChiefReviewPending();
+        }
+
+        if ($this->hasCommercialOfferAttached() && $this->commercialOfferChiefReviewPending()) {
+            return true;
+        }
+
         if ($this->items->isEmpty()) {
             return true;
         }
@@ -395,6 +627,48 @@ class Application extends Model
         return $this->items->contains(
             fn (ApplicationItem $i) => ! (bool) $i->is_checked && trim((string) ($i->reason_not_selected ?? '')) === ''
         );
+    }
+
+    /**
+     * Этап согласования КП начальником котельной завершён (или не требуется).
+     */
+    public function commercialOfferChiefStepSatisfiedForManagement(): bool
+    {
+        if (! $this->hasCommercialOfferAttached()) {
+            return true;
+        }
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return true;
+        }
+        if ($this->isBoilerChiefCreatedApplication() || $this->isManagementCreatedApplication()) {
+            return ! $this->commercialOfferChiefReviewPending();
+        }
+
+        return $this->commercialOfferChiefIsApproved();
+    }
+
+    /**
+     * Руководство и снабжение ещё не согласовали коммерческое предложение (отдельно или вместе с позициями).
+     */
+    public function needsManagementCommercialOfferReview(): bool
+    {
+        if (! $this->hasCommercialOfferAttached() || ! $this->hasCommercialOfferApprovalColumns()) {
+            return false;
+        }
+        if ($this->isManagementDelegatedToSiteForeman()) {
+            return false;
+        }
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+        if (! $this->commercialOfferChiefStepSatisfiedForManagement()) {
+            return false;
+        }
+        if (! $this->managementMayReviewAfterBoilerChief()) {
+            return false;
+        }
+
+        return $this->commercialOfferManagementReviewPending();
     }
 
     public function usesBoilerChiefSubdivisionWorkflow(): bool
@@ -479,14 +753,14 @@ class Application extends Model
      */
     public function boilerChiefCanSubmitToManagement(): bool
     {
-        if ($this->archived_at !== null) {
+        if ($this->isArchived() || $this->isStatusRejected()) {
             return false;
         }
         if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
             return false;
         }
         if ($this->isBoilerChiefDraftBeforeManagement()) {
-            return $this->items()->exists();
+            return $this->hasEquipmentOrCommercialOfferForSubmission();
         }
         if (! $this->isForemanCreatedApplication()) {
             return false;
@@ -494,8 +768,14 @@ class Application extends Model
         if ($this->needsBoilerChiefReviewBeforeManagement() || $this->boilerChiefReleasedToManagement()) {
             return false;
         }
+        if ($this->isCommercialOfferOnlyApplication()) {
+            return $this->commercialOfferChiefIsApproved();
+        }
+        if (! $this->hasApprovedEquipmentLines()) {
+            return false;
+        }
 
-        return $this->items()->exists();
+        return $this->hasEquipmentOrCommercialOfferForSubmission();
     }
 
     /**
@@ -503,7 +783,7 @@ class Application extends Model
      */
     public function needsSubmitToApprovalBy(?User $user): bool
     {
-        if ($user === null || $this->archived_at !== null) {
+        if ($user === null || $this->isArchived() || $this->isStatusRejected()) {
             return false;
         }
         if ($user->hasRoleId(4)) {
@@ -521,6 +801,9 @@ class Application extends Model
      */
     public function managementMayReviewAfterBoilerChief(): bool
     {
+        if ($this->isManagementDelegatedToSiteForeman()) {
+            return false;
+        }
         if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
             return true;
         }
@@ -536,6 +819,9 @@ class Application extends Model
      */
     public function awaitsManagementEquipmentApproval(): bool
     {
+        if ($this->isManagementDelegatedToSiteForeman()) {
+            return false;
+        }
         if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
             return false;
         }
@@ -604,6 +890,137 @@ class Application extends Model
         });
     }
 
+    /** Согласованное КП, по которому снабжение может вести закупку. */
+    public function isCommercialOfferReadyForProcurement(): bool
+    {
+        if ($this->isArchived() || ! $this->hasCommercialOfferAttached()) {
+            return false;
+        }
+        if (! $this->hasCommercialOfferApprovalColumns()) {
+            return false;
+        }
+        if ($this->commercialOfferChiefIsRejected() || $this->commercialOfferManagementIsRejected()) {
+            return false;
+        }
+        if (! $this->commercialOfferManagementIsApproved()) {
+            return false;
+        }
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return false;
+        }
+        if (! $this->commercialOfferChiefStepSatisfiedForManagement()) {
+            return false;
+        }
+
+        return $this->isSupplyApprovedForCustomEquipmentWorkflow();
+    }
+
+    public function commercialOfferProcurementPending(): bool
+    {
+        return $this->isCommercialOfferReadyForProcurement();
+    }
+
+    /** КП согласовано руководством — можно вручную добавить позиции для заказа у поставщика. */
+    public function commercialOfferReadyForManualOrderLines(): bool
+    {
+        if ($this->isArchived() || ! $this->hasCommercialOfferAttached()) {
+            return false;
+        }
+
+        if (! $this->commercialOfferManagementIsApproved()) {
+            return false;
+        }
+
+        return $this->management_supply_items_saved_at !== null;
+    }
+
+    /**
+     * Согласование и повторный заказ по КП блокируются, если по заявке уже есть оборудование в доставке или на складе получателя.
+     */
+    public function approvalLockedByShipmentProgress(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(function (ApplicationItem $item): bool {
+            if (in_array(
+                $item->resolvedDeliveryStatus(),
+                [ApplicationItem::DELIVERY_IN_TRANSIT, ApplicationItem::DELIVERY_DELIVERED],
+                true
+            )) {
+                return true;
+            }
+
+            if ($item->usesFreeTextEquipment()) {
+                return in_array(
+                    $item->resolvedCustomSupplyStatus(),
+                    [ApplicationItem::CUSTOM_SUPPLY_IN_TRANSIT, ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE],
+                    true
+                );
+            }
+
+            return false;
+        });
+    }
+
+    public function hasPendingCustomEquipmentProcurementLines(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(
+            fn (ApplicationItem $item) => $item->canMarkCustomSupplyOrdered()
+                || $item->canMarkCustomSupplyOnWarehouse()
+                || $item->canMarkCustomSupplyInTransit()
+        );
+    }
+
+    public function commercialOfferProcurementStatusLabel(): string
+    {
+        if (! $this->isCommercialOfferReadyForProcurement()) {
+            return 'Не готово к закупке';
+        }
+        if ($this->hasPendingCustomEquipmentProcurementLines()) {
+            return 'Есть позиции к заказу';
+        }
+        if ($this->isCommercialOfferOnlyApplication()) {
+            return 'Закупка по КП';
+        }
+
+        return 'КП согласовано';
+    }
+
+    /**
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeWhereCommercialOfferProcurementPending(Builder $query): Builder
+    {
+        $query->notArchived()
+            ->whereNotNull('commercial_offer')
+            ->where('commercial_offer', '!=', '');
+
+        if (! Schema::hasColumn('applications', 'commercial_offer_management_is_checked')) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $query
+            ->where('commercial_offer_management_is_checked', true)
+            ->where(function (Builder $chiefOk): void {
+                $chiefOk->where('commercial_offer_chief_is_checked', true);
+                if (Schema::hasTable('boiler_chief_subdivision_user')) {
+                    $chiefOk->orWhereNotExists(function ($sub): void {
+                        $sub->selectRaw('1')
+                            ->from('boiler_chief_subdivision_user')
+                            ->whereColumn(
+                                'boiler_chief_subdivision_user.subdivision_id',
+                                'applications.subdivision_id'
+                            );
+                    });
+                }
+            });
+
+        return $query->whereSupplyApprovedForCustomEquipmentWorkflow();
+    }
+
     public function itemLineIsApproved(int $itemId): bool
     {
         $this->loadMissing('items');
@@ -614,11 +1031,78 @@ class Application extends Model
     public function itemLineRejectionReason(int $itemId): ?string
     {
         $this->loadMissing('items');
-        $r = $this->items->firstWhere('id', $itemId)?->reason_not_selected;
+        $item = $this->items->firstWhere('id', $itemId);
+        if ($item?->isCommercialOfferWarehouseReserved()) {
+            return null;
+        }
+        $r = $item?->reason_not_selected;
 
         $r = $r !== null ? trim((string) $r) : '';
 
         return $r !== '' ? $r : null;
+    }
+
+    public function commercialOfferShowsAsApproved(): bool
+    {
+        if (! $this->hasCommercialOfferAttached() || ! $this->hasCommercialOfferApprovalColumns()) {
+            return false;
+        }
+        if ($this->commercialOfferChiefIsRejected() || $this->commercialOfferManagementIsRejected()) {
+            return false;
+        }
+        if ($this->commercialOfferManagementIsApproved()) {
+            return true;
+        }
+        if ($this->commercialOfferChiefIsApproved()) {
+            if ($this->isCommercialOfferOnlyApplication() && $this->needsManagementCommercialOfferReview()) {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function commercialOfferShowsAsRejected(): bool
+    {
+        return $this->hasCommercialOfferAttached()
+            && $this->hasCommercialOfferApprovalColumns()
+            && ($this->commercialOfferChiefIsRejected() || $this->commercialOfferManagementIsRejected());
+    }
+
+    public function commercialOfferShowsAsPendingApproval(): bool
+    {
+        if (! $this->hasCommercialOfferAttached()) {
+            return false;
+        }
+        if ($this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement()) {
+            return false;
+        }
+        if (! $this->hasCommercialOfferApprovalColumns()) {
+            return false;
+        }
+        if ($this->commercialOfferChiefReviewPending()) {
+            return true;
+        }
+
+        return $this->needsManagementCommercialOfferReview();
+    }
+
+    public function commercialOfferDisplayRejectionReason(): ?string
+    {
+        if ($this->commercialOfferChiefIsRejected()) {
+            $reason = trim((string) ($this->commercial_offer_chief_reason_not_selected ?? ''));
+
+            return $reason !== '' ? $reason : null;
+        }
+        if ($this->commercialOfferManagementIsRejected()) {
+            $reason = trim((string) ($this->commercial_offer_management_reason_not_selected ?? ''));
+
+            return $reason !== '' ? $reason : null;
+        }
+
+        return null;
     }
 
     /**
@@ -627,6 +1111,59 @@ class Application extends Model
      * @param  Collection<int, ApplicationItem>  $items
      * @return array{application_status_id: int, reason_for_refusal: string|null}
      */
+    /**
+     * @return array{application_status_id: int, reason_for_refusal: string|null}
+     */
+    public static function aggregateApprovalPayloadFromCommercialOffer(bool $isChecked, ?string $reason): array
+    {
+        if ($isChecked) {
+            return [
+                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+                'reason_for_refusal' => null,
+            ];
+        }
+
+        $reason = trim((string) $reason);
+
+        return [
+            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
+            'reason_for_refusal' => $reason !== '' ? $reason : null,
+        ];
+    }
+
+    private function resolvedCommercialOfferOnlyStatusName(): string
+    {
+        if ($this->needsBoilerChiefReviewBeforeManagement()) {
+            return ApplicationStatus::NAME_PENDING;
+        }
+
+        if ($this->commercialOfferChiefIsRejected()) {
+            return ApplicationStatus::NAME_REJECTED;
+        }
+
+        if (! $this->commercialOfferChiefIsApproved()) {
+            return ApplicationStatus::NAME_PENDING;
+        }
+
+        if (! $this->boilerChiefReleasedToManagement()) {
+            return ApplicationStatus::NAME_PENDING;
+        }
+
+        if ($this->commercialOfferManagementReviewPending()) {
+            return ApplicationStatus::NAME_PENDING;
+        }
+
+        if ($this->commercial_offer_management_is_checked === false) {
+            return ApplicationStatus::NAME_REJECTED;
+        }
+
+        if ($this->commercialOfferManagementIsApproved()) {
+            return ApplicationStatus::NAME_APPROVED;
+        }
+
+        return ApplicationStatus::NAME_PENDING;
+    }
+
     public static function aggregateApprovalPayloadFromItems(Collection $items): array
     {
         if ($items->isEmpty()) {
@@ -653,9 +1190,10 @@ class Application extends Model
                 ->filter()
                 ->unique()
                 ->values();
+            $statusName = self::resolvedEquipmentLinesStatusWhenAllResolved($checked, $total);
 
             return [
-                'application_status_id' => $approvedId,
+                'application_status_id' => ApplicationStatus::idFor($statusName),
                 'reason_for_refusal' => $lines->take(5)->implode('; ') ?: null,
             ];
         }
@@ -703,6 +1241,32 @@ class Application extends Model
                             ->where('user_id', $foreman->id);
                     });
             });
+    }
+
+    /**
+     * Заявки с хотя бы одной согласованной позицией, по которой оборудование уже на складе.
+     *
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    public function scopeEligibleForReportEquipmentInsertion(Builder $query): Builder
+    {
+        return $query->whereHas('items', function (Builder $items): void {
+            $items->where('is_checked', true)
+                ->where(function (Builder $row): void {
+                    $row->where(function (Builder $catalog): void {
+                        $catalog->whereNotNull('equipment_id')
+                            ->where('delivery_status_id', ApplicationItem::DELIVERY_DELIVERED_ID)
+                            ->where('delivery_warehouse_id', '>', 0);
+                    })->orWhere(function (Builder $custom): void {
+                        $custom->whereNull('equipment_id')
+                            ->where(
+                                'custom_equipment_supply_status_id',
+                                ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE_ID
+                            );
+                    });
+                });
+        });
     }
 
     /** Может ли мастер участка открыть заявку (согласовано с {@see scopeForSiteForemanAccess}). */
@@ -770,6 +1334,11 @@ class Application extends Model
 
         \App\Support\ApplicationApprovalListingFilter::apply($applications, $approvalFilter);
 
+        $commercialOfferFilter = \App\Support\ApplicationCommercialOfferListingFilter::normalize(
+            $request->input('commercial_offer_filter', 'all')
+        );
+        \App\Support\ApplicationCommercialOfferListingFilter::apply($applications, $commercialOfferFilter);
+
         return $applications;
     }
 
@@ -828,7 +1397,13 @@ class Application extends Model
 
     public function isArchived(): bool
     {
-        return $this->archived_at !== null;
+        if (static::usesArchiveTable()) {
+            $this->loadMissing('archive');
+
+            return $this->archive !== null;
+        }
+
+        return ($this->attributes['archived_at'] ?? null) !== null;
     }
 
     /**
@@ -891,8 +1466,61 @@ class Application extends Model
     }
 
     /**
-     * Можно прикрепить или заменить акт установки и фото: заявка полностью согласована и по каждой согласованной позиции
-     * оборудование из справочника уже доставлено на склад подразделения-получателя (отметка «Доставлено»).
+     * Согласованные позиции, по которым перед актом установки оборудование должно быть на складе получателя.
+     *
+     * @return \Illuminate\Support\Collection<int, ApplicationItem>
+     */
+    public function checkedItemsRequiringDeliveryForInstallationAct(): \Illuminate\Support\Collection
+    {
+        $this->loadMissing('items');
+
+        return $this->items->filter(function (ApplicationItem $item): bool {
+            if (! $item->is_checked) {
+                return false;
+            }
+
+            if ($item->equipment_id !== null) {
+                return true;
+            }
+
+            return $item->usesFreeTextEquipment();
+        })->values();
+    }
+
+    /**
+     * Каталожная позиция доставлена на склад подразделения-получателя (отметка «Доставлено»).
+     */
+    public function catalogItemDeliveredToRecipientWarehouse(ApplicationItem $item): bool
+    {
+        if ($item->equipment_id === null) {
+            return false;
+        }
+
+        if ($item->resolvedDeliveryStatus() !== ApplicationItem::DELIVERY_DELIVERED) {
+            return false;
+        }
+
+        if ((int) ($item->delivery_warehouse_id ?? 0) <= 0) {
+            return false;
+        }
+
+        $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
+        $item->loadMissing('deliveryWarehouse');
+        $deliverySubId = $item->deliveryWarehouse?->subdivision_id !== null
+            ? (int) $item->deliveryWarehouse->subdivision_id
+            : null;
+        if ($targetSubdivisionId !== null
+            && $deliverySubId !== null
+            && $deliverySubId !== $targetSubdivisionId) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Можно прикрепить или заменить акт установки и фото: заявка полностью согласована, есть согласованные позиции
+     * и по каждой из них оборудование уже на складе подразделения-получателя (каталог — «Доставлено», своё — «На складе»).
      */
     public function canUploadInstallationActAndPhotos(): bool
     {
@@ -900,33 +1528,21 @@ class Application extends Model
             return false;
         }
 
-        $this->loadMissing('items');
+        $requiredItems = $this->checkedItemsRequiringDeliveryForInstallationAct();
+        if ($requiredItems->isEmpty()) {
+            return false;
+        }
 
-        foreach ($this->items as $item) {
-            if (! $item->is_checked) {
+        foreach ($requiredItems as $item) {
+            if ($item->equipment_id !== null) {
+                if (! $this->catalogItemDeliveredToRecipientWarehouse($item)) {
+                    return false;
+                }
+
                 continue;
             }
 
-            if ($item->equipment_id === null) {
-                return false;
-            }
-
-            if ($item->resolvedDeliveryStatus() !== ApplicationItem::DELIVERY_DELIVERED) {
-                return false;
-            }
-
-            if ((int) ($item->delivery_warehouse_id ?? 0) <= 0) {
-                return false;
-            }
-
-            $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
-            $item->loadMissing('deliveryWarehouse');
-            $deliverySubId = $item->deliveryWarehouse?->subdivision_id !== null
-                ? (int) $item->deliveryWarehouse->subdivision_id
-                : null;
-            if ($targetSubdivisionId !== null
-                && $deliverySubId !== null
-                && $deliverySubId !== $targetSubdivisionId) {
+            if ($item->resolvedCustomSupplyStatus() !== ApplicationItem::CUSTOM_SUPPLY_ON_WAREHOUSE) {
                 return false;
             }
         }
@@ -939,11 +1555,11 @@ class Application extends Model
      */
     public function qualifiesForCompletionArchive(): bool
     {
-        if (! Schema::hasColumn('applications', 'archived_at')) {
+        if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
             return false;
         }
 
-        if ($this->archived_at !== null) {
+        if ($this->isArchived()) {
             return false;
         }
 
@@ -969,11 +1585,11 @@ class Application extends Model
      */
     public function archiveIfEligible(): bool
     {
-        if (! Schema::hasColumn('applications', 'archived_at')) {
+        if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
             return false;
         }
 
-        if ($this->archived_at !== null) {
+        if ($this->isArchived()) {
             return false;
         }
 
@@ -985,12 +1601,7 @@ class Application extends Model
             ->where('name', ApplicationStatus::NAME_COMPLETED)
             ->value('id');
 
-        $payload = ['archived_at' => Carbon::now()];
-        if ($completedId !== null) {
-            $payload['application_status_id'] = (int) $completedId;
-        }
-
-        $this->forceFill($payload)->save();
+        $this->moveToArchive([], $completedId !== null ? (int) $completedId : null);
 
         return true;
     }
@@ -1000,7 +1611,11 @@ class Application extends Model
      */
     public function isLifecycleCompleted(): bool
     {
-        if ($this->archived_at !== null) {
+        if ($this->isAdminArchived()) {
+            return false;
+        }
+
+        if ($this->isArchived()) {
             return true;
         }
 
@@ -1019,7 +1634,76 @@ class Application extends Model
 
         $user = $request->user();
 
-        return ($user instanceof User && $user->hasRoleId(User::ACCOUNTANT_ROLE_ID)) ? 'all' : 'active';
+        if ($user instanceof User && $user->hasAnyRoleId([User::ACCOUNTANT_ROLE_ID, User::ADMINISTRATOR_ROLE_ID])) {
+            return 'all';
+        }
+
+        return 'active';
+    }
+
+    /**
+     * Принудительный перенос в архив (администратор, без проверки акта/списаний).
+     */
+    public function adminForceArchive(?int $archivedByUserId = null): void
+    {
+        if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
+            return;
+        }
+
+        if ($this->isArchived()) {
+            return;
+        }
+
+        $now = Carbon::now();
+        $this->moveToArchive([
+            'archived_at' => $now,
+            'admin_archived_at' => $now,
+            'archived_by_user_id' => $archivedByUserId,
+        ]);
+    }
+
+    /**
+     * Возврат заявки из архива администратора (только помеченные admin_archived_at).
+     */
+    public function adminRestoreFromArchive(): bool
+    {
+        if (! static::usesArchiveTable()) {
+            return false;
+        }
+
+        if (! $this->isAdminArchived()) {
+            return false;
+        }
+
+        $this->archive?->delete();
+        $this->unsetRelation('archive');
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $archiveAttributes
+     */
+    public function moveToArchive(array $archiveAttributes = [], ?int $applicationStatusId = null): void
+    {
+        if ($this->isArchived()) {
+            return;
+        }
+
+        if (static::usesArchiveTable()) {
+            ApplicationArchive::query()->create(array_merge([
+                'application_id' => (int) $this->id,
+                'archived_at' => Carbon::now(),
+            ], $archiveAttributes));
+            $this->unsetRelation('archive');
+        } elseif (Schema::hasColumn('applications', 'archived_at')) {
+            $payload = array_merge(['archived_at' => Carbon::now()], $archiveAttributes);
+            $this->forceFill($payload)->save();
+        }
+
+        if ($applicationStatusId !== null) {
+            $this->forceFill(['application_status_id' => $applicationStatusId])->save();
+        }
     }
 
     /**
@@ -1027,13 +1711,13 @@ class Application extends Model
      */
     public static function applyArchiveFilterToListingQuery(Builder $applications, string $archiveFilter): void
     {
-        if (! Schema::hasColumn('applications', 'archived_at')) {
+        if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
             return;
         }
 
         match ($archiveFilter) {
-            'active' => $applications->whereNull('archived_at'),
-            'archived' => $applications->whereNotNull('archived_at'),
+            'active' => $applications->notArchived(),
+            'archived' => $applications->archived(),
             default => null,
         };
     }

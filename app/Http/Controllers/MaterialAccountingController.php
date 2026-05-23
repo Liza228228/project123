@@ -44,6 +44,7 @@ class MaterialAccountingController extends Controller
         }
 
         $warehousesQuery = Warehouse::query()
+            ->inActiveSubdivision()
             ->with('subdivision:id,name')
             ->orderBy('name');
 
@@ -203,10 +204,10 @@ class MaterialAccountingController extends Controller
         }
 
         if ($selectedWarehouseId > 0 && ! $canAccessAdministration && AdministrationWarehouse::isAdministrationWarehouseId($selectedWarehouseId)) {
-            abort(403, 'Просмотр остатков складов подразделения «Администрация» доступен только директору, техническому директору, начальнику отдела снабжения и бухгалтеру.');
+            abort(403, 'Просмотр остатков складов подразделения «Администрация» доступен только директору, техническому директору, начальнику отдела снабжения, администратору и бухгалтеру.');
         }
 
-        $subdivisionsQuery = Subdivision::query()->orderBy('name');
+        $subdivisionsQuery = Subdivision::query()->active()->orderBy('name');
         if (! $canAccessAdministration) {
             AdministrationWarehouse::excludeAdministrationSubdivision($subdivisionsQuery);
         }
@@ -256,25 +257,11 @@ class MaterialAccountingController extends Controller
         }
 
         $equipmentBalances = collect();
-        $balancesView = 'stock';
         if ($selectedWarehouseId > 0) {
-            $balancesView = $request->query('balances') === 'written' ? 'written' : 'stock';
-
-            $balancePaginationAppends = array_merge(
-                $overviewTabQuery,
-                $balancesView === 'written' ? ['balances' => 'written'] : []
-            );
-
-            $epsilon = 0.0005;
-            $query = $this->overviewWarehouseBalanceBaseQuery($selectedWarehouseId);
-            if ($balancesView === 'written') {
-                $query->havingRaw('balance <= ? AND qty_out > ?', [$epsilon, $epsilon]);
-            }
-
-            $equipmentBalances = $query
+            $equipmentBalances = $this->overviewWarehouseBalanceBaseQuery($selectedWarehouseId)
                 ->orderBy('equipment.name')
                 ->paginate($balancesPerPage['perPage'])
-                ->appends($balancePaginationAppends);
+                ->appends($overviewTabQuery);
         }
 
         return view('materials.overview', [
@@ -283,7 +270,6 @@ class MaterialAccountingController extends Controller
             'warehouses' => $warehouses,
             'selectedWarehouse' => $selectedWarehouse,
             'equipmentBalances' => $equipmentBalances,
-            'balancesView' => $balancesView,
             'usingDefaultMainWarehouse' => $usingDefaultMainWarehouse,
             'overviewTabQuery' => $overviewTabQuery,
         ] + $balancesPerPage);
@@ -298,6 +284,7 @@ class MaterialAccountingController extends Controller
         $balancesPerPage = MaterialsListPerPage::fromRequest($request, 'balances');
 
         $warehousesQuery = Warehouse::query()
+            ->inActiveSubdivision()
             ->with('subdivision:id,name')
             ->orderBy('name');
         if (! AdministrationWarehouse::userCanAccess($request->user())) {

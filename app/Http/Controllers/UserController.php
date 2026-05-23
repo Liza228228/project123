@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\ForemanApplicationReassignment;
 use App\Support\ListingPerPage;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
@@ -104,8 +107,89 @@ class UserController extends Controller
     public function edit(User $user): View
     {
         $roles = Role::orderBy('name')->get();
+        $foremanReassignment = app(ForemanApplicationReassignment::class);
+        $foremanApplicationsCount = $user->hasRoleId(ForemanApplicationReassignment::FOREMAN_ROLE_ID)
+            ? $foremanReassignment->applicationsRequiringReassignment($user)->count()
+            : 0;
 
-        return view('users.edit', compact('user', 'roles'));
+        return view('users.edit', compact('user', 'roles', 'foremanApplicationsCount'));
+    }
+
+    public function reassignApplications(User $user): View
+    {
+        $this->assertForemanReassignmentTarget($user);
+
+        $reassignment = app(ForemanApplicationReassignment::class);
+        $applications = $reassignment->applicationsRequiringReassignment($user);
+        $blockedId = (int) $user->id;
+
+        $applicationRows = $applications->map(function ($application) use ($reassignment, $blockedId) {
+            $subdivisionId = (int) $application->subdivision_id;
+
+            return [
+                'application' => $application,
+                'foremen' => $reassignment->replacementForemenOptionsForSubdivision($subdivisionId, $blockedId),
+            ];
+        });
+
+        return view('users.reassign-applications', [
+            'user' => $user,
+            'applicationRows' => $applicationRows,
+        ]);
+    }
+
+    public function storeReassignApplications(Request $request, User $user): RedirectResponse
+    {
+        $this->assertForemanReassignmentTarget($user);
+
+        $reassignment = app(ForemanApplicationReassignment::class);
+        $applications = $reassignment->applicationsRequiringReassignment($user);
+
+        if ($applications->isEmpty()) {
+            return redirect()
+                ->route('users.edit', $user)
+                ->with('status', 'У мастера нет активных заявок для переназначения.');
+        }
+
+        $validated = $request->validate([
+            'reassignments' => ['required', 'array'],
+            'reassignments.*' => ['required', 'integer'],
+        ], [
+            'reassignments.required' => 'Укажите новых мастеров для всех заявок.',
+        ]);
+
+        try {
+            DB::transaction(function () use ($reassignment, $user, $validated): void {
+                $reassignment->applyBlockReassignments($user, $validated['reassignments']);
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->route('users.reassign-applications', $user)
+                ->withErrors($e->errors())
+                ->withInput();
+        }
+
+        return redirect()
+            ->route('users.edit', $user)
+            ->with('status', 'Заявки мастера переназначены.');
+    }
+
+    public function blockPreview(User $user): JsonResponse
+    {
+        $this->assertNotSelf($user);
+
+        $reassignment = app(ForemanApplicationReassignment::class);
+        $requires = $reassignment->requiresReassignmentBeforeBlock($user);
+
+        return response()->json([
+            'requires_reassignment' => $requires,
+            'user' => [
+                'id' => (int) $user->id,
+                'name' => trim($user->surname.' '.$user->name.' '.$user->patronymic),
+                'role_id' => (int) $user->role_id,
+            ],
+            'applications' => $requires ? $reassignment->blockPreviewPayload($user) : [],
+        ]);
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -146,14 +230,38 @@ class UserController extends Controller
             ->with('status', 'Данные пользователя успешно обновлены.');
     }
 
-    public function block(User $user): RedirectResponse
+    public function block(Request $request, User $user): RedirectResponse
     {
         $this->assertNotSelf($user);
 
-        $user->update(['is_blocked' => true]);
+        $reassignment = app(ForemanApplicationReassignment::class);
+
+        try {
+            DB::transaction(function () use ($request, $user, $reassignment): void {
+                if ($reassignment->requiresReassignmentBeforeBlock($user)) {
+                    $reassignment->applyBlockReassignments(
+                        $user,
+                        is_array($request->input('reassignments')) ? $request->input('reassignments') : []
+                    );
+                }
+
+                $user->update(['is_blocked' => true]);
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->route('users.index')
+                ->withErrors($e->errors())
+                ->withInput();
+        }
+
+        $reassigned = $user->hasRoleId(ForemanApplicationReassignment::FOREMAN_ROLE_ID)
+            && is_array($request->input('reassignments'))
+            && $request->input('reassignments') !== [];
 
         return redirect()->route('users.index')
-            ->with('status', 'Пользователь заблокирован.');
+            ->with('status', $reassigned
+                ? 'Заявки переназначены, пользователь заблокирован.'
+                : 'Пользователь заблокирован.');
     }
 
     public function unblock(User $user): RedirectResponse
@@ -170,6 +278,13 @@ class UserController extends Controller
     {
         if ($target->is(Auth::user())) {
             abort(403, 'Это действие недоступно для собственной учётной записи.');
+        }
+    }
+
+    private function assertForemanReassignmentTarget(User $user): void
+    {
+        if (! $user->hasRoleId(ForemanApplicationReassignment::FOREMAN_ROLE_ID)) {
+            abort(404);
         }
     }
 

@@ -36,6 +36,16 @@
                                 </span>
                             @endif
                         </div>
+                        @if(($foremanApplicationsCount ?? 0) > 0)
+                            <div class="mt-4 pt-4 border-t border-orange-200/75 dark:border-stone-800">
+                                <p class="text-sm text-black/80 dark:text-white/80">
+                                    У мастера {{ $foremanApplicationsCount }} активных заявок, где он указан автором или ответственным.
+                                </p>
+                                <a href="{{ route('users.reassign-applications', $user) }}" class="ui-btn ui-btn--secondary mt-3 w-full sm:w-auto">
+                                    Переназначить заявки
+                                </a>
+                            </div>
+                        @endif
                     </div>
                 </div>
 

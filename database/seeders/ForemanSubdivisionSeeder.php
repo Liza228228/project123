@@ -4,18 +4,32 @@ namespace Database\Seeders;
 
 use App\Models\Subdivision;
 use App\Models\User;
+use App\Support\AdministrationWarehouse;
 use Illuminate\Database\Seeder;
 use RuntimeException;
 
 /**
  * Мастера участка (role_id = 4): у подразделения может быть несколько мастеров;
- * у каждого подразделения из {@see SubdivisionSeeder::definitionNames()} — хотя бы один.
+ * у каждого подразделения из {@see SubdivisionSeeder::definitionNames()} (кроме «Администрация») — хотя бы один.
  */
 class ForemanSubdivisionSeeder extends Seeder
 {
+    /**
+     * Подразделения, на которые можно назначать мастеров участка.
+     *
+     * @return list<string>
+     */
+    public static function assignableSubdivisionNames(): array
+    {
+        return array_values(array_filter(
+                SubdivisionSeeder::definitionNames(),
+            fn (string $name): bool => $name !== AdministrationWarehouse::SUBDIVISION_NAME,
+        ));
+    }
+
     public function run(): void
     {
-        $subdivisionNames = SubdivisionSeeder::definitionNames();
+        $subdivisionNames = self::assignableSubdivisionNames();
         $foremanEmails = UserSeeder::FOREMAN_SEED_EMAILS;
 
         $primaryCount = count($subdivisionNames);
@@ -24,7 +38,7 @@ class ForemanSubdivisionSeeder extends Seeder
 
         if (count($primaryEmails) < $primaryCount) {
             throw new RuntimeException(
-                'UserSeeder::FOREMAN_SEED_EMAILS must contain at least as many emails as subdivisions in SubdivisionSeeder::definitionNames().'
+                'UserSeeder::FOREMAN_SEED_EMAILS must contain at least as many emails as foreman-assignable subdivisions.'
             );
         }
 
@@ -33,10 +47,7 @@ class ForemanSubdivisionSeeder extends Seeder
             $assignments[$primaryEmails[$i]] = [$subdivisionNames[$i]];
         }
 
-        $assignments['Kozlov@mail.ru'] = [
-            $subdivisionNames[0],
-            $subdivisionNames[6],
-        ];
+        $assignments['Kozlov@mail.ru'] = ['Лаборатория технического контроля'];
 
         if (isset($extraEmails[0])) {
             $assignments[$extraEmails[0]] = [$subdivisionNames[0]];

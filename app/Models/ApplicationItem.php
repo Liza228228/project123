@@ -22,6 +22,12 @@ class ApplicationItem extends Model
     /** Максимальная длина свободного наименования в форме заявки (совпадает с колонкой БД). */
     public const EQUIPMENT_NAME_MAX_LENGTH = 255;
 
+    /** Маркер в raw_input: позиция добавлена через «Как заказать» по согласованному КП. */
+    public const RAW_INPUT_COMMERCIAL_OFFER_ORDER = '__commercial_offer_order__';
+
+    /** Маркер в reason_not_selected: каталожная позиция зарезервирована со склада по КП. */
+    public const REASON_COMMERCIAL_OFFER_WAREHOUSE_RESERVE = '__commercial_offer_warehouse__';
+
     public const SIZE_VALUE_MAX_LENGTH = 120;
 
     public const QUANTITY_UNIT_MAX_LENGTH = 20;
@@ -384,6 +390,42 @@ class ApplicationItem extends Model
         return $this->equipment_id === null;
     }
 
+    public function isOrderedFromCommercialOffer(): bool
+    {
+        if ($this->equipment_id !== null) {
+            return false;
+        }
+
+        return trim((string) ($this->raw_input ?? '')) === self::RAW_INPUT_COMMERCIAL_OFFER_ORDER;
+    }
+
+    public function isCommercialOfferWarehouseReserved(): bool
+    {
+        if ($this->equipment_id === null) {
+            return false;
+        }
+
+        return trim((string) ($this->reason_not_selected ?? '')) === self::REASON_COMMERCIAL_OFFER_WAREHOUSE_RESERVE;
+    }
+
+    /**
+     * Оборудование по согласованной позиции уже на складе (для подстановки в отчёт по макету).
+     */
+    public function hasArrivedAtWarehouseForReport(): bool
+    {
+        if (! $this->is_checked) {
+            return false;
+        }
+
+        if ($this->equipment_id !== null) {
+            return $this->resolvedDeliveryStatus() === self::DELIVERY_DELIVERED
+                && (int) ($this->delivery_warehouse_id ?? 0) > 0;
+        }
+
+        return $this->usesFreeTextEquipment()
+            && $this->resolvedCustomSupplyStatus() === self::CUSTOM_SUPPLY_ON_WAREHOUSE;
+    }
+
     /**
      * Тип учёта, сохранённый в строке заявки (для каталога не подменяется справочником).
      */
@@ -479,7 +521,7 @@ class ApplicationItem extends Model
     {
         return static::query()
             ->whereHas('application', function ($q): void {
-                $q->whereNull('archived_at')
+                $q->notArchived()
                     ->whereSupplyApprovedForCustomEquipmentWorkflow();
             })
             ->whereNull('equipment_id')

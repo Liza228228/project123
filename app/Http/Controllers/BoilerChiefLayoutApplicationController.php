@@ -4,13 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreLayoutApplicationRequest;
 use App\Http\Requests\UpdateLayoutApplicationRequest;
-use App\Models\Application;
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
 use App\Models\User;
 use App\Support\ListingPerPage;
+use App\Support\LayoutApplicationCatalog;
+use App\Support\ReportLayoutCommercialProposal;
+use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutDocumentBuilder;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Support\RequestLayoutPdfExporter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -24,13 +26,19 @@ class BoilerChiefLayoutApplicationController extends Controller
         $pagination = ListingPerPage::fromRequest($request);
         $submissions = RequestSubmission::query()
             ->ownedBy($user ?? 0)
-            ->with(['requestLayout', 'creator'])
+            ->with([
+                'requestLayout' => fn ($query) => $query->withTrashed(),
+                'creator',
+            ])
             ->orderByDesc('id')
             ->paginate($pagination['perPage'])
             ->withQueryString();
 
+        $layouts = LayoutApplicationCatalog::layoutsForFillCatalog();
+
         return view('boiler-chief.layout-applications.index', [
             'submissions' => $submissions,
+            'layouts' => $layouts,
             'perPage' => $pagination['perPage'],
             'allowedPerPage' => $pagination['allowedPerPage'],
             'defaultPerPage' => $pagination['defaultPerPage'],
@@ -39,9 +47,7 @@ class BoilerChiefLayoutApplicationController extends Controller
 
     public function create(Request $request): View
     {
-        $layouts = RequestLayout::query()
-            ->orderBy('title')
-            ->get();
+        $layouts = LayoutApplicationCatalog::layoutsForFillCatalog();
 
         $users = User::query()
             ->with(['role', 'assignedSubdivisions:id'])
@@ -49,7 +55,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->orderBy('name')
             ->limit(500)
             ->get();
-        $applications = $this->applicationsForLayoutInsertion($request->user());
+        $applicationOptions = ReportLayoutEquipmentApplications::clientOptionsForUser($request->user());
         $layoutSchemasById = $layouts->mapWithKeys(
             fn (RequestLayout $layout): array => [$layout->id => $layout->clientFillPayload()]
         )->all();
@@ -57,9 +63,11 @@ class BoilerChiefLayoutApplicationController extends Controller
         return view('boiler-chief.layout-applications.create', [
             'layouts' => $layouts,
             'users' => $users,
-            'applications' => $applications,
+            'applicationOptions' => $applicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
+            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
+            'subdivisionWarehouseOptions' => ReportLayoutCommercialProposal::subdivisionWarehouseOptionsForUser($request->user()),
         ]);
     }
 
@@ -79,7 +87,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             ->orderBy('name')
             ->limit(500)
             ->get();
-        $applications = $this->applicationsForLayoutInsertion($request->user());
+        $applicationOptions = ReportLayoutEquipmentApplications::clientOptionsForUser($request->user());
         $layoutSchemasById = [$layout->id => $layout->clientFillPayload()];
 
         $data = is_array($submission->data) ? $submission->data : [];
@@ -92,47 +100,21 @@ class BoilerChiefLayoutApplicationController extends Controller
         return view('boiler-chief.layout-applications.create', [
             'layouts' => $layouts,
             'users' => $users,
-            'applications' => $applications,
+            'applicationOptions' => $applicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
+            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
+            'subdivisionWarehouseOptions' => ReportLayoutCommercialProposal::subdivisionWarehouseOptionsForUser($request->user()),
             'editingSubmission' => $submission,
             'initialSubmissionPayload' => $data,
             'formDocumentDate' => $formDocumentDate,
         ]);
     }
 
-    /**
-     * Та же логика подстановки заявок, что в {@see BoilerChiefRequestLayoutController::reportEquipmentApplications}.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Application>
-     */
-    private function applicationsForLayoutInsertion(?User $user)
-    {
-        if (! $user) {
-            return collect();
-        }
-        $query = Application::query()
-            ->with(['subdivision:id,name', 'items'])
-            ->orderByDesc('id')
-            ->limit(300);
-
-        if ($user->hasRoleId(4)) {
-            $query->forSiteForemanAccess($user);
-        } elseif ($user->hasRoleId(7)) {
-            $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
-            $query->whereIn('subdivision_id', $subdivisionIds);
-        } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
-            // бухгалтер, директор, ТД, снабжение — все заявки
-        } else {
-            $query->whereRaw('1 = 0');
-        }
-
-        return $query->get();
-    }
-
     public function store(
         StoreLayoutApplicationRequest $request,
-        RequestLayoutDocumentBuilder $builder
+        RequestLayoutDocumentBuilder $builder,
+        RequestLayoutPdfExporter $exporter
     ): SymfonyResponse {
         $layout = $request->layout();
         $values = $this->layoutApplicationValuesFromRequest($request, $layout);
@@ -143,13 +125,14 @@ class BoilerChiefLayoutApplicationController extends Controller
             'layout_structure_id' => $layout->id,
         ]);
 
-        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+        return $this->streamPdfResponse($layout, $values, $exporter, $submission->id);
     }
 
     public function update(
         UpdateLayoutApplicationRequest $request,
         RequestSubmission $submission,
-        RequestLayoutDocumentBuilder $builder
+        RequestLayoutDocumentBuilder $builder,
+        RequestLayoutPdfExporter $exporter
     ): SymfonyResponse {
         $this->authorizeSubmission($submission, $request->user());
         $submission->loadMissing('requestLayout');
@@ -161,13 +144,13 @@ class BoilerChiefLayoutApplicationController extends Controller
         $values = $this->layoutApplicationValuesFromRequest($request, $layout);
         $submission->update(['data' => $values]);
 
-        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+        return $this->streamPdfResponse($layout, $values, $exporter, $submission->id);
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function layoutApplicationValuesFromRequest(StoreLayoutApplicationRequest $request, RequestLayout $layout): array
+    public function layoutApplicationValuesFromRequest(StoreLayoutApplicationRequest $request, RequestLayout $layout): array
     {
         $values = $request->fieldValues($layout);
 
@@ -190,7 +173,7 @@ class BoilerChiefLayoutApplicationController extends Controller
     public function pdf(
         Request $request,
         RequestSubmission $submission,
-        RequestLayoutDocumentBuilder $builder
+        RequestLayoutPdfExporter $exporter
     ): SymfonyResponse {
         $this->authorizeSubmission($submission, $request->user());
 
@@ -201,88 +184,52 @@ class BoilerChiefLayoutApplicationController extends Controller
 
         $values = is_array($submission->data) ? $submission->data : [];
 
-        return $this->streamPdfResponse($layout, $values, $builder, $submission->id);
+        return $this->streamPdfResponse($layout, $values, $exporter, $submission->id);
     }
 
     public function destroy(Request $request, RequestSubmission $submission): RedirectResponse
     {
-        $this->authorizeSubmission($submission, $request->user());
+        $this->authorizeSubmission($submission, $request->user(), requireLayout: false);
         $submission->delete();
 
         return redirect()->route('boiler-chief.layout-applications.index')
-            ->with('status', 'Заявка по макету удалена.');
+            ->with('status', 'Отчет по макету удален.');
     }
 
     private function streamPdfResponse(
         RequestLayout $layout,
         array $values,
-        RequestLayoutDocumentBuilder $builder,
+        RequestLayoutPdfExporter $exporter,
         ?int $submissionId = null
     ): SymfonyResponse {
-        $layout->load(['approver', 'divisionAssigner', 'documentHeaderLayout']);
-        $parts = $builder->pdfParts($layout, $values);
-        $structuredHeaderHtml = $parts['structuredHeaderHtml'] ?? null;
-        $showHeader = trim($parts['headerText']) !== '' || ($structuredHeaderHtml ?? '') !== '';
+        $fileName = $exporter->suggestedFileName($submissionId);
 
-        $viewData = [
-            'layoutTitle' => $layout->title,
-            'documentTitle' => $parts['documentTitle'],
-            'showHeading' => trim($parts['headingText']) !== '',
-            'showHeader' => $showHeader,
-            'showFooter' => trim($parts['footerLeftText']) !== '' || trim($parts['signatureText']) !== '',
-            'headingHtml' => $this->pdfPlainToHtml($parts['headingText']),
-            'structuredHeaderHtml' => $structuredHeaderHtml,
-            'headerHtml' => $structuredHeaderHtml !== null && $structuredHeaderHtml !== ''
-                ? $structuredHeaderHtml
-                : $this->pdfPlainToHtml($parts['headerText']),
-            'bodyHtml' => $builder->bodyHtmlForPdf($parts['bodyText']),
-            'footerLeftHtml' => $this->pdfPlainToHtml($parts['footerLeftText']),
-            'signatureHtml' => $this->pdfPlainToHtml($parts['signatureText']),
-            'pdfHeaderAlign' => $parts['pdfHeaderAlign'],
-            'pdfBodyAlign' => $parts['pdfBodyAlign'],
-            'pdfFooterLeftAlign' => $parts['pdfFooterLeftAlign'],
-            'pdfFooterRightAlign' => $parts['pdfFooterRightAlign'],
-            'headerUsesStructuredLayout' => $structuredHeaderHtml !== null && $structuredHeaderHtml !== '',
-            'presentationTitleSizePt' => $parts['presentationHeadingSizePt'] ?? 15,
-            'presentationSubtitleSizePt' => $parts['presentationSubtitleSizePt'] ?? 12,
-        ];
-
-        $pdf = Pdf::loadView('boiler-chief.request-layouts.pdf', $viewData)->setPaper('a4', 'portrait');
-
-        $fileName = 'zajavka-'.($submissionId ?? now()->format('YmdHis')).'.pdf';
-
-        return response($pdf->output(), 200, [
+        return response($exporter->outputBinary($layout, $values, $submissionId), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
         ]);
     }
 
-    private function pdfPlainToHtml(?string $plain): string
-    {
-        $plain = (string) ($plain ?? '');
-        if ($plain === '') {
-            return '';
-        }
-
-        $withBr = nl2br(e($plain), false);
-
-        return str_replace(["\r\n", "\r", "\n"], '', $withBr);
-    }
-
-    private function authorizeSubmission(RequestSubmission $submission, ?User $user): void
-    {
+    private function authorizeSubmission(
+        RequestSubmission $submission,
+        ?User $user,
+        bool $requireLayout = true,
+    ): void {
         if (! $user) {
             abort(403);
-        }
-        $submission->loadMissing('requestLayout');
-        if (! $submission->requestLayout) {
-            abort(404);
         }
         if (! $user->hasAnyRoleId(User::REPORT_LAYOUT_FILL_ROLE_IDS)) {
             abort(403);
         }
         if ((int) $submission->created_by !== (int) $user->id) {
             abort(403, 'Нет доступа к этому отчёту.');
+        }
+        if (! $requireLayout) {
+            return;
+        }
+        $submission->loadMissing(['requestLayout' => fn ($query) => $query->withTrashed()]);
+        if (! $submission->requestLayout) {
+            abort(404);
         }
     }
 }

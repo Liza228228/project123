@@ -64,11 +64,31 @@ class User extends Authenticatable
     /** Администратор — пользователи и блокировки. */
     public const ADMINISTRATOR_ROLE_ID = 5;
 
+    /** Начальник котельной. */
+    public const BOILER_CHIEF_ROLE_ID = 7;
+
+    /**
+     * Роли, которые создают заявки (и могут принудительно переносить их в архив).
+     *
+     * @var list<int>
+     */
+    public const APPLICATION_CREATOR_ROLE_IDS = [1, 6, 2, 4, self::BOILER_CHIEF_ROLE_ID];
+
+    /** Технический директор. */
+    public const TECHNICAL_DIRECTOR_ROLE_ID = 6;
+
     /**
      * Назначение мастеров участка и начальников котельных по подразделениям
      * (директор, технический директор, начальник отдела снабжения, администратор).
      */
-    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, 6, 2, 5];
+    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2, 5];
+
+    /**
+     * Создание подразделений и складов (без технического директора — только просмотр каталога).
+     *
+     * @var list<int>
+     */
+    public const SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS = [1, 2, 5];
 
     /**
      * The attributes that are mass assignable.
@@ -125,6 +145,7 @@ class User extends Authenticatable
     public function assignedSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'foreman_subdivision_user', 'foreman_user_id', 'subdivision_id')
+            ->whereDoesntHave('archive')
             ->withTimestamps();
     }
 
@@ -132,6 +153,7 @@ class User extends Authenticatable
     public function boilerChiefSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'boiler_chief_subdivision_user', 'boiler_chief_user_id', 'subdivision_id')
+            ->whereDoesntHave('archive')
             ->withTimestamps();
     }
 

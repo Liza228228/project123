@@ -6,18 +6,10 @@
     </x-slot>
 
     <div class="py-2 sm:py-8 md:py-10 max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
-        <div class="flex flex-wrap items-center gap-3">
-            <a
-                href="{{ route('materials.movements', array_filter(['warehouse_id' => $selectedWarehouseId])) }}"
-                class="ui-btn ui-btn--secondary"
-            >
-                Посмотреть журнал операций
-            </a>
-        </div>
         @if(!($canManage ?? false))
             <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
                 <p class="text-sm text-black dark:text-white opacity-90">
-                    Доступен просмотр остатков по складам. Журнал операций — по кнопке «Посмотреть журнал операций». Добавление оборудования и приход/расход доступны только директору и начальнику отдела снабжения.
+                    Доступен просмотр остатков по складам. Добавление оборудования и приход/расход доступны только директору и начальнику отдела снабжения.
                 </p>
             </div>
         @endif
@@ -25,9 +17,7 @@
         @if($canManage ?? false)
         <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <h3 class="text-lg font-semibold text-black dark:text-white"> Добавить оборудование в справочник</h3>
-            <p class="mt-2 text-sm text-black/80 dark:text-white/80">
-                Размер, маркировка и фактическое количество указываются при поступлении на склад: для спецодежды — выбор размера, для длины, массы и штук — число в поле «Количество».
-            </p>
+            
             <form method="POST" action="{{ route('materials.store-material') }}" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3" id="equipment-catalog-form">
                 @csrf
                 <div class="md:col-span-2">
@@ -260,7 +250,7 @@
             </div>
 
             <p class="mt-2 text-xs text-black/70 dark:text-white/70">
-                Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход». Подробный журнал операций — по кнопке «Посмотреть журнал операций» вверху страницы.
+                Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход».
                 @if($canManage ?? false)
                     Позиции, пришедшие по заявке как «своё оборудование» (не из справочника), тоже отображаются здесь, если по ним есть движения на выбранном складе.
                 @endif

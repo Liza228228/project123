@@ -38,6 +38,9 @@ Route::middleware(['auth', 'admin'])->prefix('users')->name('users.')->group(fun
     Route::get('/', [UserController::class, 'index'])->name('index');
     Route::get('/create', [UserController::class, 'create'])->name('create');
     Route::post('/', [UserController::class, 'store'])->name('store');
+    Route::get('/{user}/block-preview', [UserController::class, 'blockPreview'])->name('block.preview');
+    Route::get('/{user}/reassign-applications', [UserController::class, 'reassignApplications'])->name('reassign-applications');
+    Route::post('/{user}/reassign-applications', [UserController::class, 'storeReassignApplications'])->name('reassign-applications.store');
     Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit');
     Route::put('/{user}', [UserController::class, 'update'])->name('update');
     Route::post('/{user}/block', [UserController::class, 'block'])->name('block');
@@ -55,6 +58,8 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
         return redirect()->route('applications.index', $query);
     })->name('archive');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
+    Route::get('/commercial-proposal/fill', [ApplicationController::class, 'createCommercialProposalFill'])->name('commercial-proposal.fill');
+    Route::post('/commercial-proposal/fill', [ApplicationController::class, 'storeCommercialProposalFill'])->name('commercial-proposal.fill.store');
     Route::get('/installation-act/upload', [ApplicationController::class, 'createInstallationActUpload'])->name('installation-act.upload');
     Route::post('/installation-act/upload', [ApplicationController::class, 'storeInstallationActUpload'])->name('installation-act.upload.store');
     Route::get('/installation-act/browse', [ApplicationController::class, 'browseInstallationActs'])->name('installation-act.browse');
@@ -65,9 +70,11 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/installation-act/layout-fill/submissions/{submission}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanSubmissionPdf'])->name('installation-act.layout-fill.submission-pdf');
     Route::get('/installation-act/layout-schema/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJsonForReportFillers'])->name('installation-act.layout-schema');
     Route::get('/custom-equipment-to-order', [ApplicationController::class, 'customEquipmentToOrder'])->name('custom-equipment-to-order');
+    Route::get('/commercial-offer-procurement', [ApplicationController::class, 'commercialOfferProcurementIndex'])->name('commercial-offer-procurement');
     Route::get('/{application}/custom-equipment-order', [ApplicationController::class, 'customEquipmentOrderForm'])->name('custom-equipment-order');
     Route::post('/{application}/custom-equipment-order/ordered', [ApplicationController::class, 'markCustomEquipmentOrderedBulk'])->name('custom-equipment-order.ordered');
     Route::post('/{application}/custom-equipment-order/on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouseBulk'])->name('custom-equipment-order.on-warehouse');
+    Route::get('/{application}/commercial-offer-procurement', [ApplicationController::class, 'commercialOfferProcurementForm'])->name('commercial-offer-procurement.show');
     Route::get('/{application}/repeat', [ApplicationController::class, 'repeat'])->name('repeat');
     Route::get('/{application}/installation-act/photos/{installationActPhoto}', [ApplicationController::class, 'viewInstallationActPhoto'])
         ->name('installation-act.photo');
@@ -75,9 +82,14 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/{application}/installation-act', [ApplicationController::class, 'viewInstallationAct'])->name('installation-act.view');
     Route::get('/{application}/commercial-offer', [ApplicationController::class, 'viewCommercialOffer'])->name('commercial-offer.view');
     Route::get('/{application}/commercial-offer/download', [ApplicationController::class, 'downloadCommercialOffer'])->name('commercial-offer.download');
+    Route::get('/{application}/commercial-proposal/fill', [ApplicationController::class, 'editCommercialProposalFill'])->name('commercial-proposal.fill.edit');
+    Route::post('/{application}/commercial-proposal/fill', [ApplicationController::class, 'storeCommercialProposalFillForEdit'])->name('commercial-proposal.fill.edit.store');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
     Route::post('/{application}/archive-completion', [ApplicationController::class, 'tryArchiveCompletion'])->name('archive-completion');
+    Route::post('/{application}/admin-archive', [ApplicationController::class, 'adminArchive'])->name('admin-archive');
+    Route::post('/{application}/admin-unarchive', [ApplicationController::class, 'adminUnarchive'])->name('admin-unarchive');
     Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
+    Route::post('/{application}/commercial-offer-order-lines', [ApplicationController::class, 'storeCommercialOfferOrderLines'])->name('commercial-offer-order-lines.store');
     Route::post('/{application}/boiler-chief-approval', [ApplicationController::class, 'saveBoilerChiefApproval'])->name('boiler-chief-approval');
     Route::post('/{application}/delivery-in-transit', [ApplicationController::class, 'markApplicationDeliveryInTransit'])->name('delivery-in-transit');
     Route::post('/{application}/items/delivery-delivered/bulk', [ApplicationController::class, 'markItemsDeliveryDeliveredBulk'])->name('delivery-delivered.bulk');
@@ -98,9 +110,13 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
 
 Route::middleware('auth')->prefix('foreman-subdivisions')->name('foreman-subdivisions.')->group(function () {
     Route::get('/', [ForemanSubdivisionAssignmentController::class, 'index'])->name('index');
+    Route::get('/archive', [ForemanSubdivisionAssignmentController::class, 'archiveIndex'])->name('archive');
     Route::get('/assignments', [ForemanSubdivisionAssignmentController::class, 'assignments'])->name('assignments');
     Route::post('/subdivisions', [ForemanSubdivisionAssignmentController::class, 'storeSubdivision'])->name('subdivisions.store');
     Route::post('/warehouses', [ForemanSubdivisionAssignmentController::class, 'storeWarehouse'])->name('warehouses.store');
+    Route::get('/subdivisions/{subdivision}/deactivate-preview', [ForemanSubdivisionAssignmentController::class, 'subdivisionDeactivatePreview'])->name('subdivisions.deactivate-preview');
+    Route::post('/subdivisions/{subdivision}/deactivate', [ForemanSubdivisionAssignmentController::class, 'deactivateSubdivision'])->name('subdivisions.deactivate');
+    Route::get('/{foreman}/update-preview', [ForemanSubdivisionAssignmentController::class, 'updatePreview'])->name('update.preview');
     Route::get('/{foreman}/edit', [ForemanSubdivisionAssignmentController::class, 'edit'])->name('edit');
     Route::put('/{foreman}', [ForemanSubdivisionAssignmentController::class, 'update'])->name('update');
 });

@@ -10,6 +10,31 @@ use Illuminate\Validation\Validator;
 
 class StoreLayoutApplicationRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('use_current_date')) {
+            $raw = $this->input('use_current_date');
+            $checked = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if (is_array($raw)) {
+                $checked = in_array('1', $raw, true)
+                    || in_array(1, $raw, true)
+                    || in_array(true, $raw, true)
+                    || in_array('true', $raw, true)
+                    || in_array('on', $raw, true);
+            }
+            $this->merge([
+                'use_current_date' => $checked ?? false,
+            ]);
+        }
+
+        foreach ([1, 2, 3] as $slot) {
+            $key = 'signer_'.$slot.'_user_id';
+            if ($this->has($key) && $this->input($key) === '') {
+                $this->merge([$key => null]);
+            }
+        }
+    }
+
     public function authorize(): bool
     {
         return $this->user() !== null;

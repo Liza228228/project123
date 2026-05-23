@@ -36,7 +36,8 @@
         <div class="w-full sm:max-w-md mt-8 relative overflow-hidden rounded-2xl border border-stone-200/80 dark:border-orange-900/30 bg-white/88 dark:bg-stone-900/85 backdrop-blur-md shadow-2xl shadow-orange-500/10 ring-1 ring-orange-100/35 dark:ring-orange-950/25 text-stone-900 dark:text-stone-100">
             <div class="h-1.5 bg-gradient-to-r from-orange-700 via-orange-800 to-stone-800" aria-hidden="true"></div>
             <div class="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-stone-400/10 dark:bg-stone-500/10 blur-2xl pointer-events-none" aria-hidden="true"></div>
-            <div class="relative px-6 py-8">
+            <div class="relative px-6 py-8 space-y-4">
+                <x-flash-messages />
                 {{ $slot }}
             </div>
         </div>

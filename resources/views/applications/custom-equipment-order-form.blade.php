@@ -10,27 +10,16 @@
             <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight min-w-0 break-words">
                 Своё оборудование: заявка №{{ $application->id }}
             </h2>
-            <p class="text-sm text-stone-600 dark:text-stone-400 max-w-2xl">
-                Отметьте галочками позиции и нажмите «Заказано». Когда товар пришёл на основной склад — выберите строки во втором блоке и нажмите «На складе» (приход в «Материалы» и привязка к справочнику).
-            </p>
+            
         </div>
     </x-slot>
 
     <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
-        @if (session('status'))
-            <div class="mb-4 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-900 dark:border-stone-700 dark:bg-stone-900/40 dark:text-stone-100">
-                {{ session('status') }}
-            </div>
-        @endif
         @error('custom_supply')
-            <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                {{ $message }}
-            </div>
+            <x-app-alert type="error" class="mb-4">{{ $message }}</x-app-alert>
         @enderror
         @error('item_ids')
-            <div class="mb-4 rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                {{ $message }}
-            </div>
+            <x-app-alert type="error" class="mb-4">{{ $message }}</x-app-alert>
         @enderror
 
         <div class="app-form-card">

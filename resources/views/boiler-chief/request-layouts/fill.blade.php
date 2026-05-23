@@ -2,22 +2,7 @@
     @php
         $minimalFillFieldsOnly = (bool) ($minimalFillFieldsOnly ?? false);
         $schema = is_array($layout->schema ?? null) ? $layout->schema : [];
-        $applicationOptions = ($applications ?? collect())->map(function ($a) {
-            $approvedItems = $a->items->where('is_checked', true)->values();
-            $lineItems = ($approvedItems->isNotEmpty() ? $approvedItems : $a->items)
-                ->map(fn ($item) => [
-                    'name' => (string) $item->equipment_display_name,
-                    'quantity' => (string) $item->quantity_with_unit,
-                    'line' => trim($item->equipment_display_name.' x '.$item->quantity_with_unit),
-                ])
-                ->filter(fn (array $item) => $item['line'] !== '')
-                ->values();
-            return [
-                'id' => $a->id,
-                'label' => '#'.$a->id.' - '.($a->subdivision?->name ?? 'Без подразделения'),
-                'equipment' => $lineItems->all(),
-            ];
-        })->values()->all();
+        $applicationOptions = array_values($applicationOptions ?? []);
         $warehouseOptions = ($warehouseBalances ?? collect())
             ->map(function ($w) {
                 $equipment = collect($w['equipment'] ?? [])->map(function ($item) {
@@ -42,6 +27,7 @@
             ->all();
         $signatureSlotsCount = \App\Models\RequestLayout::resolvedSignatureSlotsCount($schema);
         $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
+        $allowApplicationEquipmentInsert = \App\Models\RequestLayout::allowsApplicationEquipmentInsert($schema);
     @endphp
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -105,7 +91,14 @@
                                 <input id="{{ $fieldId }}" name="values[{{ $key }}]" type="date"
                                        class="app-input min-h-0"/>
                             @elseif($type === 'table')
-                                @include('boiler-chief.request-layouts._fill-field-table', ['field' => $field])
+                                @include('boiler-chief.request-layouts._fill-field-table', [
+                                    'field' => $field,
+                                    'measurementMeta' => $measurementMeta ?? [],
+                                ])
+                            @elseif($type === 'text' && ! empty($field['readonly']))
+                                <input id="{{ $fieldId }}" name="values[{{ $key }}]" type="text" readonly
+                                       class="app-input min-h-0 bg-stone-50 dark:bg-stone-900/60 text-right font-medium"
+                                       value="{{ old('values.'.$key, '') }}" />
                             @elseif($type === 'address')
                                 <div class="relative" data-dadata-address-field>
                                     <input id="{{ $fieldId }}" name="values[{{ $key }}]" type="text" maxlength="255"
@@ -128,7 +121,7 @@
                     @endif
                 @endforeach
 
-                @if(! $minimalFillFieldsOnly)
+                @if(! $minimalFillFieldsOnly && $allowApplicationEquipmentInsert)
                     <div class="space-y-2 rounded-xl border border-orange-100/90 bg-orange-50/30 px-4 py-3 dark:border-orange-900/35 dark:bg-orange-950/20">
                         <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
                         <div>
@@ -632,12 +625,63 @@
 
             const addressFields = Array.from(form.querySelectorAll('[data-dadata-address-field]'));
             let openSuggestions = null;
+            const skipBlurCleanByInput = new WeakMap();
 
             const closeSuggestions = () => {
                 if (!openSuggestions) return;
                 openSuggestions.innerHTML = '';
                 openSuggestions.classList.add('hidden');
                 openSuggestions = null;
+            };
+
+            const dadataPostalCode = (item) => {
+                if (!item) {
+                    return '';
+                }
+                if (item.postal_code) {
+                    return String(item.postal_code).trim();
+                }
+                if (item.data?.postal_code) {
+                    return String(item.data.postal_code).trim();
+                }
+
+                return '';
+            };
+
+            const formatAddressInputValue = (item) => {
+                const value = item?.value ? String(item.value).trim() : '';
+                if (value === '') {
+                    return '';
+                }
+                const postal = dadataPostalCode(item);
+
+                return postal !== '' ? `${postal} ${value}` : value;
+            };
+
+            const appendDadataSuggestionButton = (container, item, onSelect) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'block w-full px-3 py-2 text-left text-sm text-stone-800 hover:bg-orange-50 dark:text-stone-100 dark:hover:bg-stone-800';
+                const value = item?.value || '';
+                const postal = dadataPostalCode(item);
+                if (postal) {
+                    const wrap = document.createElement('div');
+                    const line = document.createElement('span');
+                    line.className = 'block leading-snug';
+                    line.textContent = value;
+                    const postalLine = document.createElement('span');
+                    postalLine.className = 'block text-xs text-stone-500 dark:text-stone-400 mt-0.5 tabular-nums';
+                    postalLine.textContent = `Индекс ${postal}`;
+                    wrap.append(line, postalLine);
+                    button.appendChild(wrap);
+                } else {
+                    button.textContent = value;
+                }
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                });
+                button.addEventListener('click', () => onSelect(item || {}));
+                container.appendChild(button);
             };
 
             const renderSuggestions = (container, input, metaInput, suggestions) => {
@@ -648,16 +692,16 @@
                 }
 
                 suggestions.forEach((item) => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'block w-full px-3 py-2 text-left text-sm text-stone-800 hover:bg-orange-50 dark:text-stone-100 dark:hover:bg-stone-800';
-                    button.textContent = item?.value || '';
-                    button.addEventListener('click', () => {
-                        input.value = item?.value || input.value;
-                        metaInput.value = JSON.stringify(item?.data || {});
+                    appendDadataSuggestionButton(container, item, (selected) => {
+                        skipBlurCleanByInput.set(input, true);
+                        input.value = formatAddressInputValue(selected) || input.value;
+                        metaInput.value = JSON.stringify({
+                            ...(selected?.data || {}),
+                            postal_code: dadataPostalCode(selected) || selected?.data?.postal_code || null,
+                        });
                         closeSuggestions();
+                        input.focus();
                     });
-                    container.appendChild(button);
                 });
 
                 container.classList.remove('hidden');
@@ -719,8 +763,10 @@
                     if (!normalized || typeof normalized !== 'object') {
                         return;
                     }
-                    if (typeof normalized.result === 'string' && normalized.result.trim() !== '') {
-                        input.value = normalized.result;
+                    const line = typeof normalized.result === 'string' ? normalized.result.trim() : '';
+                    const postal = normalized.postal_code ? String(normalized.postal_code).trim() : '';
+                    if (line !== '') {
+                        input.value = postal !== '' ? `${postal} ${line}` : line;
                     }
                     metaInput.value = JSON.stringify(normalized);
                 } catch (_) {
@@ -751,8 +797,11 @@
                         if (!suggestions.matches(':hover')) {
                             closeSuggestions();
                         }
+                        if (skipBlurCleanByInput.get(input)) {
+                            skipBlurCleanByInput.delete(input);
+                            return;
+                        }
                     }, 120);
-                    cleanAddress(input, metaInput);
                 });
 
                 input.addEventListener('focus', () => {
@@ -769,8 +818,53 @@
                 }
             });
 
+            const isCommercialProposalLayout = @json(($schema['category'] ?? '') === \App\Support\ReportLayoutCommercialProposal::CATEGORY);
+            const syncCommercialEstimateTotalsForFillForm = () => {
+                const tableKey = 'таблица_оборудование';
+                const parseNum = (raw) => {
+                    const s = String(raw ?? '')
+                        .replace(/\s+/g, '')
+                        .replace(',', '.')
+                        .trim();
+                    if (s === '') return 0;
+                    const n = Number(s);
+                    return Number.isFinite(n) && n >= 0 ? n : 0;
+                };
+                const formatAmount = (n) => {
+                    const v = Math.round(Number(n) * 100) / 100;
+                    if (!Number.isFinite(v)) return '0';
+                    return String(v)
+                        .replace(/(\.\d*?[1-9])0+$/u, '$1')
+                        .replace(/\.0+$/u, '');
+                };
+                let total = 0;
+                for (let rowIdx = 0; rowIdx < 30; rowIdx += 1) {
+                    const qty = form.querySelector(`[name="values[${tableKey}][${rowIdx}][2]"]`);
+                    const price = form.querySelector(`[name="values[${tableKey}][${rowIdx}][3]"]`);
+                    const sumInput = form.querySelector(`[name="values[${tableKey}][${rowIdx}][4]"]`);
+                    if (!qty && !price) {
+                        break;
+                    }
+                    const rowSum = parseNum(qty?.value) * parseNum(price?.value);
+                    if (sumInput) {
+                        sumInput.value = formatAmount(rowSum);
+                    }
+                    total += rowSum;
+                }
+                const formatted = formatAmount(total);
+                for (const totalKey of ['итого_оборудование', 'итого_вся_смета']) {
+                    const el = form.querySelector(`[name="values[${totalKey}]"]`);
+                    if (el) {
+                        el.value = formatted;
+                    }
+                }
+            };
+
             form.addEventListener('submit', async function (e) {
                 e.preventDefault();
+                if (isCommercialProposalLayout) {
+                    syncCommercialEstimateTotalsForFillForm();
+                }
                 for (const fieldBlock of addressFields) {
                     const input = fieldBlock.querySelector('[data-dadata-address-input]');
                     const metaInput = fieldBlock.querySelector('[data-dadata-meta-input]');

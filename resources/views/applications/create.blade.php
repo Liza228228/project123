@@ -16,6 +16,12 @@
                     @csrf
                     <input type="hidden" name="source_application_id" value="{{ old('source_application_id', $prefill['source_application_id'] ?? '') }}">
 
+                    @if (request()->boolean('commercial_offer_ready'))
+                        <div class="flex items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-100">
+                            Коммерческое предложение сформировано. Проверьте блок «Документы» и завершите создание заявки.
+                        </div>
+                    @endif
+
                     @if($prefill)
                         <div class="flex items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3 text-sm text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-100">
                             <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-200/80 text-xs font-bold dark:bg-sky-800/80">↻</span>
@@ -45,19 +51,19 @@
 
                             @include('applications.partials.subdivision-warehouses-hint')
 
-                            @if (! Auth::user()->hasAnyRoleId([4, 7]))
+                            @if (Auth::user()->hasRoleId(4))
+                                <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
+                            @elseif (Auth::user()->hasRoleId(7) || Auth::user()->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS))
                                 <div class="sm:col-span-2">
-                                    <label for="responsible_user_id" class="app-form-label">Ответственный</label>
-                                    <select id="responsible_user_id" name="responsible_user_id" class="app-select">
-                                        <option value="">Не назначен / выбрать автоматически</option>
+                                    <label for="responsible_user_id" class="app-form-label">Ответственный (мастер участка)</label>
+                                    <select id="responsible_user_id" name="responsible_user_id" class="app-select" @required(Auth::user()->hasRoleId(7))>
+                                        <option value="">{{ Auth::user()->hasRoleId(7) ? 'Выберите мастера…' : 'Не назначен / выбрать автоматически' }}</option>
                                         @foreach($users as $u)
                                             <option value="{{ $u->id }}" @selected(old('responsible_user_id', $prefill['responsible_user_id'] ?? null) == $u->id)>{{ $u->surname }} {{ $u->name }} {{ $u->patronymic }}</option>
                                         @endforeach
                                     </select>
                                     <x-input-error :messages="$errors->get('responsible_user_id')" class="mt-1.5" />
                                 </div>
-                            @else
-                                <input type="hidden" name="responsible_user_id" value="{{ Auth::id() }}">
                             @endif
 
  
@@ -65,18 +71,32 @@
                     </section>
 
                     @php
-                        $showCommercialOffer = old('attach_commercial_offer') === '1' || $errors->has('commercial_offer');
+                        $commercialOfferDraftReady = $commercialOfferDraftReady ?? false;
+                        $showCommercialOffer = $commercialOfferDraftReady
+                            || old('attach_commercial_offer') === '1'
+                            || $errors->has('commercial_offer');
                     @endphp
                     <section class="space-y-3" aria-labelledby="create-section-files">
                         <h3 id="create-section-files" class="app-section-title">Документы</h3>
                         <input type="hidden" name="attach_commercial_offer" id="attach-commercial-offer-input" value="{{ $showCommercialOffer ? '1' : '0' }}">
-                        <button
-                            type="button"
-                            id="add-commercial-offer-btn"
-                            class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto {{ $showCommercialOffer ? 'hidden' : '' }}"
-                        >
-                            + Прикрепить коммерческое предложение
-                        </button>
+                        <input type="hidden" name="use_commercial_offer_draft" id="use-commercial-offer-draft-input" value="{{ ($commercialOfferDraftReady && ! old('commercial_offer')) ? '1' : '0' }}">
+
+                        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap {{ $showCommercialOffer ? 'hidden' : '' }}" id="commercial-offer-actions">
+                            <button
+                                type="button"
+                                id="add-commercial-offer-btn"
+                                class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto"
+                            >
+                                + Прикрепить коммерческое предложение
+                            </button>
+                            <a
+                                href="{{ $commercialProposalFillUrl ?? route('applications.commercial-proposal.fill') }}"
+                                id="fill-commercial-proposal-btn"
+                                class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto text-center"
+                            >
+                                Заполнить коммерческое предложение
+                            </a>
+                        </div>
 
                         <div id="commercial-offer-block" class="{{ $showCommercialOffer ? '' : 'hidden' }} space-y-3 rounded-xl border border-dashed border-orange-300/80 bg-orange-50/40 p-4 dark:border-orange-800/50 dark:bg-orange-950/20">
                             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -85,6 +105,11 @@
                                     Убрать КП
                                 </button>
                             </div>
+                            @if ($commercialOfferDraftReady && ! $errors->has('commercial_offer'))
+                                <div class="rounded-lg border border-emerald-200/80 bg-emerald-50/70 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-100">
+                                    PDF сформирован и будет прикреплён к заявке при сохранении. Чтобы заменить файл, выберите другой документ ниже.
+                                </div>
+                            @endif
                             <input
                                 id="commercial_offer"
                                 type="file"
@@ -119,6 +144,7 @@
                             ]];
                         }
                         $equipmentNameMax = \App\Models\ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH;
+                        $equipmentCatalogSearchMax = \App\Models\Equipment::NAME_MAX_LENGTH;
                     @endphp
                     <section class="space-y-4" aria-labelledby="create-section-equipment">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -231,6 +257,7 @@
                                                         type="text"
                                                         value="{{ $selectedEq?->name ?? '' }}"
                                                         placeholder="От 2 букв названия…"
+                                                        maxlength="{{ $equipmentCatalogSearchMax }}"
                                                         autocomplete="off"
                                                         autocorrect="off"
                                                         autocapitalize="off"
@@ -333,7 +360,7 @@
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </span>
                         <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
-                        <input type="text" placeholder="От 2 букв названия…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
+                        <input type="text" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
                         <div class="equipment-suggestions app-suggestions hidden"></div>
                     </div>
                 </div>
@@ -405,12 +432,14 @@
             var responsibleSelect = document.getElementById('responsible_user_id');
             var subdivisionSelect = document.getElementById('subdivision_id');
             var subdivisionIdsByForeman = @json($subdivisionIdsByForeman ?? []);
+            var foremanIdsBySubdivision = @json($foremanIdsBySubdivision ?? []);
+            var responsibleFilterMode = @json($responsibleFilterMode ?? 'foreman_first');
 
             if (!responsibleSelect || !subdivisionSelect) {
                 return;
             }
 
-            var originalOptions = Array.prototype.slice.call(subdivisionSelect.options).map(function(option) {
+            var originalSubdivisionOptions = Array.prototype.slice.call(subdivisionSelect.options).map(function(option) {
                 return {
                     value: option.value,
                     text: option.text,
@@ -418,7 +447,15 @@
                 };
             });
 
-            function renderSubdivisionOptions() {
+            var originalResponsibleOptions = Array.prototype.slice.call(responsibleSelect.options).map(function(option) {
+                return {
+                    value: option.value,
+                    text: option.text,
+                    selected: option.selected
+                };
+            });
+
+            function renderSubdivisionOptionsForForeman() {
                 var selectedResponsible = responsibleSelect.value || '';
                 var allowedIds = subdivisionIdsByForeman[selectedResponsible] || null;
                 var currentValue = subdivisionSelect.value;
@@ -426,7 +463,7 @@
 
                 subdivisionSelect.innerHTML = '';
 
-                originalOptions.forEach(function(option) {
+                originalSubdivisionOptions.forEach(function(option) {
                     if (option.value === '') {
                         subdivisionSelect.add(new Option(option.text, option.value));
                         return;
@@ -447,8 +484,50 @@
                 subdivisionSelect.dispatchEvent(new Event('change', { bubbles: true }));
             }
 
-            responsibleSelect.addEventListener('change', renderSubdivisionOptions);
-            renderSubdivisionOptions();
+            function renderResponsibleOptionsForSubdivision() {
+                var selectedSubdivision = subdivisionSelect.value || '';
+                var allowedForemanIds = foremanIdsBySubdivision[selectedSubdivision] || [];
+                var currentValue = responsibleSelect.value;
+                var nextValue = currentValue;
+                var hasSelectableForeman = false;
+
+                responsibleSelect.innerHTML = '';
+
+                originalResponsibleOptions.forEach(function(option) {
+                    if (option.value === '') {
+                        responsibleSelect.add(new Option(option.text, option.value));
+                        return;
+                    }
+                    if (allowedForemanIds.indexOf(option.value) === -1) {
+                        return;
+                    }
+                    hasSelectableForeman = true;
+                    responsibleSelect.add(new Option(option.text, option.value));
+                });
+
+                if (!hasSelectableForeman) {
+                    responsibleSelect.add(new Option('Нет мастеров для этого подразделения', ''));
+                    nextValue = '';
+                } else {
+                    var hasCurrentValue = Array.prototype.some.call(responsibleSelect.options, function(option) {
+                        return option.value === currentValue;
+                    });
+                    if (!hasCurrentValue) {
+                        nextValue = '';
+                    }
+                }
+
+                responsibleSelect.value = nextValue;
+                responsibleSelect.disabled = !selectedSubdivision || !hasSelectableForeman;
+            }
+
+            if (responsibleFilterMode === 'subdivision_first') {
+                subdivisionSelect.addEventListener('change', renderResponsibleOptionsForSubdivision);
+                renderResponsibleOptionsForSubdivision();
+            } else {
+                responsibleSelect.addEventListener('change', renderSubdivisionOptionsForForeman);
+                renderSubdivisionOptionsForForeman();
+            }
         })();
     </script>
 
@@ -477,7 +556,7 @@
             var measurementUnits = @json($measurementMeta['unitsByType'] ?? ['piece' => ['шт']]);
             var catalogById = @json($measurementMeta['catalogById'] ?? []);
             var DUPLICATE_EQUIPMENT_MSG = 'Нельзя добавить две строки с одним и тем же наименованием и размером.';
-            var DUPLICATE_EQUIPMENT_GENERIC_MSG = 'Нельзя добавить одно и то же оборудование дважды.';
+            var DUPLICATE_EQUIPMENT_GENERIC_MSG = 'Нельзя добавить две строки с одинаковым наименованием и типом измерения.';
 
             function catalogIdForFreeTextLabel(raw) {
                 var text = String(raw || '').trim();
@@ -545,7 +624,8 @@
                     }
                 }
 
-                return baseKey;
+                var mt = measurementTypeFromRow(row) || 'piece';
+                return baseKey + ':mt:' + mt;
             }
 
             function nameInputForEquipmentRow(row) {
@@ -621,7 +701,7 @@
 
             function bindDuplicateEquipmentChecks(root) {
                 var scope = root || container;
-                scope.querySelectorAll('.custom-equipment-input, .equipment-search, .list-amount-size, .custom-amount-size, .list-amount-number, .custom-amount-number').forEach(function(input) {
+                scope.querySelectorAll('.custom-equipment-input, .equipment-search, .measurement-type, .list-amount-size, .custom-amount-size, .list-amount-number, .custom-amount-number').forEach(function(input) {
                     if (input.dataset.duplicateBound === '1') {
                         return;
                     }
@@ -1202,25 +1282,76 @@
             var addCommercialOfferBtn = document.getElementById('add-commercial-offer-btn');
             var removeCommercialOfferBtn = document.getElementById('remove-commercial-offer-btn');
             var commercialOfferBlock = document.getElementById('commercial-offer-block');
+            var commercialOfferActions = document.getElementById('commercial-offer-actions');
             var attachCommercialOfferInput = document.getElementById('attach-commercial-offer-input');
-            if (addCommercialOfferBtn && commercialOfferBlock && attachCommercialOfferInput) {
-                addCommercialOfferBtn.addEventListener('click', function() {
+            var useCommercialOfferDraftInput = document.getElementById('use-commercial-offer-draft-input');
+            var fillCommercialProposalBtn = document.getElementById('fill-commercial-proposal-btn');
+            var subdivisionSelectForCp = document.getElementById('subdivision_id');
+
+            function showCommercialOfferBlock() {
+                if (commercialOfferBlock) {
                     commercialOfferBlock.classList.remove('hidden');
+                }
+                if (attachCommercialOfferInput) {
                     attachCommercialOfferInput.value = '1';
-                    addCommercialOfferBtn.classList.add('hidden');
-                });
-                if (!commercialOfferBlock.classList.contains('hidden')) {
-                    addCommercialOfferBtn.classList.add('hidden');
+                }
+                if (commercialOfferActions) {
+                    commercialOfferActions.classList.add('hidden');
                 }
             }
-            if (removeCommercialOfferBtn && commercialOfferBlock && attachCommercialOfferInput && addCommercialOfferBtn) {
+
+            if (addCommercialOfferBtn) {
+                addCommercialOfferBtn.addEventListener('click', function() {
+                    if (useCommercialOfferDraftInput) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                    showCommercialOfferBlock();
+                });
+            }
+            if (commercialOfferBlock && !commercialOfferBlock.classList.contains('hidden')) {
+                showCommercialOfferBlock();
+            }
+            if (fillCommercialProposalBtn && subdivisionSelectForCp) {
+                fillCommercialProposalBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var subId = subdivisionSelectForCp.value || '';
+                    if (!subId) {
+                        window.alert('Сначала выберите подразделение в разделе «Основное».');
+                        return;
+                    }
+                    var base = fillCommercialProposalBtn.getAttribute('href') || '';
+                    var sep = base.indexOf('?') >= 0 ? '&' : '?';
+                    window.location.href = base + sep + 'subdivision_id=' + encodeURIComponent(subId);
+                });
+            }
+            var commercialOfferFileInput = document.getElementById('commercial_offer');
+            if (commercialOfferFileInput && useCommercialOfferDraftInput) {
+                commercialOfferFileInput.addEventListener('change', function() {
+                    if (commercialOfferFileInput.files && commercialOfferFileInput.files.length > 0) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                });
+            }
+            if (removeCommercialOfferBtn) {
                 removeCommercialOfferBtn.addEventListener('click', function() {
-                    commercialOfferBlock.classList.add('hidden');
-                    attachCommercialOfferInput.value = '0';
-                    addCommercialOfferBtn.classList.remove('hidden');
-                    var fileInput = document.getElementById('commercial_offer');
-                    if (fileInput) {
-                        fileInput.value = '';
+                    var hadDraft = useCommercialOfferDraftInput && useCommercialOfferDraftInput.value === '1';
+                    if (commercialOfferBlock) {
+                        commercialOfferBlock.classList.add('hidden');
+                    }
+                    if (attachCommercialOfferInput) {
+                        attachCommercialOfferInput.value = '0';
+                    }
+                    if (useCommercialOfferDraftInput) {
+                        useCommercialOfferDraftInput.value = '0';
+                    }
+                    if (commercialOfferActions) {
+                        commercialOfferActions.classList.remove('hidden');
+                    }
+                    if (commercialOfferFileInput) {
+                        commercialOfferFileInput.value = '';
+                    }
+                    if (hadDraft) {
+                        window.location.href = @json(route('applications.create', ['discard_commercial_offer_draft' => 1]));
                     }
                 });
             }
