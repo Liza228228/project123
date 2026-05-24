@@ -7,8 +7,8 @@ use App\Http\Requests\UpdateLayoutApplicationRequest;
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
 use App\Models\User;
-use App\Support\ListingPerPage;
 use App\Support\LayoutApplicationCatalog;
+use App\Support\ListingPerPage;
 use App\Support\ReportLayoutCommercialProposal;
 use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutDocumentBuilder;
@@ -50,12 +50,13 @@ class BoilerChiefLayoutApplicationController extends Controller
         $layouts = LayoutApplicationCatalog::layoutsForFillCatalog();
 
         $users = User::query()
-            ->with(['role', 'assignedSubdivisions:id'])
+            ->with(['role', 'assignedSubdivisions:id', 'boilerChiefSubdivisions:id'])
             ->orderBy('surname')
             ->orderBy('name')
             ->limit(500)
             ->get();
         $applicationOptions = ReportLayoutEquipmentApplications::clientOptionsForUser($request->user());
+        $installationActApplicationOptions = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($request->user());
         $layoutSchemasById = $layouts->mapWithKeys(
             fn (RequestLayout $layout): array => [$layout->id => $layout->clientFillPayload()]
         )->all();
@@ -64,6 +65,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             'layouts' => $layouts,
             'users' => $users,
             'applicationOptions' => $applicationOptions,
+            'installationActApplicationOptions' => $installationActApplicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
             'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
@@ -82,12 +84,13 @@ class BoilerChiefLayoutApplicationController extends Controller
 
         $layouts = collect([$layout]);
         $users = User::query()
-            ->with(['role', 'assignedSubdivisions:id'])
+            ->with(['role', 'assignedSubdivisions:id', 'boilerChiefSubdivisions:id'])
             ->orderBy('surname')
             ->orderBy('name')
             ->limit(500)
             ->get();
         $applicationOptions = ReportLayoutEquipmentApplications::clientOptionsForUser($request->user());
+        $installationActApplicationOptions = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($request->user());
         $layoutSchemasById = [$layout->id => $layout->clientFillPayload()];
 
         $data = is_array($submission->data) ? $submission->data : [];
@@ -101,6 +104,7 @@ class BoilerChiefLayoutApplicationController extends Controller
             'layouts' => $layouts,
             'users' => $users,
             'applicationOptions' => $applicationOptions,
+            'installationActApplicationOptions' => $installationActApplicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
             'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),

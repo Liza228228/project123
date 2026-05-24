@@ -226,7 +226,8 @@ export function registerLayoutApplicationCreate(Alpine) {
     Alpine.data('layoutApplicationCreate', (cfg) => ({
         layouts: cfg.layouts || [],
         users: cfg.users || [],
-        applications: cfg.applications || [],
+        allApplications: cfg.applications || [],
+        installationActApplications: cfg.installationActApplications || cfg.applications || [],
         /** Серверные схемы по id макета — без отдельного fetch (надёжно для бухгалтера и без пересборки Vite). */
         layoutSchemasById: cfg.layoutSchemasById && typeof cfg.layoutSchemasById === 'object' ? cfg.layoutSchemasById : {},
         /** Базовый URL без id: …/applications/installation-act/layout-schema */
@@ -289,8 +290,12 @@ export function registerLayoutApplicationCreate(Alpine) {
                 this.layoutId = cfg.preselectLayoutId;
                 this.$nextTick(() => this.loadFields());
             }
-            this.$watch('selectedApplicationIds', () => {
+            this.$watch('selectedApplicationIds', (ids) => {
+                if (this.isSingleApplicationSelection && Array.isArray(ids) && ids.length > 1) {
+                    this.selectedApplicationIds = [Number(ids[ids.length - 1])].filter((id) => id > 0);
+                }
                 this.selectedApplicationEquipment = '';
+                this.pruneSignerSelectionsToAllowed();
                 this.$nextTick(() => this.applyDefaultForemanForSelectedApplications());
             });
             window.addEventListener('commercial-estimate-totals-changed', (e) => {
@@ -299,14 +304,68 @@ export function registerLayoutApplicationCreate(Alpine) {
                 this.syncCommercialEstimateTotalFields(total);
             });
         },
+        get reportApplications() {
+            if (this.layoutCategory === 'installation-act') {
+                return this.installationActApplications || [];
+            }
+
+            return this.allApplications || [];
+        },
+        get isSingleApplicationSelection() {
+            return this.layoutCategory === 'installation-act';
+        },
+        selectSingleApplication(appId) {
+            const id = Number(appId);
+            this.selectedApplicationIds = id > 0 ? [id] : [];
+        },
+        isApplicationSelected(appId) {
+            return Number(this.selectedApplicationIds?.[0] || 0) === Number(appId);
+        },
+        selectedApplicationSubdivisionId() {
+            const ids = Array.isArray(this.selectedApplicationIds)
+                ? this.selectedApplicationIds.map((x) => Number(x)).filter((id) => id > 0)
+                : [];
+            if (ids.length !== 1) {
+                return 0;
+            }
+            const app = (this.reportApplications || []).find((a) => Number(a.id || 0) === ids[0]);
+
+            return app ? Number(app.subdivision_id || 0) : 0;
+        },
+        pruneSignerSelectionsToAllowed() {
+            for (const n of this.signerIndices()) {
+                const cur = String(this.signerSelections[n] ?? '').trim();
+                if (cur === '') {
+                    continue;
+                }
+                const allowed = this.usersForSignerSlot(n).some((u) => Number(u.id) === Number(cur));
+                if (!allowed) {
+                    this.signerSelections[n] = '';
+                }
+            }
+        },
+        pruneApplicationSelectionToVisible() {
+            const visibleIds = new Set(
+                (this.reportApplications || []).map((a) => Number(a.id)).filter((id) => id > 0)
+            );
+            this.selectedApplicationIds = (this.selectedApplicationIds || []).filter((id) =>
+                visibleIds.has(Number(id))
+            );
+            this.selectedApplicationEquipment = '';
+        },
         selectAllApplications() {
-            this.selectedApplicationIds = (this.applications || []).map((a) => Number(a.id)).filter((id) => id > 0);
+            if (this.isSingleApplicationSelection) {
+                return;
+            }
+            this.selectedApplicationIds = (this.reportApplications || [])
+                .map((a) => Number(a.id))
+                .filter((id) => id > 0);
         },
         clearApplicationSelection() {
             this.selectedApplicationIds = [];
         },
         get allApplicationsSelected() {
-            const apps = this.applications || [];
+            const apps = this.reportApplications || [];
             const ids = this.selectedApplicationIds || [];
             return apps.length > 0 && ids.length === apps.length;
         },
@@ -383,6 +442,7 @@ export function registerLayoutApplicationCreate(Alpine) {
                 d.signature_role_names && typeof d.signature_role_names === 'object' ? d.signature_role_names : {};
             this.allowApplicationEquipmentInsert = d.allow_application_equipment_insert !== false;
             this.layoutCategory = String(d.category || '');
+            this.pruneApplicationSelectionToVisible();
             const raw = Array.isArray(d.fields) ? d.fields : [];
             const allowedTypes = new Set(['text', 'number', 'textarea', 'date', 'table', 'subdivision_warehouse']);
             this.fields = raw.map((f, idx) => {
@@ -814,7 +874,7 @@ export function registerLayoutApplicationCreate(Alpine) {
             const multi = ids.length > 1;
             const rows = [];
             for (const id of ids) {
-                const app = this.applications.find((a) => Number(a.id || 0) === id);
+                const app = this.reportApplications.find((a) => Number(a.id || 0) === id);
                 if (!app || !Array.isArray(app.equipment)) {
                     continue;
                 }
@@ -1125,17 +1185,31 @@ export function registerLayoutApplicationCreate(Alpine) {
             let list = !roleId ? this.users : this.users.filter((u) => Number(u.role_id || 0) === roleId);
             const ctx = this.layoutViewerContext;
             const foremanId = ctx.foremanRoleId || 4;
-            if (ctx.isBoilerChief && roleId === foremanId) {
+            const boilerChiefId = 7;
+            const subdivisionId = this.selectedApplicationSubdivisionId();
+
+            if (
+                subdivisionId > 0 &&
+                (roleId === foremanId || roleId === boilerChiefId)
+            ) {
+                list = list.filter((u) => {
+                    const subs = Array.isArray(u.subdivision_ids) ? u.subdivision_ids : [];
+
+                    return subs.some((sid) => Number(sid) === subdivisionId);
+                });
+            } else if (ctx.isBoilerChief && roleId === foremanId) {
                 const chiefSet = new Set(ctx.chiefSubdivisionIds || []);
                 if (chiefSet.size === 0) {
                     list = [];
                 } else {
                     list = list.filter((u) => {
                         const subs = Array.isArray(u.subdivision_ids) ? u.subdivision_ids : [];
+
                         return subs.some((sid) => chiefSet.has(Number(sid)));
                     });
                 }
             }
+
             return list;
         },
         applyDefaultForemanForSelectedApplications() {
@@ -1144,11 +1218,11 @@ export function registerLayoutApplicationCreate(Alpine) {
             const ids = Array.isArray(this.selectedApplicationIds)
                 ? this.selectedApplicationIds.map((x) => Number(x)).filter((id) => id > 0)
                 : [];
-            if (ids.length !== 1 || !ctx.isBoilerChief) {
+            if (ids.length !== 1) {
                 return;
             }
             const appId = ids[0];
-            const app = (this.applications || []).find((a) => Number(a.id || 0) === appId);
+            const app = (this.reportApplications || []).find((a) => Number(a.id || 0) === appId);
             const foremanUserId = app ? Number(app.foreman_user_id || 0) : 0;
             if (foremanUserId <= 0) {
                 return;

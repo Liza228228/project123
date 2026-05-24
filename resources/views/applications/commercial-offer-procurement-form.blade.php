@@ -91,7 +91,7 @@
                 @else
                     @if($toOrder->isNotEmpty())
                         <section class="space-y-4" aria-labelledby="co-proc-order">
-                            <h3 id="co-proc-order" class="app-section-title">1. Отметить как заказано у поставщика</h3>
+                            <h3 id="co-proc-order" class="app-section-title">Отметить заказанное оборудование </h3>
                             <form method="POST" action="{{ route('applications.custom-equipment-order.ordered', $application) }}" class="space-y-3">
                                 @csrf
                                 <input type="hidden" name="return_to" value="commercial_offer_procurement" />
@@ -130,7 +130,7 @@
 
                     @if($toWarehouse->isNotEmpty())
                         <section class="space-y-4 border-t border-stone-200 pt-8 dark:border-stone-700" aria-labelledby="co-proc-wh">
-                            <h3 id="co-proc-wh" class="app-section-title">2. Приход на основной склад</h3>
+                            <h3 id="co-proc-wh" class="app-section-title">Приход на основной склад</h3>
                             <form method="POST" action="{{ route('applications.custom-equipment-order.on-warehouse', $application) }}" class="space-y-3">
                                 @csrf
                                 <input type="hidden" name="return_to" value="commercial_offer_procurement" />

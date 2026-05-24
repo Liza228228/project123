@@ -54,7 +54,7 @@
                         Своё оборудование к заказу
                     </a>
                 @endif
-                @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]) && ! $isAdministratorViewer)
+                @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS) && ! $isAdministratorViewer)
                     <a href="{{ route('applications.create') }}" class="ui-btn ui-btn--primary gap-2 whitespace-nowrap w-full sm:w-auto justify-center">
                         Создать заявку
                     </a>

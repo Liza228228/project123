@@ -554,10 +554,152 @@ class Application extends Model
 
         if (Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
             && ! $this->isForemanDraftBeforeBoilerChief()) {
-            return false;
+            return $this->foremanCanReviseAfterBoilerChiefRejection();
         }
 
         return true;
+    }
+
+    /**
+     * Мастер участка может править позиции, которые начальник котельной не согласовал
+     * (после сохранения согласования котельной, до отправки заявки руководству).
+     */
+    public function foremanCanReviseAfterBoilerChiefRejection(): bool
+    {
+        if ($this->isAdminArchived() || $this->managementHasSavedApproval()) {
+            return false;
+        }
+
+        if ($this->isManagementDelegatedToSiteForeman()) {
+            return false;
+        }
+
+        if (! $this->isForemanCreatedApplication() || $this->isBoilerChiefCreatedApplication()) {
+            return false;
+        }
+
+        if ($this->isForemanDraftBeforeBoilerChief()) {
+            return false;
+        }
+
+        if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
+            return false;
+        }
+
+        if ($this->boilerChiefReleasedToManagement()) {
+            return false;
+        }
+
+        if ($this->foremanSubmittedAwaitingItemsForBoilerChiefReview()) {
+            return false;
+        }
+
+        if ($this->needsBoilerChiefReviewBeforeManagement() && ! $this->hasItemsRejectedByBoilerChief()) {
+            return false;
+        }
+
+        return $this->hasItemsRejectedByBoilerChief()
+            || $this->hasCommercialOfferRejectedByBoilerChief();
+    }
+
+    /**
+     * Мастер участка отправил изменённые позиции на повторное согласование — ждём решения начальника котельной.
+     */
+    public function foremanSubmittedAwaitingItemsForBoilerChiefReview(): bool
+    {
+        if (! $this->boilerChiefSubdivisionReviewCycleStarted()) {
+            return false;
+        }
+
+        return $this->needsBoilerChiefReviewBeforeManagement()
+            && $this->hasItemsAwaitingBoilerChiefReview()
+            && (int) $this->application_status_id === ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
+    }
+
+    public function hasItemsRejectedByBoilerChief(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(fn (ApplicationItem $i) => $this->itemIsRejectedByBoilerChief($i));
+    }
+
+    public function itemIsRejectedByBoilerChief(ApplicationItem $item): bool
+    {
+        return ! (bool) $item->is_checked
+            && trim((string) ($item->reason_not_selected ?? '')) !== '';
+    }
+
+    /**
+     * Позиция снова ожидает решения начальника котельной (мастер изменил и отправил на повторное согласование).
+     */
+    public function itemAwaitingBoilerChiefReview(ApplicationItem $item): bool
+    {
+        return ! (bool) $item->is_checked
+            && trim((string) ($item->reason_not_selected ?? '')) === '';
+    }
+
+    public function hasItemsAwaitingBoilerChiefReview(): bool
+    {
+        $this->loadMissing('items');
+
+        return $this->items->contains(fn (ApplicationItem $i) => $this->itemAwaitingBoilerChiefReview($i));
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, ApplicationItem>
+     */
+    public function itemsAwaitingBoilerChiefReview()
+    {
+        $this->loadMissing('items');
+
+        return $this->items
+            ->filter(fn (ApplicationItem $i) => $this->itemAwaitingBoilerChiefReview($i))
+            ->values();
+    }
+
+    public function boilerChiefSubdivisionReviewCycleStarted(): bool
+    {
+        if ($this->hasApprovedEquipmentLines() || $this->hasItemsRejectedByBoilerChief()) {
+            return true;
+        }
+
+        if ($this->hasCommercialOfferAttached() && $this->hasCommercialOfferApprovalColumns()) {
+            return $this->commercial_offer_chief_is_checked !== null;
+        }
+
+        return false;
+    }
+
+    /**
+     * Мастер участка может повторно отправить заявку начальнику котельной после правок.
+     */
+    public function foremanCanResubmitAwaitingItemsToBoilerChief(): bool
+    {
+        if ($this->isAdminArchived() || $this->isForemanDraftBeforeBoilerChief()) {
+            return false;
+        }
+
+        if (! $this->isForemanCreatedApplication() || $this->isBoilerChiefCreatedApplication()) {
+            return false;
+        }
+
+        if (! $this->usesBoilerChiefSubdivisionWorkflow() || $this->boilerChiefReleasedToManagement()) {
+            return false;
+        }
+
+        if ($this->foremanSubmittedAwaitingItemsForBoilerChiefReview()) {
+            return false;
+        }
+
+        return $this->hasItemsAwaitingBoilerChiefReview()
+            && $this->boilerChiefSubdivisionReviewCycleStarted();
+    }
+
+    public function hasCommercialOfferRejectedByBoilerChief(): bool
+    {
+        return $this->hasCommercialOfferAttached()
+            && $this->hasCommercialOfferApprovalColumns()
+            && $this->commercialOfferChiefIsRejected();
     }
 
     /**
@@ -622,6 +764,10 @@ class Application extends Model
 
         if ($this->items->isEmpty()) {
             return true;
+        }
+
+        if ($this->boilerChiefReleasedToManagement()) {
+            return false;
         }
 
         return $this->items->contains(
@@ -787,7 +933,8 @@ class Application extends Model
             return false;
         }
         if ($user->hasRoleId(4)) {
-            return $this->isForemanDraftBeforeBoilerChief();
+            return $this->isForemanDraftBeforeBoilerChief()
+                || $this->foremanCanResubmitAwaitingItemsToBoilerChief();
         }
         if ($user->hasRoleId(7)) {
             return $this->boilerChiefCanSubmitToManagement();

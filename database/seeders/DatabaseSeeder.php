@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             DeliveryStatusSeeder::class,
             ApplicationSeeder::class,
             KozlovApplicationsSeeder::class,
+            KozlovCompletedApplicationsWarehouseSeeder::class,
             InstallationActDocumentHeaderLayoutSeeder::class,
             InstallationActRequestLayoutSeeder::class,
             CommercialProposalDocumentHeaderLayoutSeeder::class,

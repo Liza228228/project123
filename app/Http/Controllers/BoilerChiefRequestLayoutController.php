@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBoilerChiefRequestLayoutRequest;
 use App\Http\Requests\StoreReportSubmissionRequest;
 use App\Http\Requests\UpdateBoilerChiefRequestLayoutRequest;
-use App\Models\Application;
 use App\Models\Department;
 use App\Models\DocumentHeaderLayout;
 use App\Models\MaterialStockMovement;
@@ -116,9 +115,9 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return view('boiler-chief.request-layouts.fill', [
             'layout' => $requestLayout,
-            'users' => User::query()->with('role')->orderBy('surname')->orderBy('name')->limit(500)->get(),
+            'users' => User::query()->with(['role', 'assignedSubdivisions:id', 'boilerChiefSubdivisions:id'])->orderBy('surname')->orderBy('name')->limit(500)->get(),
             'applicationOptions' => RequestLayout::allowsApplicationEquipmentInsert($schema)
-                ? ReportLayoutEquipmentApplications::clientOptionsForUser($request->user())
+                ? self::applicationOptionsForLayoutSchema($schema, $request->user())
                 : [],
             'warehouseBalances' => $this->reportWarehouseBalances($request->user()),
             'allowEditLayout' => $isDesigner,
@@ -233,8 +232,8 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return view('applications.installation-act-layout-fill-rich', [
             'layout' => $requestLayout,
-            'users' => User::query()->with(['role', 'assignedSubdivisions:id'])->orderBy('surname')->orderBy('name')->limit(500)->get(),
-            'applicationOptions' => ReportLayoutEquipmentApplications::clientOptionsForUser($request->user()),
+            'users' => User::query()->with(['role', 'assignedSubdivisions:id', 'boilerChiefSubdivisions:id'])->orderBy('surname')->orderBy('name')->limit(500)->get(),
+            'applicationOptions' => ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($request->user()),
             'allowEditLayout' => false,
             'backRoute' => route('applications.installation-act.layout-fill.index'),
             'backLabel' => 'К списку макетов отчетов',
@@ -287,6 +286,27 @@ class BoilerChiefRequestLayoutController extends Controller
      *
      * @return array<string, mixed>
      */
+    /**
+     * @param  array<string, mixed>|null  $schema
+     * @return list<array{
+     *     id: int,
+     *     label: string,
+     *     equipment: list<array{name: string, quantity: string, line: string}>,
+     *     foreman_user_id: int,
+     *     subdivision_id: int
+     * }>
+     */
+    private function applicationOptionsForLayoutSchema(?array $schema, ?User $user): array
+    {
+        $category = is_array($schema) ? (string) ($schema['category'] ?? '') : '';
+
+        if ($category === 'installation-act') {
+            return ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($user);
+        }
+
+        return ReportLayoutEquipmentApplications::clientOptionsForUser($user);
+    }
+
     private function valuesFromReportSubmissionRequest(StoreReportSubmissionRequest $request, RequestLayout $requestLayout): array
     {
         $values = $request->fieldValues($requestLayout);
@@ -465,7 +485,7 @@ class BoilerChiefRequestLayoutController extends Controller
             ];
         }
 
-        if ($user->hasAnyRoleId([1, 6, 2, 4, 7])) {
+        if ($user->hasAnyRoleId(User::APPLICATION_CREATOR_ROLE_IDS)) {
             return [
                 'href' => route('applications.installation-act.upload'),
                 'label' => 'Акт установки',

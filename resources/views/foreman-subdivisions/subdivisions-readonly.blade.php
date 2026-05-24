@@ -105,7 +105,7 @@
                                         type="text"
                                         name="address"
                                         value="{{ old('address') }}"
-                                        placeholder="Индекс и адрес (подсказки DaData)"
+                                        placeholder=""
                                         autocomplete="off"
                                         class="app-input"
                                         data-dadata-address-input

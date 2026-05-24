@@ -55,6 +55,11 @@
                         Коммерческое предложение сформировано. Нажмите «Сохранить изменения», чтобы заменить текущий файл.
                     </div>
                 @endif
+                @if ($foremanMayReviseRejectedByBoilerChiefOnly ?? false)
+                    <div class="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
+                        Начальник котельной не согласовал часть позиций. Можно изменить только эти позиции (и коммерческое предложение, если оно отклонено). Согласованные позиции недоступны для редактирования. После правок отправьте заявку на повторное согласование.
+                    </div>
+                @endif
 
                 <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" enctype="multipart/form-data" class="max-sm:pb-40 space-y-8 sm:space-y-10">
                     @csrf
@@ -76,7 +81,7 @@
 
                             @include('applications.partials.subdivision-warehouses-hint')
 
-                            @if (Auth::user()->hasAnyRoleId([1, 6, 2]))
+                            @if (Auth::user()->hasApplicationSupplyWorkflowRole())
                                 <div id="management-change-reason-block" class="sm:col-span-2 space-y-2 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
                                     <label for="management_change_reason" class="app-form-label">Причина изменения</label>
                                     <textarea
@@ -166,7 +171,7 @@
                                         <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
                                             <div class="md:col-span-12">
                                                 <label class="app-form-label !normal-case">Наименование</label>
-                                                <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="Как в заявке у поставщика" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
+                                                <input type="text" name="items[{{ $idx }}][equipment_name]" value="{{ $eqName }}" placeholder="" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
                                                 <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. Цепочка: согласование → «Заказано» → «На складе».</p>
                                                 <x-input-error :messages="$errors->get('items.'.$idx.'.equipment_name')" class="mt-1.5" />
                                             </div>
@@ -267,14 +272,16 @@
                                 @endif
                             @endforeach
                         </div>
-                        <div class="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
-                            <button type="button" id="add-equipment-from-list" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
-                                + Из справочника
-                            </button>
-                            <button type="button" id="add-equipment-custom" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
-                                + Своё оборудование
-                            </button>
-                        </div>
+                        @unless($foremanMayReviseRejectedByBoilerChiefOnly ?? false)
+                            <div class="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+                                <button type="button" id="add-equipment-from-list" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
+                                    + Из справочника
+                                </button>
+                                <button type="button" id="add-equipment-custom" class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto">
+                                    + Своё оборудование
+                                </button>
+                            </div>
+                        @endunless
                         <x-input-error :messages="$errors->get('equipment')" class="mt-1.5" />
                     </section>
 
@@ -299,11 +306,17 @@
                         <a href="{{ route('applications.index') }}" class="min-h-11 content-center text-center text-sm font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200 sm:text-left">
                             Отмена и к списку заявок
                         </a>
-                        @if (($usesDraftSubmitFlow ?? false) && ($isCreatorDraft ?? false))
+                        @if (($usesDraftSubmitFlow ?? false) && (($isCreatorDraft ?? false) || ($foremanCanResubmitToBoilerChief ?? false)))
                             <button type="submit" name="submit_action" value="save"
                                     class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
                                 Сохранить
                             </button>
+                            @if ($foremanCanResubmitToBoilerChief ?? false)
+                                <button type="submit" name="submit_action" value="submit_to_boiler_chief"
+                                        class="ui-btn ui-btn--secondary ui-btn--lg w-full text-base sm:w-auto">
+                                    Отправить изменённые позиции на согласование
+                                </button>
+                            @endif
                         @else
                             <button type="submit" class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
                                 Сохранить изменения
@@ -369,7 +382,7 @@
             <div class="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
                 <div class="md:col-span-12">
                     <label class="app-form-label !normal-case">Наименование</label>
-                    <input type="text" name="items[__INDEX__][equipment_name]" placeholder="Как в заявке у поставщика" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
+                    <input type="text" name="items[__INDEX__][equipment_name]" placeholder="" maxlength="{{ $equipmentNameMax }}" class="custom-equipment-input app-input" />
                     <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Не более {{ $equipmentNameMax }} символов. </p>
                 </div>
                 <div class="custom-type-wrap md:col-span-4 min-w-0">

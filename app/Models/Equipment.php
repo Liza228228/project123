@@ -16,6 +16,7 @@ class Equipment extends Model
         'name',
         'value',
         'measurement_unit_id',
+        'unit_type_id',
         'is_catalog',
     ];
 
@@ -34,6 +35,11 @@ class Equipment extends Model
     public function measurementUnit(): BelongsTo
     {
         return $this->belongsTo(MeasurementUnit::class, 'measurement_unit_id');
+    }
+
+    public function unitType(): BelongsTo
+    {
+        return $this->belongsTo(UnitType::class, 'unit_type_id');
     }
 
     public function getDisplayNameAttribute(): string
@@ -78,5 +84,21 @@ class Equipment extends Model
         }
 
         return trim((string) ($this->measurementUnit?->code ?? '')) ?: 'шт';
+    }
+
+    public static function catalogEntryExists(string $name, string $unitTypeCode): bool
+    {
+        $normalizedName = mb_strtolower(trim($name));
+        $unitTypeCode = trim($unitTypeCode);
+
+        if ($normalizedName === '' || $unitTypeCode === '') {
+            return false;
+        }
+
+        return static::query()
+            ->where('is_catalog', true)
+            ->whereHas('measurementUnit.unitType', fn ($query) => $query->where('code', $unitTypeCode))
+            ->pluck('name')
+            ->contains(fn (string $storedName) => mb_strtolower(trim($storedName)) === $normalizedName);
     }
 }

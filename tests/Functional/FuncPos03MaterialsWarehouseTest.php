@@ -200,8 +200,56 @@ test('duplicate catalog equipment name shows справочник message', func
         ]);
 
     $dup->assertSessionHasErrors([
-        'name' => 'Оборудование с таким названием уже есть в справочнике. Укажите другое название.',
+        'name' => 'Оборудование с таким названием и типом измерения уже есть в справочнике.',
     ]);
+});
+
+test('catalog allows same equipment name with different measurement type', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Петров',
+        'name' => 'Сергей',
+        'patronymic' => 'Иванович',
+        'email' => 'Ivanov-types-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+    $massUnitId = (int) MeasurementUnit::query()
+        ->where('code', 'кг')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'mass'))
+        ->value('id');
+
+    $name = 'Гвозди тест '.uniqid();
+
+    $this->actingAs($supplyHead)
+        ->post(route('materials.store-material'), [
+            'name' => $name,
+            'measurement_type' => 'piece',
+            'measurement_unit_id' => $pieceUnitId,
+        ])
+        ->assertRedirect(route('materials.index'));
+
+    $this->actingAs($supplyHead)
+        ->post(route('materials.store-material'), [
+            'name' => $name,
+            'measurement_type' => 'mass',
+            'measurement_unit_id' => $massUnitId,
+        ])
+        ->assertRedirect(route('materials.index'))
+        ->assertSessionHas('status', 'Оборудование добавлено в справочник.');
+
+    $normalizedName = mb_strtolower(trim($name));
+    $matchingCatalogNames = Equipment::query()
+        ->where('is_catalog', true)
+        ->pluck('name')
+        ->filter(fn (string $storedName) => mb_strtolower(trim($storedName)) === $normalizedName);
+
+    expect($matchingCatalogNames->count())->toBe(2);
 });
 
 test('clothing catalog receipt saves size in receipt_variant and quantity one', function (): void {
@@ -246,6 +294,29 @@ test('clothing catalog receipt saves size in receipt_variant and quantity one', 
     expect($row)->not->toBeNull();
     expect($row->receipt_variant)->toBe('L');
     expect((float) $row->quantity)->toBe(1.0);
+});
+
+test('technical director can access supply procurement sections but not equipment accounting', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $td = User::query()->create([
+        'surname' => 'Техдир',
+        'name' => 'Закупка',
+        'patronymic' => 'Тестович',
+        'email' => 'td-procurement-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 6,
+    ]);
+
+    $this->actingAs($td)
+        ->get(route('applications.custom-equipment-to-order'))
+        ->assertForbidden();
+
+    $this->actingAs($td)
+        ->get(route('applications.commercial-offer-procurement'))
+        ->assertNotFound();
+
+    $this->actingAs($td)->get(route('materials.index'))->assertForbidden();
 });
 
 test('technical director cannot open equipment accounting or post warehouse catalog operations', function (): void {
@@ -295,6 +366,44 @@ test('technical director cannot open equipment accounting or post warehouse cata
 
     $this->actingAs($td)->get(route('materials.overview'))->assertOk();
     $this->actingAs($td)->get(route('materials.movements'))->assertOk();
+});
+
+test('materials balances filter equipment by search term', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Фильтр',
+        'name' => 'Остатки',
+        'patronymic' => 'Тест',
+        'email' => 'balances-filter-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $pieceUnitId = (int) MeasurementUnit::query()
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+
+    Equipment::query()->create([
+        'name' => 'Уникальные гвозди фильтр',
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'unit_type_id' => (int) MeasurementUnit::query()->whereKey($pieceUnitId)->value('unit_type_id'),
+        'is_catalog' => true,
+    ]);
+    Equipment::query()->create([
+        'name' => 'Другая труба фильтр',
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'unit_type_id' => (int) MeasurementUnit::query()->whereKey($pieceUnitId)->value('unit_type_id'),
+        'is_catalog' => true,
+    ]);
+
+    $this->actingAs($supplyHead)
+        ->get(route('materials.index', ['equipment' => 'гвозди фильтр']))
+        ->assertOk()
+        ->assertSee('Уникальные гвозди фильтр', false)
+        ->assertDontSee('Другая труба фильтр', false);
 });
 
 test('accountant can view administration warehouse balances in overview', function (): void {

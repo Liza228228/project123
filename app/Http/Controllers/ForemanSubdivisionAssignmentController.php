@@ -293,6 +293,12 @@ class ForemanSubdivisionAssignmentController extends Controller
             ]);
         }
 
+        if (Warehouse::existsWithStructuredAddress($addressParts)) {
+            throw ValidationException::withMessages([
+                'address' => 'Склад с таким адресом уже есть в системе. Укажите другой адрес.',
+            ]);
+        }
+
         DB::transaction(function () use ($validated, $warehouseName, $addressParts): void {
             Warehouse::query()->create([
                 'subdivision_id' => (int) $validated['subdivision_id'],

@@ -13,6 +13,7 @@ use App\Models\Warehouse;
 use App\Support\AdministrationWarehouse;
 use App\Support\PieceQuantity;
 use App\Support\MaterialsListPerPage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -256,9 +257,17 @@ class MaterialAccountingController extends Controller
             $overviewTabQuery['per_page'] = $balancesPerPage['perPage'];
         }
 
+        $equipmentSearch = $this->equipmentBalancesSearchTerm($request);
+        if ($equipmentSearch !== '') {
+            $overviewTabQuery['equipment'] = $equipmentSearch;
+        }
+
         $equipmentBalances = collect();
         if ($selectedWarehouseId > 0) {
-            $equipmentBalances = $this->overviewWarehouseBalanceBaseQuery($selectedWarehouseId)
+            $equipmentBalancesQuery = $this->overviewWarehouseBalanceBaseQuery($selectedWarehouseId);
+            $this->applyEquipmentBalancesSearchToMovementAggregates($equipmentBalancesQuery, $equipmentSearch);
+
+            $equipmentBalances = $equipmentBalancesQuery
                 ->orderBy('equipment.name')
                 ->paginate($balancesPerPage['perPage'])
                 ->appends($overviewTabQuery);
@@ -272,6 +281,7 @@ class MaterialAccountingController extends Controller
             'equipmentBalances' => $equipmentBalances,
             'usingDefaultMainWarehouse' => $usingDefaultMainWarehouse,
             'overviewTabQuery' => $overviewTabQuery,
+            'equipmentSearch' => $equipmentSearch,
         ] + $balancesPerPage);
     }
 
@@ -282,6 +292,7 @@ class MaterialAccountingController extends Controller
         $mainWarehouse = $this->resolveMainWarehouse();
 
         $balancesPerPage = MaterialsListPerPage::fromRequest($request, 'balances');
+        $equipmentSearch = $this->equipmentBalancesSearchTerm($request);
 
         $warehousesQuery = Warehouse::query()
             ->inActiveSubdivision()
@@ -311,6 +322,8 @@ class MaterialAccountingController extends Controller
             })
             ->with(['measurementUnit:id,code,unit_type_id', 'measurementUnit.unitType:id,code'])
             ->orderBy('name');
+
+        $this->applyEquipmentBalancesSearchToEquipmentQuery($materialsBalancesQuery, $equipmentSearch);
 
         if ($canManage) {
             $catalogMaterials = (clone $catalogMaterialsQuery)->get();
@@ -358,7 +371,41 @@ class MaterialAccountingController extends Controller
             'measurementTypeOptions',
             'receiptTypeId',
             'clothingCatalogSizes',
+            'equipmentSearch',
         ) + $balancesPerPage);
+    }
+
+    private function equipmentBalancesSearchTerm(Request $request): string
+    {
+        return mb_substr(trim((string) $request->query('equipment', '')), 0, 150);
+    }
+
+    private function applyEquipmentBalancesSearchToEquipmentQuery(Builder $query, string $term): void
+    {
+        $term = trim($term);
+        if ($term === '') {
+            return;
+        }
+
+        $pattern = '%'.addcslashes($term, '%_\\').'%';
+        $query->where(function (Builder $q) use ($pattern): void {
+            $q->where('name', 'like', $pattern)
+                ->orWhere('value', 'like', $pattern);
+        });
+    }
+
+    private function applyEquipmentBalancesSearchToMovementAggregates(Builder $query, string $term): void
+    {
+        $term = trim($term);
+        if ($term === '') {
+            return;
+        }
+
+        $pattern = '%'.addcslashes($term, '%_\\').'%';
+        $query->where(function (Builder $q) use ($pattern): void {
+            $q->where('equipment.name', 'like', $pattern)
+                ->orWhere('equipment.value', 'like', $pattern);
+        });
     }
 
     public function storeMaterial(Request $request): RedirectResponse
@@ -383,9 +430,9 @@ class MaterialAccountingController extends Controller
 
         $name = trim((string) $validated['name']);
 
-        if (Equipment::query()->whereRaw('LOWER(name) = LOWER(?)', [$name])->exists()) {
+        if (Equipment::catalogEntryExists($name, (string) $validated['measurement_type'])) {
             throw ValidationException::withMessages([
-                'name' => 'Оборудование с таким названием уже есть в справочнике. Укажите другое название.',
+                'name' => 'Оборудование с таким названием и типом измерения уже есть в справочнике.',
             ]);
         }
 
@@ -393,6 +440,7 @@ class MaterialAccountingController extends Controller
             'name' => $name,
             'value' => null,
             'measurement_unit_id' => (int) $validated['measurement_unit_id'],
+            'unit_type_id' => (int) $unit->unit_type_id,
             'is_catalog' => true,
         ]);
 
@@ -411,7 +459,6 @@ class MaterialAccountingController extends Controller
             'equipment_id' => ['required', 'integer', 'exists:equipment,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'material_stock_movement_type_id' => ['required', 'integer', 'exists:material_stock_movement_types,id'],
-            'unit_price' => ['nullable', 'numeric', 'min:0'],
             'counterparty' => ['nullable', 'string', 'max:255'],
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -506,7 +553,7 @@ class MaterialAccountingController extends Controller
                 'material_stock_movement_type_id' => (int) $validated['material_stock_movement_type_id'],
                 'quantity' => $quantity,
                 'receipt_variant' => $receiptVariant,
-                'unit_price' => $validated['unit_price'] ?? null,
+                'unit_price' => null,
                 'counterparty' => isset($validated['counterparty']) ? trim((string) $validated['counterparty']) : null,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
             ]);

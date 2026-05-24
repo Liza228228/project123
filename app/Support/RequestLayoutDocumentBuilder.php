@@ -237,6 +237,20 @@ final class RequestLayoutDocumentBuilder
     /**
      * Значение поля формы (plain или HTML из contenteditable) → текст для подстановок в PDF.
      */
+    private function formatDateFieldForSubstitution(mixed $raw): string
+    {
+        $text = is_scalar($raw) || $raw === null ? trim((string) $raw) : '';
+        if ($text === '') {
+            return '';
+        }
+
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $text, $m)) {
+            return $m[3].'.'.$m[2].'.'.$m[1];
+        }
+
+        return $this->storedFieldValueToPlain($raw);
+    }
+
     private function storedFieldValueToPlain(mixed $raw): string
     {
         $text = is_scalar($raw) || $raw === null ? trim((string) $raw) : '';
@@ -386,7 +400,9 @@ final class RequestLayoutDocumentBuilder
                 continue;
             }
             $raw = $values[$k] ?? '';
-            $map[$k] = $this->storedFieldValueToPlain($raw);
+            $map[$k] = ($field['type'] ?? '') === 'date'
+                ? $this->formatDateFieldForSubstitution($raw)
+                : $this->storedFieldValueToPlain($raw);
         }
 
         // Раньше ключи, начинающиеся с цифры, сохранялись как «поле N» — даём подстановку и для {{N}}.
@@ -816,12 +832,40 @@ final class RequestLayoutDocumentBuilder
             return '';
         }
         if (preg_match('/<[a-z][\s\S]*?>/i', $mergedBody)) {
-            return $this->stripInlineTextAlign($this->sanitizePdfHtml($mergedBody));
+            return $this->stripInlineTextAlign(
+                $this->sanitizePdfHtml($this->plainNewlinesToBrOutsideHtmlTags($mergedBody))
+            );
         }
 
         $withBr = nl2br(e($mergedBody), false);
 
         return str_replace(["\r\n", "\r", "\n"], '', $withBr);
+    }
+
+    /**
+     * В смешанном теле (таблица HTML + текст) переносы строк вне тегов → &lt;br&gt; для DomPDF.
+     */
+    private function plainNewlinesToBrOutsideHtmlTags(string $body): string
+    {
+        $parts = preg_split('/(<[^>]+>)/u', $body, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            $withBr = nl2br(e($body), false);
+
+            return str_replace(["\r\n", "\r", "\n"], '', $withBr);
+        }
+
+        $out = '';
+        foreach ($parts as $part) {
+            if ($part === '' || str_starts_with($part, '<')) {
+                $out .= $part;
+
+                continue;
+            }
+            $withBr = nl2br(e($part), false);
+            $out .= str_replace(["\r\n", "\r", "\n"], '', $withBr);
+        }
+
+        return $out;
     }
 
     /**

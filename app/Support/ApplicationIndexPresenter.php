@@ -125,7 +125,7 @@ final class ApplicationIndexPresenter
         }
 
         if ($viewer->hasRoleId(4)) {
-            return self::isForemanDraftBeforeBoilerChief($application, $draftStatusId);
+            return $application->needsSubmitToApprovalBy($viewer);
         }
 
         if ($viewer->hasRoleId(7)) {

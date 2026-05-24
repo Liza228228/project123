@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Application;
+use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
 use App\Models\Equipment;
@@ -11,11 +12,15 @@ use App\Models\TransportOption;
 use App\Models\User;
 use App\Support\AdministrationWarehouse;
 use Carbon\Carbon;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class KozlovApplicationsSeeder extends Seeder
 {
+    private ?array $installationMedia = null;
+
     public function run(): void
     {
         $kozlov = User::query()->where('email', 'Kozlov@mail.ru')->first();
@@ -23,10 +28,12 @@ class KozlovApplicationsSeeder extends Seeder
             return;
         }
 
+        $draftId = ApplicationStatus::idForDraft();
         $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
         $approvedId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
         $partialId = ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL);
         $rejectedId = ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED);
+        $completedId = ApplicationStatus::idFor(ApplicationStatus::NAME_COMPLETED);
         $transportQuery = TransportOption::query()->orderBy('id');
         if (Schema::hasColumn('transport_options', 'plate')) {
             $transportQuery->whereNull('plate');
@@ -53,7 +60,6 @@ class KozlovApplicationsSeeder extends Seeder
             }
         }
         if ($assignedSubdivisionIds === []) {
-            // Если у мастера ещё нет назначений, назначаем несколько подразделений для тестовых заявок.
             $assignedSubdivisionIds = array_slice($allSubdivisionIds, 0, min(3, count($allSubdivisionIds)));
             $kozlov->assignedSubdivisions()->sync($assignedSubdivisionIds);
         }
@@ -66,35 +72,35 @@ class KozlovApplicationsSeeder extends Seeder
             ->all();
 
         if (
-            $pendingId <= 0
+            $draftId <= 0
+            || $pendingId <= 0
             || $approvedId <= 0
             || $partialId <= 0
             || $rejectedId <= 0
+            || $completedId <= 0
             || $transportId <= 0
             || count($equipmentIds) < 5
         ) {
             return;
         }
 
-        $existingCount = Application::query()
+        Application::query()
             ->where('responsible_user_id', (int) $kozlov->id)
             ->where('user_id', (int) $kozlov->id)
-            ->count();
-        $targetCount = 20;
-        $toCreate = max(0, $targetCount - $existingCount);
-        if ($toCreate === 0) {
-            return;
-        }
+            ->delete();
 
+        $targetCount = 30;
         $statusCycle = [
+            ['id' => $draftId, 'type' => 'draft'],
             ['id' => $pendingId, 'type' => 'pending'],
             ['id' => $approvedId, 'type' => 'approved'],
             ['id' => $partialId, 'type' => 'partial'],
             ['id' => $rejectedId, 'type' => 'rejected'],
+            ['id' => $completedId, 'type' => 'completed'],
         ];
         $directorId = (int) (User::query()->where('role_id', 1)->value('id') ?? 0);
 
-        for ($i = 0; $i < $toCreate; $i++) {
+        for ($i = 0; $i < $targetCount; $i++) {
             $statusMeta = $statusCycle[$i % count($statusCycle)];
             $statusId = (int) $statusMeta['id'];
             $statusType = (string) $statusMeta['type'];
@@ -110,7 +116,7 @@ class KozlovApplicationsSeeder extends Seeder
                 'user_id' => (int) $kozlov->id,
                 'transport_option_id' => $transportId,
                 'application_status_id' => $statusId,
-                'approved_by_user_id' => $directorId > 0 && $statusType !== 'pending' ? $directorId : null,
+                'approved_by_user_id' => $directorId > 0 && ! in_array($statusType, ['draft', 'pending'], true) ? $directorId : null,
                 'reason_for_refusal' => $reason,
                 'desired_delivery_date' => Carbon::now()->addDays(2 + $i),
             ]);
@@ -122,19 +128,21 @@ class KozlovApplicationsSeeder extends Seeder
             for ($line = 0; $line < $itemsCount; $line++) {
                 $equipmentId = (int) $shuffledEquipment[$line % count($shuffledEquipment)];
                 $isChecked = match ($statusType) {
-                    'approved' => true,
+                    'approved', 'completed' => true,
                     'rejected' => false,
                     'partial' => $line < max(1, (int) floor($itemsCount / 2)),
                     default => false,
                 };
-                $reasonNotSelected = ! $isChecked && $statusType !== 'pending'
-                    ? 'Нет на складе.'
-                    : null;
+                $reasonNotSelected = ! $isChecked && ! in_array($statusType, ['draft', 'pending'], true)
+                  ? 'Нет на складе.'
+                  : null;
                 $deliveryStatusId = null;
                 if ($isChecked) {
-                    $deliveryStatusId = ($line % 2 === 0)
+                    $deliveryStatusId = $statusType === 'completed'
+                      ? ApplicationItem::DELIVERY_DELIVERED_ID
+                      : (($line % 2 === 0)
                         ? ApplicationItem::DELIVERY_DELIVERED_ID
-                        : ApplicationItem::DELIVERY_IN_TRANSIT_ID;
+                        : ApplicationItem::DELIVERY_IN_TRANSIT_ID);
                 }
 
                 ApplicationItem::query()->create([
@@ -147,5 +155,120 @@ class KozlovApplicationsSeeder extends Seeder
                 ]);
             }
         }
+
+        $this->attachInstallationActAndPhotoToAllCompletedApplications((int) $kozlov->id, $completedId);
+
+        $this->call(KozlovCompletedApplicationsWarehouseSeeder::class);
+    }
+
+    private function attachInstallationActAndPhotoToAllCompletedApplications(int $kozlovUserId, int $completedStatusId): void
+    {
+        $completedApplications = Application::query()
+            ->where('user_id', $kozlovUserId)
+            ->where('responsible_user_id', $kozlovUserId)
+            ->where('application_status_id', $completedStatusId)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($completedApplications as $index => $application) {
+            $this->attachInstallationActAndPhoto($application, $index);
+        }
+    }
+
+    private function attachInstallationActAndPhoto(Application $application, int $completedIndex): void
+    {
+        $media = $this->installationMediaConfig();
+        $actFilename = (string) $media['act_filename'];
+        $photoFilenames = $media['photo_filenames'];
+        $photoFilename = (string) $photoFilenames[$completedIndex % count($photoFilenames)];
+
+        $applicationId = (int) $application->id;
+        $actPath = 'installation-acts/'.$applicationId.'/'.$actFilename;
+        $photoPath = 'installation-act-photos/'.$applicationId.'/'.$photoFilename;
+
+        $disk = Storage::disk('public');
+        $this->publishInstallationMediaFile($disk, $actPath, $actFilename, 'act');
+        $this->publishInstallationMediaFile($disk, $photoPath, $photoFilename, 'photo');
+
+        $application->update(['act_of_installation' => $actPath]);
+
+        $application->installationActPhotos()->delete();
+        ApplicationInstallationActPhoto::query()->create([
+            'application_id' => $applicationId,
+            'path' => $photoPath,
+        ]);
+    }
+
+    /**
+     * @return array{act_filename: string, photo_filenames: list<string>}
+     */
+    private function installationMediaConfig(): array
+    {
+        if ($this->installationMedia !== null) {
+            return $this->installationMedia;
+        }
+
+        $configPath = database_path('seeders/data/kozlov_installation_media.php');
+        $this->installationMedia = is_file($configPath)
+          ? require $configPath
+          : [
+              'act_filename' => 'zajavka-1 (11).pdf',
+              'photo_filenames' => ['frisquet.jpg'],
+          ];
+
+        return $this->installationMedia;
+    }
+
+    private function publishInstallationMediaFile(
+        Filesystem $disk,
+        string $targetRelativePath,
+        string $filename,
+        string $type,
+    ): void {
+        $disk->makeDirectory(dirname($targetRelativePath));
+
+        $sourceAbsolutePath = $this->resolveInstallationMediaSourcePath($filename, $type);
+        if ($sourceAbsolutePath === null) {
+            return;
+        }
+
+        $disk->put($targetRelativePath, (string) file_get_contents($sourceAbsolutePath));
+    }
+
+    private function resolveInstallationMediaSourcePath(string $filename, string $type): ?string
+    {
+        $candidates = [
+            database_path('seeders/assets/kozlov-installation/'.$filename),
+        ];
+
+        if ($type === 'photo') {
+            $candidates[] = base_path('Data/фото/'.$filename);
+        }
+
+        foreach ($candidates as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        $publicRoot = storage_path('app/public');
+        $storageDir = $type === 'act' ? 'installation-acts' : 'installation-act-photos';
+
+        foreach (glob($publicRoot.'/'.$storageDir.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
+            $filePath = $directory.DIRECTORY_SEPARATOR.$filename;
+            if (is_file($filePath)) {
+                return $filePath;
+            }
+        }
+
+        if ($type === 'act') {
+            foreach (glob($publicRoot.'/installation-acts/*/*.pdf') ?: [] as $pdfPath) {
+                if (is_file($pdfPath)) {
+                    return $pdfPath;
+                }
+            }
+        }
+
+        return null;
     }
 }

@@ -21,7 +21,7 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('applications.installation-act.upload.store') }}" enctype="multipart/form-data" class="space-y-8 sm:space-y-10">
+                <form id="installation-act-upload-form" method="POST" action="{{ route('applications.installation-act.upload.store') }}" enctype="multipart/form-data" class="space-y-8 sm:space-y-10">
                     @csrf
 
                     <section class="space-y-4" aria-labelledby="act-section-app">
@@ -268,9 +268,7 @@
 
                                     <div class="mt-3">
                                         @if($deliveredWarehouseIssueCandidates->isNotEmpty())
-                                            <p class="text-xs text-amber-800 dark:text-amber-200">
-                                                Доступно к списанию позиций: {{ $deliveredWarehouseIssueCandidates->count() }}. Выберите позиции, укажите количество (не больше заказанного) и нажмите «Сохранить».
-                                            </p>
+                                            
                                         @else
                                             <p class="text-xs text-emerald-700 dark:text-emerald-200">
                                                 Все доставленные позиции уже списаны. Можно просто загрузить акт и фото.
@@ -383,6 +381,7 @@
         })();
 
         (function () {
+            const form = document.getElementById('installation-act-upload-form');
             const masters = document.querySelectorAll('.js-installation-act-issue-select-all');
             const items = document.querySelectorAll('.js-installation-act-issue-item');
             if (!items.length) {
@@ -397,12 +396,38 @@
                 return document.querySelector('.js-installation-act-issue-qty-hidden[data-item-id="' + itemId + '"]');
             };
 
+            const normalizeQtyInput = (input) => {
+                const maxQty = Math.max(1, parseInt(input.dataset.maxQty || '1', 10) || 1);
+                const parsed = parseInt(String(input.value).trim(), 10);
+                const value = Number.isFinite(parsed) ? Math.min(maxQty, Math.max(1, parsed)) : 1;
+                input.value = String(value);
+                input.setCustomValidity('');
+                return value;
+            };
+
+            const validateQtyInput = (input) => {
+                const raw = String(input.value).trim();
+                const parsed = parseInt(raw, 10);
+                if (raw === '' || !Number.isFinite(parsed) || parsed < 1) {
+                    input.setCustomValidity('Нельзя списать 0. Укажите количество от 1.');
+                    return false;
+                }
+                const maxQty = Math.max(1, parseInt(input.dataset.maxQty || '1', 10) || 1);
+                if (parsed > maxQty) {
+                    input.setCustomValidity('Нельзя списать больше, чем в заявке (' + maxQty + ').');
+                    return false;
+                }
+                input.setCustomValidity('');
+                return true;
+            };
+
             const syncQtyToHidden = (itemId) => {
                 const hidden = hiddenQtyForItem(itemId);
                 const visible = qtyInputsForItem(itemId)[0];
                 if (!hidden || !visible) {
                     return;
                 }
+                normalizeQtyInput(visible);
                 hidden.value = visible.value;
             };
 
@@ -429,16 +454,47 @@
             document.querySelectorAll('.js-installation-act-issue-qty').forEach((input) => {
                 const itemId = input.dataset.itemId;
                 const syncAllVisible = () => {
+                    normalizeQtyInput(input);
                     qtyInputsForItem(itemId).forEach((peer) => {
                         if (peer !== input) {
                             peer.value = input.value;
+                            peer.setCustomValidity(input.validationMessage);
                         }
                     });
                     syncQtyToHidden(itemId);
                 };
-                input.addEventListener('input', syncAllVisible);
+                input.addEventListener('input', () => {
+                    validateQtyInput(input);
+                    syncAllVisible();
+                });
                 input.addEventListener('change', syncAllVisible);
+                input.addEventListener('blur', syncAllVisible);
             });
+
+            if (form) {
+                form.addEventListener('submit', (event) => {
+                    let firstInvalid = null;
+                    items.forEach((checkbox) => {
+                        if (!checkbox.checked) {
+                            return;
+                        }
+                        const qtyInput = qtyInputsForItem(checkbox.value)[0];
+                        if (!qtyInput || qtyInput.disabled) {
+                            return;
+                        }
+                        normalizeQtyInput(qtyInput);
+                        syncQtyToHidden(checkbox.value);
+                        if (!validateQtyInput(qtyInput) && !firstInvalid) {
+                            firstInvalid = qtyInput;
+                        }
+                    });
+                    if (firstInvalid) {
+                        event.preventDefault();
+                        firstInvalid.reportValidity();
+                        firstInvalid.focus();
+                    }
+                });
+            }
 
             const syncMasters = () => {
                 if (!masters.length) {

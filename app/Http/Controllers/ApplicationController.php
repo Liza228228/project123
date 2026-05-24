@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreLayoutApplicationRequest;
 use App\Models\Application;
 use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
@@ -10,22 +11,22 @@ use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\MeasurementUnit;
+use App\Models\RequestLayout;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
-use App\Http\Requests\StoreLayoutApplicationRequest;
-use App\Models\RequestLayout;
+use App\Support\AdministrationWarehouse;
 use App\Support\ApplicationCatalogStockAvailability;
 use App\Support\ApplicationCommercialOfferDraft;
 use App\Support\CommercialOfferApplicationLines;
 use App\Support\CommercialOfferOrderStockSplit;
-use App\Support\AdministrationWarehouse;
 use App\Support\LayoutApplicationCatalog;
 use App\Support\ListingPerPage;
 use App\Support\PieceQuantity;
 use App\Support\ReportLayoutCommercialProposal;
+use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutPdfExporter;
 use App\Support\RussianVehiclePlate;
 use Illuminate\Database\Eloquent\Builder;
@@ -357,70 +358,12 @@ class ApplicationController extends Controller
      */
     public function commercialOfferProcurementIndex(Request $request): View
     {
-        if (! $request->user()?->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
-            abort(403, 'Раздел доступен только директору и начальнику отдела снабжения.');
-        }
-
-        $sortDate = (string) $request->input('sort_date', 'desc');
-        if (! in_array($sortDate, ['desc', 'asc'], true)) {
-            $sortDate = 'desc';
-        }
-
-        $applicationsQuery = Application::query()
-            ->whereCommercialOfferProcurementPending()
-            ->with(['subdivision', 'user', 'responsibleUser']);
-
-        if ($sortDate === 'asc') {
-            $applicationsQuery->orderBy('created_at')->orderBy('id');
-        } else {
-            $applicationsQuery->orderByDesc('created_at')->orderByDesc('id');
-        }
-
-        $pagination = ListingPerPage::fromRequest($request);
-
-        $applications = $applicationsQuery
-            ->paginate($pagination['perPage'])
-            ->withQueryString();
-
-        return view('applications.commercial-offer-procurement-index', [
-            'applications' => $applications,
-            'sortDate' => $sortDate,
-            'perPage' => $pagination['perPage'],
-            'allowedPerPage' => $pagination['allowedPerPage'],
-            'defaultPerPage' => $pagination['defaultPerPage'],
-        ]);
+        abort(404);
     }
 
     public function commercialOfferProcurementForm(Request $request, Application $application): View
     {
-        if (! $request->user()?->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
-            abort(403, 'Форма доступна только директору и начальнику отдела снабжения.');
-        }
-
-        $this->authorizeViewApplication($request, $application);
-
-        if ($application->archived_at !== null) {
-            abort(404);
-        }
-
-        if (! $application->isCommercialOfferReadyForProcurement()) {
-            abort(403, 'Закупка по коммерческому предложению доступна после согласования КП руководством и снабжением.');
-        }
-
-        CommercialOfferApplicationLines::ensureItemsForProcurement($application);
-
-        $application->load(['subdivision', 'user', 'responsibleUser', 'items.equipment.measurementUnit.unitType', 'items.manualDetail']);
-
-        $coLines = CommercialOfferApplicationLines::loadForApplication($application);
-        $toOrder = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOrdered())->sortBy('id');
-        $toWarehouse = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOnWarehouse())->sortBy('id');
-
-        return view('applications.commercial-offer-procurement-form', compact(
-            'application',
-            'coLines',
-            'toOrder',
-            'toWarehouse',
-        ));
+        abort(404);
     }
 
     /**
@@ -1260,30 +1203,56 @@ class ApplicationController extends Controller
         $this->authorizeViewApplication($request, $application);
         $this->authorizeForemanCanModifyApplication($request, $application);
 
-        if (! $application->isForemanDraftBeforeBoilerChief()) {
+        if ($application->isForemanDraftBeforeBoilerChief()) {
+            if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+                return $this->redirectAfterApplicationSubmitAction(
+                    $request,
+                    $application,
+                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                );
+            }
+
+            $application->update([
+                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
+            ]);
+
             return $this->redirectAfterApplicationSubmitAction(
                 $request,
                 $application,
-                errors: ['submit' => 'Заявка уже отправлена или не требует отправки на согласование.']
+                status: 'Заявка отправлена на согласование. Редактирование больше недоступно.'
             );
         }
 
-        if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+        if ($application->foremanCanResubmitAwaitingItemsToBoilerChief()) {
+            if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+                return $this->redirectAfterApplicationSubmitAction(
+                    $request,
+                    $application,
+                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                );
+            }
+
+            $this->finalizeForemanResubmissionToBoilerChief($application);
+
             return $this->redirectAfterApplicationSubmitAction(
                 $request,
                 $application,
-                errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                status: 'Изменённые позиции отправлены на повторное согласование начальнику котельной. Редактирование больше недоступно.'
             );
         }
 
-        $application->update([
-            'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
-        ]);
+        if ($application->boilerChiefSubdivisionReviewCycleStarted() && ! $application->isForemanDraftBeforeBoilerChief()) {
+            return $this->redirectAfterApplicationSubmitAction(
+                $request,
+                $application,
+                errors: ['submit' => 'Измените и сохраните хотя бы одну несогласованную позицию перед повторной отправкой.']
+            );
+        }
 
         return $this->redirectAfterApplicationSubmitAction(
             $request,
             $application,
-            status: 'Заявка отправлена на согласование. Редактирование больше недоступно.'
+            errors: ['submit' => 'Заявка уже отправлена или не требует отправки на согласование.']
         );
     }
 
@@ -1961,6 +1930,9 @@ class ApplicationController extends Controller
 
         $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
         $isCreatorDraft = $application->isCreatorDraftApplication();
+        $foremanMayReviseRejectedByBoilerChiefOnly = $request->user()?->hasRoleId(4)
+            && $application->foremanCanReviseAfterBoilerChiefRejection();
+        $foremanCanResubmitToBoilerChief = $application->foremanCanResubmitAwaitingItemsToBoilerChief();
         $commercialOfferDraftReady = ApplicationCommercialOfferDraft::existsFor((int) $application->id)
             || $request->boolean('commercial_offer_ready');
         $commercialProposalFillUrl = route('applications.commercial-proposal.fill.edit', $application);
@@ -1976,6 +1948,8 @@ class ApplicationController extends Controller
             'managementMayEditBoilerApprovedEquipment',
             'usesDraftSubmitFlow',
             'isCreatorDraft',
+            'foremanMayReviseRejectedByBoilerChiefOnly',
+            'foremanCanResubmitToBoilerChief',
             'commercialOfferDraftReady',
             'commercialProposalFillUrl',
         ));
@@ -2045,6 +2019,8 @@ class ApplicationController extends Controller
             && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
             && ! $application->needsBoilerChiefReviewBeforeManagement()
             && ! $application->managementHasSavedApproval();
+        $foremanMayReviseRejectedByBoilerChiefOnly = $isSiteForeman
+            && $application->foremanCanReviseAfterBoilerChiefRejection();
 
         if (filled($request->input('transport_option_id'))) {
             throw ValidationException::withMessages([
@@ -2102,12 +2078,36 @@ class ApplicationController extends Controller
             $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
             $name = trim((string) ($row['equipment_name'] ?? ''));
 
+            if ($foremanMayReviseRejectedByBoilerChiefOnly && ! $itemId) {
+                if ($typeId !== null || $name !== '') {
+                    throw ValidationException::withMessages([
+                        'equipment' => 'На этом этапе можно изменять только позиции, не согласованные начальником котельной.',
+                    ]);
+                }
+
+                continue;
+            }
+
             if ($itemId) {
                 $existing = $application->items->firstWhere('id', $itemId);
                 if (! $existing) {
                     throw ValidationException::withMessages([
                         'equipment' => 'Некорректная позиция заявки.',
                     ]);
+                }
+
+                if ($foremanMayReviseRejectedByBoilerChiefOnly) {
+                    if ($existing->is_checked) {
+                        if (! $this->applicationItemRowMatchesStored($existing, $row)) {
+                            throw ValidationException::withMessages([
+                                'equipment' => 'Согласованные начальником котельной позиции нельзя изменять.',
+                            ]);
+                        }
+                    } elseif (! $application->itemIsRejectedByBoilerChief($existing)) {
+                        throw ValidationException::withMessages([
+                            'equipment' => 'Можно изменять только позиции, не согласованные начальником котельной.',
+                        ]);
+                    }
                 }
 
                 if ($existing->is_checked) {
@@ -2186,6 +2186,7 @@ class ApplicationController extends Controller
             $submittedItemIds,
             $previousSubdivisionId,
             $managementMayEditCheckedEquipmentLines,
+            $foremanMayReviseRejectedByBoilerChiefOnly,
             $wasCreatorDraftBeforeUpdate,
         ) {
             $nextUserId = (int) $application->user_id;
@@ -2256,12 +2257,14 @@ class ApplicationController extends Controller
                     'delivery_status_id' => null,
                     'delivery_warehouse_id' => null,
                 ];
-                if ($wasChecked && $managementMayEditCheckedEquipmentLines) {
+                if ($managementMayEditCheckedEquipmentLines) {
                     $payload['is_checked'] = false;
                     $payload['reason_not_selected'] = null;
-                    if ($application->approved_by_user_id !== null) {
-                        $clearedManagementSupplySavedAt = true;
-                    }
+                    $clearedManagementSupplySavedAt = true;
+                } elseif ($foremanMayReviseRejectedByBoilerChiefOnly
+                    && $application->itemIsRejectedByBoilerChief($existing)
+                    && ! $this->applicationItemRowMatchesStored($existing, $row)) {
+                    $payload['reason_not_selected'] = null;
                 }
                 $existing->update($payload);
                 $this->syncCatalogItemManualDetail($existing, $normalized);
@@ -2289,7 +2292,6 @@ class ApplicationController extends Controller
 
             if ($clearedManagementSupplySavedAt) {
                 $application->update([
-                    'approved_by_user_id' => null,
                     'management_supply_items_saved_at' => null,
                     'transport_option_id' => null,
                 ]);
@@ -2321,9 +2323,11 @@ class ApplicationController extends Controller
                 $application->update([
                     'application_status_id' => $approvalPayload['application_status_id'],
                     'reason_for_refusal' => $approvalPayload['reason_for_refusal'],
-                    'approved_by_user_id' => $approvalPayload['application_status_id'] === $approvedStatusId
+                    'approved_by_user_id' => $managementMayEditCheckedEquipmentLines
                         ? $existingApprovedByUserId
-                        : null,
+                        : ($approvalPayload['application_status_id'] === $approvedStatusId
+                            ? $existingApprovedByUserId
+                            : null),
                 ]);
             }
 
@@ -2339,6 +2343,11 @@ class ApplicationController extends Controller
                 ->with('status', 'Изменения сохранены. Заявку можно отправить на согласование, когда будете готовы.');
         }
 
+        if ($isSiteForeman && $application->foremanCanReviseAfterBoilerChiefRejection()) {
+            return redirect()->route('applications.edit', $application)
+                ->with('status', 'Изменения по несогласованным позициям сохранены. Отправьте заявку на повторное согласование начальнику котельной, когда будете готовы.');
+        }
+
         if ($application->isBoilerChiefDraftBeforeManagement()) {
             return redirect()->route('applications.edit', $application)
                 ->with('status', 'Изменения сохранены. Заявку можно отправить на согласование, когда будете готовы.');
@@ -2346,10 +2355,22 @@ class ApplicationController extends Controller
 
         if ($isSiteForeman
             && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
-            && (string) $request->input('submit_action') === 'submit_to_boiler_chief'
-            && ! $application->isForemanDraftBeforeBoilerChief()) {
-            return redirect()->route('applications.show', $application)
-                ->with('status', 'Заявка отправлена на согласование. Редактирование больше недоступно.');
+            && (string) $request->input('submit_action') === 'submit_to_boiler_chief') {
+            if ($application->isForemanDraftBeforeBoilerChief()) {
+                return redirect()->route('applications.show', $application)
+                    ->with('status', 'Заявка отправлена на согласование. Редактирование больше недоступно.');
+            }
+            if ($application->foremanCanResubmitAwaitingItemsToBoilerChief()) {
+                $this->finalizeForemanResubmissionToBoilerChief($application);
+
+                return redirect()->route('applications.show', $application)
+                    ->with('status', 'Изменённые позиции отправлены на повторное согласование начальнику котельной. Редактирование больше недоступно.');
+            }
+
+            if ($application->boilerChiefSubdivisionReviewCycleStarted()) {
+                return redirect()->route('applications.edit', $application)
+                    ->withErrors(['submit_action' => 'Измените и сохраните хотя бы одну несогласованную позицию перед повторной отправкой.']);
+            }
         }
 
         if ($isBoilerChiefUser
@@ -2357,6 +2378,11 @@ class ApplicationController extends Controller
             && ! $application->isBoilerChiefDraftBeforeManagement()) {
             return redirect()->route('applications.show', $application)
                 ->with('status', 'Заявка отправлена на согласование руководству и снабжению. Редактирование больше недоступно.');
+        }
+
+        if ($managementMayEditCheckedEquipmentLines) {
+            return redirect()->to(route('applications.show', $application).'#approval-form')
+                ->with('status', 'Изменения сохранены. Отметьте, какие позиции согласованы, и сохраните согласование.');
         }
 
         return redirect()->to(route('applications.show', $application).'#approval-form')
@@ -2527,7 +2553,16 @@ class ApplicationController extends Controller
         }
         $errors = [];
 
-        foreach ($application->items as $item) {
+        $itemsForChiefApproval = $application->items->filter(
+            fn (ApplicationItem $item) => $application->itemAwaitingBoilerChiefReview($item)
+        );
+
+        if ($itemsForChiefApproval->isEmpty()) {
+            return redirect()->route('applications.show', $application)
+                ->with('status', 'Нет позиций, ожидающих согласования начальником котельной.');
+        }
+
+        foreach ($itemsForChiefApproval as $item) {
             $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id] ?? null;
             if (! is_array($row)) {
                 $errors["boiler_items.{$item->id}.is_checked"] = 'Отсутствуют данные по позиции.';
@@ -2563,8 +2598,8 @@ class ApplicationController extends Controller
                 ->withInput();
         }
 
-        DB::transaction(function () use ($application, $itemsInput, $bulkUncheckedReason, $commercialOfferUpdate) {
-            foreach ($application->items as $item) {
+        DB::transaction(function () use ($application, $itemsInput, $bulkUncheckedReason, $commercialOfferUpdate, $itemsForChiefApproval) {
+            foreach ($itemsForChiefApproval as $item) {
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
                 $checkedRaw = $row['is_checked'] ?? '0';
                 $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
@@ -2922,7 +2957,7 @@ class ApplicationController extends Controller
     public function markCustomEquipmentOrdered(Request $request, Application $application, ApplicationItem $item): RedirectResponse
     {
         if (! $request->user()->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
-            abort(403, 'Отметка «Заказано» доступна только директору и начальнику отдела снабжения.');
+            abort(403, 'Отметка «Заказано» доступна только директору, техническому директору и начальнику отдела снабжения.');
         }
 
         $this->authorizeViewApplication($request, $application);
@@ -2982,7 +3017,7 @@ class ApplicationController extends Controller
     public function markCustomEquipmentOnWarehouse(Request $request, Application $application, ApplicationItem $item): RedirectResponse
     {
         if (! $request->user()->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
-            abort(403, 'Отметка «На складе» доступна только директору и начальнику отдела снабжения.');
+            abort(403, 'Отметка «На складе» доступна только директору, техническому директору и начальнику отдела снабжения.');
         }
 
         $this->authorizeViewApplication($request, $application);
@@ -3030,29 +3065,7 @@ class ApplicationController extends Controller
      */
     private function applicationsSelectableForInstallationActUpload(Request $request): Collection
     {
-        $user = $request->user();
-        if (! $user) {
-            return collect();
-        }
-
-        $query = Application::query()
-            ->with('subdivision')
-            ->orderByDesc('id');
-
-        if ($user->hasRoleId(4)) {
-            $query->forSiteForemanAccess($user);
-        }
-
-        if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
-            $chiefSubIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
-            $query->whereIn('subdivision_id', $chiefSubIds);
-        }
-
-        return $query->with(['items', 'installationActPhotos'])
-            ->limit(500)
-            ->get()
-            ->filter(fn (Application $a) => $a->canUploadInstallationActAndPhotos() && ! $a->hasInstallationActEvidence())
-            ->values();
+        return ReportLayoutEquipmentApplications::collectionForInstallationActUser($request->user());
     }
 
     /**
@@ -3145,10 +3158,6 @@ class ApplicationController extends Controller
 
     private function customEquipmentBulkReturnUrl(Request $request, Application $application): string
     {
-        if ($request->input('return_to') === 'commercial_offer_procurement') {
-            return route('applications.commercial-offer-procurement.show', $application);
-        }
-
         return route('applications.custom-equipment-order', $application);
     }
 
@@ -3271,7 +3280,11 @@ class ApplicationController extends Controller
 
     private function authorizeCanChangeApplicationResponsible(Request $request): void
     {
-        if (! $request->user()?->hasAnyRoleId([1, 6, 2, self::BOILER_CHIEF_ROLE_ID, User::ADMINISTRATOR_ROLE_ID])) {
+        if (! $request->user()?->hasAnyRoleId([
+            ...User::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+            self::BOILER_CHIEF_ROLE_ID,
+            User::ADMINISTRATOR_ROLE_ID,
+        ])) {
             abort(403, 'Смена ответственного по заявке доступна директору, техническому директору, начальнику отдела снабжения, начальнику котельной и администратору.');
         }
     }
@@ -3291,7 +3304,11 @@ class ApplicationController extends Controller
 
     private function canOfferApplicationResponsibleChange(Request $request, Application $application): bool
     {
-        if (! $request->user()?->hasAnyRoleId([1, 6, 2, self::BOILER_CHIEF_ROLE_ID, User::ADMINISTRATOR_ROLE_ID])) {
+        if (! $request->user()?->hasAnyRoleId([
+            ...User::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+            self::BOILER_CHIEF_ROLE_ID,
+            User::ADMINISTRATOR_ROLE_ID,
+        ])) {
             return false;
         }
         if ($application->archived_at !== null) {
@@ -3541,12 +3558,32 @@ class ApplicationController extends Controller
 
         if (! $application->foremanCanEditApplication()) {
             if (Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
-                && ! $application->isForemanDraftBeforeBoilerChief()) {
+                && ! $application->isForemanDraftBeforeBoilerChief()
+                && ! $application->foremanCanReviseAfterBoilerChiefRejection()) {
                 abort(403, 'Заявка отправлена на согласование — редактирование недоступно.');
             }
 
             abort(403, 'Заявка полностью согласована — мастер участка не может больше изменять её или добавлять новые позиции.');
         }
+    }
+
+    private function finalizeForemanResubmissionToBoilerChief(Application $application): void
+    {
+        DB::transaction(function () use ($application): void {
+            $applicationUpdate = [
+                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
+            ];
+
+            if ($application->hasCommercialOfferApprovalColumns()
+                && $application->commercialOfferChiefIsRejected()) {
+                $applicationUpdate['commercial_offer_chief_is_checked'] = null;
+                $applicationUpdate['commercial_offer_chief_reason_not_selected'] = null;
+            }
+
+            $application->update($applicationUpdate);
+        });
+
+        $application->refresh();
     }
 
     private function userUsesApplicationDraftSubmitFlow(Request $request): bool
@@ -4347,7 +4384,7 @@ class ApplicationController extends Controller
 
             $qty = (float) $raw;
             if ($qty < 0.0005) {
-                $errors["issue_quantities.{$itemId}"] = 'Количество к списанию должно быть больше нуля.';
+                $errors["issue_quantities.{$itemId}"] = 'Нельзя списать 0. Укажите количество больше нуля.';
 
                 continue;
             }
@@ -4533,6 +4570,9 @@ class ApplicationController extends Controller
         $sizeForDb = $sizeValue !== '' ? mb_substr($sizeValue, 0, 120) : null;
 
         $measurementUnitId = $this->resolveMeasurementUnitIdForApplicationItem($item);
+        $unitTypeId = $measurementUnitId !== null
+            ? MeasurementUnit::query()->whereKey($measurementUnitId)->value('unit_type_id')
+            : null;
 
         $reservedName = $this->buildReservedEquipmentName($name, $application, $item);
 
@@ -4540,6 +4580,7 @@ class ApplicationController extends Controller
             'name' => $reservedName,
             'value' => $sizeForDb,
             'measurement_unit_id' => $measurementUnitId,
+            'unit_type_id' => $unitTypeId !== null ? (int) $unitTypeId : null,
             'is_catalog' => false,
         ]);
     }

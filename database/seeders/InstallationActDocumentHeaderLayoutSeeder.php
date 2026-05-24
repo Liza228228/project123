@@ -7,7 +7,7 @@ use Illuminate\Database\Seeder;
 
 class InstallationActDocumentHeaderLayoutSeeder extends Seeder
 {
-    public const TITLE = 'Акт установки запчастей — шапка';
+    public const TITLE = 'Акт установки — шапка';
 
     public function run(): void
     {
@@ -37,7 +37,7 @@ class InstallationActDocumentHeaderLayoutSeeder extends Seeder
                             'font_size_pt' => 14,
                             'lines' => [
                                 [
-                                    'text' => 'АКТ установки запасных ',
+                                    'text' => 'АКТ установки',
                                     'from_application' => false,
                                     'source_key' => '',
                                     'fio_case' => 'nominative',

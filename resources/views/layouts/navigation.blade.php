@@ -7,6 +7,8 @@
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS);
         $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
         $canManageReportLayoutTemplates = $user->hasAnyRoleId(\App\Models\User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
+        $hasReportGeneratorFullMenu = $user->hasAnyRoleId(\App\Models\User::REPORT_GENERATOR_FULL_MENU_ROLE_IDS)
+            || $user->hasRoleId(\App\Models\User::ADMINISTRATOR_ROLE_ID);
         $canLayoutApplicationReports = $user->hasAnyRoleId(\App\Models\User::LAYOUT_APPLICATION_REPORT_ROLE_IDS);
         $canLayoutApplicationsOnly = $user->hasRoleId(3);
         // Бухгалтер: без «Отчет» — макеты в «Отчеты по макетам».
@@ -16,7 +18,9 @@
         // Мастер участка, начальник котельной и начальник снабжения: в меню только «Отчеты по макетам».
         $foremanLayoutReportsGeneratorOnly = $user->hasRoleId(4) && $canLayoutApplicationReports;
         $boilerChiefLayoutReportsGeneratorOnly = $user->hasRoleId(7) && $canLayoutApplicationReports;
-        $supplyHeadLayoutReportsGeneratorOnly = $user->hasRoleId(2) && $canLayoutApplicationReports;
+        $supplyHeadLayoutReportsGeneratorOnly = $user->hasRoleId(2)
+            && $canLayoutApplicationReports
+            && ! $hasReportGeneratorFullMenu;
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
@@ -69,7 +73,7 @@
                         </a>
                     @endif
 
-                    @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
+                    @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS))
                         <a href="{{ route('applications.installation-act.upload') }}"
                            class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')) aria-current="page" @endif>
@@ -85,7 +89,7 @@
                         </a>
                     @endif
 
-                    @if ($canManageReportLayoutTemplates)
+                    @if ($hasReportGeneratorFullMenu)
                         <x-dropdown align="left" width="64">
                             <x-slot name="trigger">
                                 <button type="button" class="{{ $topNavBtnClass }} gap-2"
@@ -275,7 +279,7 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if (Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7]))
+            @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS))
                 <x-responsive-nav-link :href="route('applications.installation-act.upload')" :active="request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')">
                     Акт установки
                 </x-responsive-nav-link>
@@ -287,7 +291,7 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if ($canManageReportLayoutTemplates)
+            @if ($hasReportGeneratorFullMenu)
                 <div class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-black/45 dark:text-white/45">
                     Генератор отчётов
                 </div>

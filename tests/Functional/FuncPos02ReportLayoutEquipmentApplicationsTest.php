@@ -150,3 +150,78 @@ test('report layout equipment list for administrator includes all delivered appl
 
     expect($ids)->toContain((int) $application->id);
 });
+
+test('installation act report layout list excludes archive act and partial delivery', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Акт отчёт фильтр');
+
+    $eligible = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $eligible->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 2,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+
+    $withAct = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+        'act_of_installation' => 'installation-acts/test.pdf',
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $withAct->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+
+    $partialDelivery = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $partialDelivery->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 5,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $partialDelivery->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 3,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+    ]);
+
+    $options = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($ctx['foreman']);
+    $ids = array_column($options, 'id');
+
+    expect($ids)->toContain((int) $eligible->id);
+    expect($ids)->not->toContain((int) $withAct->id);
+    expect($ids)->not->toContain((int) $partialDelivery->id);
+});

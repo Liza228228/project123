@@ -188,12 +188,6 @@
                 </div>
 
                 <div>
-                    <x-input-label for="unit_price" value="Цена за единицу " />
-                    <x-text-input id="unit_price" name="unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" value="{{ old('unit_price') }}" />
-                    <x-input-error :messages="$errors->get('unit_price')" class="mt-1" />
-                </div>
-
-                <div>
                     <x-input-label for="counterparty" value="Поставщик (опц.)" />
                     <x-text-input id="counterparty" name="counterparty" type="text" maxlength="255" class="mt-1 block w-full" value="{{ old('counterparty') }}" />
                     <x-input-error :messages="$errors->get('counterparty')" class="mt-1" />
@@ -238,6 +232,18 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="min-w-0 sm:w-64">
+                        <label for="materials_balances_equipment_search" class="app-form-label">Оборудование</label>
+                        <input
+                            id="materials_balances_equipment_search"
+                            type="search"
+                            name="equipment"
+                            class="app-input w-full min-w-0 sm:max-w-xs"
+                            placeholder="Поиск по названию"
+                            value="{{ $equipmentSearch ?? '' }}"
+                            autocomplete="off"
+                        />
+                    </div>
                     <div class="min-w-0 sm:w-44">
                         <label for="materials-balances-per-page" class="app-form-label">На странице</label>
                         <select id="materials-balances-per-page" name="per_page" class="app-select w-full min-w-0 sm:max-w-xs">
@@ -249,15 +255,14 @@
                 </form>
             </div>
 
-            <p class="mt-2 text-xs text-black/70 dark:text-white/70">
-                Списания со склада (в том числе по заявкам и акту установки) учитываются в колонке «Расход».
-                @if($canManage ?? false)
-                    Позиции, пришедшие по заявке как «своё оборудование» (не из справочника), тоже отображаются здесь, если по ним есть движения на выбранном складе.
-                @endif
-            </p>
+         
             @if($materialsBalancesPaginator->total() === 0)
                 <p class="mt-4 rounded-xl border border-dashed border-stone-300 px-4 py-6 text-center text-sm text-black/70 dark:border-stone-600 dark:text-white/70">
-                    Оборудование пока не добавлено.
+                    @if(filled($equipmentSearch ?? ''))
+                        По запросу «{{ $equipmentSearch }}» ничего не найдено.
+                    @else
+                        Оборудование пока не добавлено.
+                    @endif
                 </p>
             @else
                 <div class="mt-4 md:hidden app-card-list">

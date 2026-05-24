@@ -48,7 +48,7 @@
                 @endif
                 @if (! $application->archived_at
                     && ! $application->managementHasSavedApproval()
-                    && Auth::user()->hasAnyRoleId([1, 6, 2, 4, 7])
+                    && Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS)
                     && ! $application->items->contains(fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true))
                     && (! Auth::user()->hasRoleId(4) || $application->foremanCanEditApplication())
                     && (! Auth::user()->hasRoleId(7) || $application->boilerChiefCanEditApplication()))
@@ -79,7 +79,7 @@
                         Изменить ответственного
                     </a>
                 @endif
-                @if (((! $application->archived_at && Auth::user()->hasAnyRoleId([1, 6, 2, 7])) || Auth::user()->hasRoleId(4)) && $application->canUploadInstallationActAndPhotos())
+                @if (((! $application->archived_at && (Auth::user()->hasApplicationSupplyWorkflowRole() || Auth::user()->hasRoleId(\App\Models\User::BOILER_CHIEF_ROLE_ID))) || Auth::user()->hasRoleId(4)) && $application->canUploadInstallationActAndPhotos())
                     <a href="{{ route('applications.installation-act.upload', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0">
                         Акт установки
                     </a>
@@ -123,12 +123,7 @@
                     @endif
                 </x-app-alert>
             @elseif($application->archived_at)
-                <x-app-alert type="info" class="mb-4 space-y-2">
-                    <p>Заявка находится в архиве выполненных (актуальные документы и списания по складу зафиксированы). Дата архивации: {{ $application->archived_at->format('d.m.Y H:i') }}.</p>
-                    @if(Auth::user()->hasAnyRoleId([4, 7]))
-                        <p>Новую заявку с теми же позициями можно оформить кнопкой «Создать повторную» выше.</p>
-                    @endif
-                </x-app-alert>
+                
             @endif
             @error('edit')
                 <x-app-alert type="error" class="mb-4">{{ $message }}</x-app-alert>
@@ -328,7 +323,7 @@
 
                     @php
                         $approvalLockedAfterTransit = $application->approvalLockedByShipmentProgress();
-                        $canManagementApprove = Auth::user()->hasAnyRoleId([1, 6, 2])
+                        $canManagementApprove = Auth::user()->hasApplicationSupplyWorkflowRole()
                             && ! $application->isManagementDelegatedToSiteForeman()
                             && ! $application->needsBoilerChiefReviewBeforeManagement()
                             && $application->managementMayReviewAfterBoilerChief()
@@ -339,7 +334,7 @@
                         $canBoilerChiefApprove = Auth::user()->hasRoleId(7)
                             && $application->needsBoilerChiefReviewBeforeManagement()
                             && ! ($application->isCommercialOfferOnlyApplication() && $application->boilerChiefReleasedToManagement());
-                        $canManagementApproveCommercialOffer = Auth::user()->hasAnyRoleId([1, 6, 2])
+                        $canManagementApproveCommercialOffer = Auth::user()->hasApplicationSupplyWorkflowRole()
                             && $application->needsManagementCommercialOfferReview();
                         if ($approvalLockedAfterTransit) {
                             $canManagementApproveCommercialOffer = false;
@@ -353,20 +348,23 @@
                         $showCoInUncheckedDisplay = $coShowsRejected || $coShowsPending;
                         $showCoInCheckedDisplay = $coShowsApproved;
                         $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked);
+                        $itemsAwaitingBoilerChiefReview = $application->items->filter(
+                            fn ($i) => $application->itemAwaitingBoilerChiefReview($i)
+                        );
+                        $itemsRejectedByBoilerChiefWithReason = $application->items->filter(
+                            fn ($i) => $application->itemIsRejectedByBoilerChief($i)
+                        );
                         $subdivisionHasBoilerChiefForReadonly = \App\Models\Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id);
                         $postBoilerChiefFrozenUncheckedReadonly = $subdivisionHasBoilerChiefForReadonly
                             && ! $application->needsBoilerChiefReviewBeforeManagement();
-                        $itemsRejectedByBoilerChiefReadonly = $postBoilerChiefFrozenUncheckedReadonly
-                            ? $boilerUncheckedItems
-                            : collect();
+                        $itemsRejectedByBoilerChiefReadonly = $itemsRejectedByBoilerChiefWithReason;
                         $rejectedByBoilerChiefReadonlyIds = $itemsRejectedByBoilerChiefReadonly->pluck('id')->all();
                         $uncheckedItemsForDisplay = $rejectedByBoilerChiefReadonlyIds === []
                             ? $uncheckedItems
                             : $uncheckedItems->reject(fn ($i) => in_array($i->id, $rejectedByBoilerChiefReadonlyIds, true));
-                        $awaitingBoilerChiefApprovalList = $application->needsBoilerChiefReviewBeforeManagement()
-                            && $boilerUncheckedItems->isNotEmpty();
+                        $awaitingBoilerChiefApprovalList = $itemsAwaitingBoilerChiefReview->isNotEmpty();
                         if ($awaitingBoilerChiefApprovalList) {
-                            $boilerPendingItemIds = $boilerUncheckedItems->pluck('id')->all();
+                            $boilerPendingItemIds = $itemsAwaitingBoilerChiefReview->pluck('id')->all();
                             $uncheckedItemsForDisplay = $uncheckedItemsForDisplay->reject(
                                 fn ($i) => in_array($i->id, $boilerPendingItemIds, true)
                             );
@@ -382,7 +380,7 @@
                         $coInUncheckedItemsSection = $showCoInUncheckedDisplay
                             && ! $coInBoilerAwaitingSection
                             && ! $coInBoilerRejectedItemsSection;
-                        $canManageDeliveryTransit = Auth::user()->hasAnyRoleId([1, 6, 2]);
+                        $canManageDeliveryTransit = Auth::user()->hasApplicationSupplyWorkflowRole();
                         $inTransitCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryInTransit());
                         $showCatalogDeliveryInTransitForm = $canManageDeliveryTransit
                             && $application->managementHasSavedApproval()
@@ -516,6 +514,9 @@
                                         </p>
                                     @endif
                                 @endif
+                                @if($application->boilerChiefSubdivisionReviewCycleStarted() && $application->hasApprovedEquipmentLines())
+                                
+                                @endif
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" id="bc-approval-check-all" class="ui-btn ui-btn--secondary ui-btn--sm">
                                         Согласовать все
@@ -547,7 +548,7 @@
                                     @enderror
                                 </div>
                                 <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
-                                    @foreach($application->items->sortBy('id') as $item)
+                                    @foreach($itemsAwaitingBoilerChiefReview->sortBy('id') as $item)
                                         @php
                                             $oldBc = old("boiler_items.{$item->id}.is_checked", $application->itemLineIsApproved($item->id) ? '1' : '0');
                                             $isBcCheckedOld = (string) $oldBc === '1';
@@ -666,10 +667,10 @@
                                     && ! $application->needsBoilerChiefReviewBeforeManagement();
                                 if ($splitSupplyFormForBoilerFrozen) {
                                     $itemsFrozenAsBoilerRejectedForSupply = $supplyManagementItems->filter(
-                                        fn ($i) => ! (bool) $i->is_checked
+                                        fn ($i) => $application->itemIsRejectedByBoilerChief($i)
                                     );
                                     $supplyManagementItemsInteractive = $supplyManagementItems->filter(
-                                        fn ($i) => (bool) $i->is_checked
+                                        fn ($i) => ! $application->itemIsRejectedByBoilerChief($i)
                                     );
                                 } else {
                                     $itemsFrozenAsBoilerRejectedForSupply = collect();
@@ -751,9 +752,7 @@
                                 </div>
                                 @endif
                                 @if($supplyManagementItemsInteractive->isEmpty())
-                                    <p class="rounded-lg border border-stone-200/90 bg-stone-50/80 px-3 py-2 text-xs text-black dark:border-stone-600 dark:bg-stone-800/35 dark:text-white">
-                                        Нет позиций для согласования снабжением на этом шаге — все строки уже не согласованы. Нажмите «Сохранить согласование», чтобы зафиксировать состояние заявки.
-                                    </p>
+                                   
                                 @else
                                 <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
                                     @foreach($supplyManagementItemsInteractive->sortBy('id') as $item)
@@ -951,7 +950,11 @@
                             @elseif($showBoilerRejectedItemsSection)
                                 <h4 class="app-form-label !normal-case !mb-2">Не согласовано</h4>
                                 <p class="mb-2 text-xs text-black/80 dark:text-white/75">
-                                   
+                                    @if(Auth::user()->hasRoleId(4) && $application->foremanCanReviseAfterBoilerChiefRejection())
+                                        Начальник котельной не согласовал эти позиции. Откройте «Изменить», внесите правки и отправьте заявку на повторное согласование.
+                                    @else
+                                        Позиции не согласованы начальником котельной. Заявка к руководству ещё не передана.
+                                    @endif
                                 </p>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
                                     @if($coInBoilerRejectedItemsSection)

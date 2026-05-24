@@ -31,7 +31,7 @@
                 @else
                     @if($toOrder->isNotEmpty())
                         <section class="space-y-4" aria-labelledby="sec-order">
-                            <h3 id="sec-order" class="app-section-title">1. Отметить как заказано у поставщика</h3>
+                            <h3 id="sec-order" class="app-section-title">Отметить заказанное оборудование</h3>
                             <p class="text-xs text-black dark:text-white">
                                 Выберите позиции (или «Выбрать все») и нажмите кнопку.
                             </p>
@@ -72,10 +72,8 @@
 
                     @if($toWarehouse->isNotEmpty())
                         <section class="space-y-4 border-t border-stone-200 pt-8 dark:border-stone-700" aria-labelledby="sec-wh">
-                            <h3 id="sec-wh" class="app-section-title">2. Приход на основной склад</h3>
-                            <p class="text-xs text-black dark:text-white">
-                                Для позиций уже в статусе «Заказано» (или «В пути»): отметьте строки и нажмите — будет создан приход на основной склад организации.
-                            </p>
+                            <h3 id="sec-wh" class="app-section-title">Приход на основной склад</h3>
+                            
                             <form method="POST" action="{{ route('applications.custom-equipment-order.on-warehouse', $application) }}" class="space-y-3">
                                 @csrf
                                 <div class="flex flex-wrap items-center gap-3">

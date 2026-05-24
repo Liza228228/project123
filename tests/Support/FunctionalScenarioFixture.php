@@ -52,10 +52,13 @@ final class FunctionalScenarioFixture
             throw new \RuntimeException('Не найдена единица «шт» для типа piece.');
         }
 
+        $pieceTypeId = (int) MeasurementUnit::query()->whereKey($pieceUnitId)->value('unit_type_id');
+
         $equipment = Equipment::query()->create([
             'name' => $equipmentName,
             'value' => null,
             'measurement_unit_id' => $pieceUnitId,
+            'unit_type_id' => $pieceTypeId > 0 ? $pieceTypeId : null,
             'is_catalog' => true,
         ]);
 

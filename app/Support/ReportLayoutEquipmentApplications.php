@@ -15,12 +15,109 @@ final class ReportLayoutEquipmentApplications
      */
     public static function queryForUser(?User $user): Builder
     {
-        $query = Application::query()
-            ->with(['subdivision:id,name', 'items'])
-            ->eligibleForReportEquipmentInsertion()
-            ->orderByDesc('id')
-            ->limit(300);
+        return self::applyUserAccessScope(
+            Application::query()
+                ->with(['subdivision:id,name', 'items'])
+                ->eligibleForReportEquipmentInsertion()
+                ->orderByDesc('id')
+                ->limit(300),
+            $user
+        );
+    }
 
+    /**
+     * Заявки для подстановки оборудования в акт установки: доставлено, можно прикрепить акт,
+     * не в архиве, акт и фото ещё не загружены.
+     *
+     * @return Builder<Application>
+     */
+    public static function queryForInstallationActUser(?User $user): Builder
+    {
+        return self::applyUserAccessScope(
+            Application::query()
+                ->with(['subdivision:id,name', 'items', 'installationActPhotos'])
+                ->notArchived()
+                ->orderByDesc('id')
+                ->limit(500),
+            $user
+        );
+    }
+
+    /**
+     * @return Collection<int, Application>
+     */
+    public static function collectionForUser(?User $user): Collection
+    {
+        return self::queryForUser($user)->get();
+    }
+
+    /**
+     * @return Collection<int, Application>
+     */
+    public static function collectionForInstallationActUser(?User $user): Collection
+    {
+        return self::queryForInstallationActUser($user)
+            ->get()
+            ->filter(
+                fn (Application $application): bool => $application->canUploadInstallationActAndPhotos()
+                    && ! $application->hasInstallationActEvidence()
+            )
+            ->values();
+    }
+
+    /**
+     * @return list<array{
+     *     id: int,
+     *     label: string,
+     *     equipment: list<array{name: string, quantity: string, line: string}>,
+     *     foreman_user_id: int,
+     *     subdivision_id: int
+     * }>
+     */
+    public static function clientOptionsForUser(?User $user): array
+    {
+        return self::clientOptionsFromCollection(self::collectionForUser($user));
+    }
+
+    /**
+     * @return list<array{
+     *     id: int,
+     *     label: string,
+     *     equipment: list<array{name: string, quantity: string, line: string}>,
+     *     foreman_user_id: int,
+     *     subdivision_id: int
+     * }>
+     */
+    public static function clientOptionsForInstallationActUser(?User $user): array
+    {
+        return self::clientOptionsFromCollection(self::collectionForInstallationActUser($user));
+    }
+
+    /**
+     * @param  Collection<int, Application>  $applications
+     * @return list<array{
+     *     id: int,
+     *     label: string,
+     *     equipment: list<array{name: string, quantity: string, line: string}>,
+     *     foreman_user_id: int,
+     *     subdivision_id: int
+     * }>
+     */
+    private static function clientOptionsFromCollection(Collection $applications): array
+    {
+        return $applications
+            ->map(fn (Application $application): array => self::clientOptionFromApplication($application))
+            ->filter(fn (array $row): bool => $row['equipment'] !== [])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Builder<Application>  $query
+     * @return Builder<Application>
+     */
+    private static function applyUserAccessScope(Builder $query, ?User $user): Builder
+    {
         if (! $user instanceof User) {
             return $query->whereRaw('1 = 0');
         }
@@ -45,32 +142,6 @@ final class ReportLayoutEquipmentApplications
         }
 
         return $query->whereRaw('1 = 0');
-    }
-
-    /**
-     * @return Collection<int, Application>
-     */
-    public static function collectionForUser(?User $user): Collection
-    {
-        return self::queryForUser($user)->get();
-    }
-
-    /**
-     * @return list<array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }>
-     */
-    public static function clientOptionsForUser(?User $user): array
-    {
-        return self::collectionForUser($user)
-            ->map(fn (Application $application): array => self::clientOptionFromApplication($application))
-            ->filter(fn (array $row): bool => $row['equipment'] !== [])
-            ->values()
-            ->all();
     }
 
     /**

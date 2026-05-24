@@ -3,6 +3,7 @@
     'heading' => null,
     'intro' => null,
     'emptyText' => 'Нет позиций.',
+    'equipmentSearch' => '',
 ])
 
 @php
@@ -60,7 +61,13 @@
                 </dl>
             </article>
         @empty
-            <p class="text-sm text-black/65 dark:text-white/65 py-2">{{ $emptyText }}</p>
+            <p class="text-sm text-black/65 dark:text-white/65 py-2">
+                @if(filled($equipmentSearch))
+                    По запросу «{{ $equipmentSearch }}» ничего не найдено.
+                @else
+                    {{ $emptyText }}
+                @endif
+            </p>
         @endforelse
     </div>
 
@@ -104,7 +111,11 @@
                 @empty
                     <tr>
                         <td colspan="4" class="py-6 px-4 text-sm text-black/65 dark:text-white/65">
-                            {{ $emptyText }}
+                            @if(filled($equipmentSearch))
+                                По запросу «{{ $equipmentSearch }}» ничего не найдено.
+                            @else
+                                {{ $emptyText }}
+                            @endif
                         </td>
                     </tr>
                 @endforelse

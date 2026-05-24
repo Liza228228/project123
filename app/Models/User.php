@@ -14,30 +14,46 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
-    /** Директор, технический директор, начальник снабжения — согласование заявок, списания, материалы и т.д. */
-    public const MANAGEMENT_EDITOR_ROLE_IDS = [1, 6, 2];
+    /**
+     * Директор, технический директор и начальник отдела снабжения — одинаковая работа с заявками:
+     * список и создание, согласование, КП, отметки поставки, списание со склада «Администрация».
+     *
+     * @var list<int>
+     */
+    public const APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2];
+
+    /** @var list<int> */
+    public const MANAGEMENT_EDITOR_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
 
     /**
      * Справочник оборудования и приход/операции на складе (маршрут «Учёт оборудования», POST каталога и движений).
      * Бухгалтер (роль 3) по-прежнему может открыть /materials для просмотра без этих прав — см. middleware {@see \App\Http\Middleware\EnsureUserIsSupplyHead}.
+     * Технический директор — только остатки и журнал, без учёта.
      *
      * @var list<int>
      */
     public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = [1, 2];
 
     /**
-     * Директор и начальник отдела снабжения — одинаковый набор действий по заявкам и складу
-     * (заказ своего оборудования, пункты меню и т.п.).
+     * Директор, технический директор и начальник снабжения — отметки поставки и прочие операции снабжения
+     * (без раздела «Учёт оборудования» у технического директора).
      *
      * @var list<int>
      */
-    public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = [1, 2];
+    public const SUPPLY_PROCUREMENT_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
+
+    /**
+     * Директор и начальник отдела снабжения — полный паритет (включая учёт оборудования).
+     *
+     * @var list<int>
+     */
+    public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
 
     /** Прямая ссылка «Подразделения» в верхнем меню (каталог подразделений и складов). */
     public const SUBDIVISION_DIRECTORY_TOP_NAV_ROLE_IDS = [1, 2, 6, 3, 5];
 
-    /** Директор и начальник снабжения — заказ нестандартного («своего») оборудования и приход на основной склад по нему. */
-    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS;
+    /** Раздел «Оборудование к заказу» и формы заказа своего оборудования (без технического директора). */
+    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
 
     /**
      * Заполнение отчётов по макету, каталог макетов для заполнения, «Отчеты по макетам» — все роли.
@@ -49,14 +65,24 @@ class User extends Authenticatable
     /** @var list<int> */
     public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
 
+    /**
+     * Полное меню «Генератор отчётов» (шапки, PDF-макеты, отчёты по макетам) — у директора и ТД идентично.
+     *
+     * @var list<int>
+     */
+    public const REPORT_GENERATOR_FULL_MENU_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID];
+
     /** Директор, технический директор и администратор — макеты шапок и конструктор макетов отчётов (PDF). */
-    public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [1, 6, self::ADMINISTRATOR_ROLE_ID];
+    public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [
+        ...self::REPORT_GENERATOR_FULL_MENU_ROLE_IDS,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
 
     /** @var list<int> */
     public const REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
 
     /** Списание со склада «Администрация» по согласованным позициям из справочника. */
-    public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = [1, 2, 6];
+    public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
 
     /** Бухгалтер — просмотр всех заявок и актов установки. */
     public const ACCOUNTANT_ROLE_ID = 3;
@@ -72,7 +98,11 @@ class User extends Authenticatable
      *
      * @var list<int>
      */
-    public const APPLICATION_CREATOR_ROLE_IDS = [1, 6, 2, 4, self::BOILER_CHIEF_ROLE_ID];
+    public const APPLICATION_CREATOR_ROLE_IDS = [
+        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        4,
+        self::BOILER_CHIEF_ROLE_ID,
+    ];
 
     /** Технический директор. */
     public const TECHNICAL_DIRECTOR_ROLE_ID = 6;
@@ -173,6 +203,43 @@ class User extends Authenticatable
     }
 
     /**
+     * Пользователи для выбора подписи в отчёте по макету (роль и подразделения).
+     *
+     * @param  \Illuminate\Support\Collection<int, self>|\Illuminate\Database\Eloquent\Collection<int, self>  $users
+     * @return list<array{id: int, label: string, role_id: int, role_name: string, subdivision_ids: list<int>}>
+     */
+    public static function layoutReportSignerOptions($users): array
+    {
+        return $users
+            ->map(function (self $user): array {
+                $roleId = (int) ($user->role_id ?? 0);
+                $subdivisionIds = match ($roleId) {
+                    4 => $user->assignedSubdivisions
+                        ->pluck('id')
+                        ->map(fn ($id): int => (int) $id)
+                        ->values()
+                        ->all(),
+                    self::BOILER_CHIEF_ROLE_ID => $user->boilerChiefSubdivisions
+                        ->pluck('id')
+                        ->map(fn ($id): int => (int) $id)
+                        ->values()
+                        ->all(),
+                    default => [],
+                };
+
+                return [
+                    'id' => (int) $user->id,
+                    'label' => $user->fullName(),
+                    'role_id' => $roleId,
+                    'role_name' => (string) ($user->role?->name ?? ''),
+                    'subdivision_ids' => $subdivisionIds,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
      * Для формы «Отчёт по макету»: фильтр мастеров по подразделениям начальника котельной.
      *
      * @return array{isBoilerChief: bool, foremanRoleId: int, chiefSubdivisionIds: list<int>}
@@ -205,6 +272,12 @@ class User extends Authenticatable
     public function hasAnyRoleId(array $roleIds): bool
     {
         return in_array((int) $this->role_id, $roleIds, true);
+    }
+
+    /** Директор, ТД или начальник снабжения — полный цикл работы с заявками. */
+    public function hasApplicationSupplyWorkflowRole(): bool
+    {
+        return $this->hasAnyRoleId(self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS);
     }
 
     /** Фамилия Имя Отчество одной строкой (без лишних пробелов). */

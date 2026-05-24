@@ -80,7 +80,10 @@ class EquipmentSeeder extends Seeder
             $normalizedName = mb_substr(trim($baseName), 0, 150);
 
             Equipment::query()->updateOrCreate(
-                ['name' => $normalizedName],
+                [
+                    'name' => $normalizedName,
+                    'unit_type_id' => $pieceTypeId > 0 ? $pieceTypeId : null,
+                ],
                 [
                     'value' => $sizeValue !== null ? mb_substr($sizeValue, 0, 120) : null,
                     'measurement_unit_id' => $pieceUnitId > 0 ? $pieceUnitId : null,

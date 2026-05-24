@@ -47,11 +47,7 @@
                                 @endif
                             </div>
 
-                            @if($usingDefaultMainWarehouse && $selectedWarehouse)
-                                <p class="text-xs text-emerald-700 dark:text-emerald-200">
-                                    По умолчанию показан основной склад «{{ $selectedWarehouse->name }}» (Администрация).
-                                </p>
-                            @endif
+                          
 
                             @if($subdivisions->isEmpty())
                                 <p class="text-sm text-black/70 dark:text-white/70">Подразделения для вашей учётной записи не найдены.</p>
@@ -62,6 +58,7 @@
                                     method="get"
                                     action="{{ route('materials.overview') }}"
                                     class="grid grid-cols-1 gap-4"
+                                    data-auto-submit="filter"
                                 >
                                     <div class="min-w-0">
                                         <label for="overview_subdivision_id" class="app-form-label">Подразделение</label>
@@ -121,6 +118,20 @@
                                             @endforeach
                                         </select>
                                     </div>
+                                    @if($selectedWarehouse)
+                                        <div class="min-w-0">
+                                            <label for="overview_equipment_search" class="app-form-label">Оборудование</label>
+                                            <input
+                                                id="overview_equipment_search"
+                                                type="search"
+                                                name="equipment"
+                                                class="app-input mt-1.5 w-full"
+                                                placeholder="Поиск по названию"
+                                                value="{{ $equipmentSearch ?? '' }}"
+                                                autocomplete="off"
+                                            />
+                                        </div>
+                                    @endif
                                 </form>
                             </div>
                             @endif
@@ -146,6 +157,7 @@
                                     'heading' => null,
                                     'intro' => null,
                                     'emptyText' => 'По этому складу ещё не было движений оборудования.',
+                                    'equipmentSearch' => $equipmentSearch ?? '',
                                 ])
                             </div>
                         </div>

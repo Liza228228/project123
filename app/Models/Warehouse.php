@@ -83,6 +83,52 @@ class Warehouse extends Model
         return $query->whereHas('subdivision', fn (Builder $subdivisionQuery): Builder => $subdivisionQuery->active());
     }
 
+    /**
+     * @param  array<string, ?string>  $addressParts
+     */
+    public static function existsWithStructuredAddress(array $addressParts, ?int $exceptId = null): bool
+    {
+        $query = static::query()->matchingStructuredAddress($addressParts);
+        if ($exceptId !== null) {
+            $query->whereKeyNot($exceptId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * @param  array<string, ?string>  $addressParts
+     * @param  Builder<Warehouse>  $query
+     */
+    public function scopeMatchingStructuredAddress(Builder $query, array $addressParts): void
+    {
+        $fiasId = trim((string) ($addressParts['address_fias_id'] ?? ''));
+        if ($fiasId !== '') {
+            $query->where('address_fias_id', $fiasId);
+
+            return;
+        }
+
+        foreach ([
+            'address_postal_code',
+            'address_region',
+            'address_city',
+            'address_street',
+            'address_house',
+            'address_block',
+            'address_flat',
+        ] as $field) {
+            $value = isset($addressParts[$field]) ? trim((string) $addressParts[$field]) : '';
+            if ($value === '') {
+                $query->where(function (Builder $inner) use ($field): void {
+                    $inner->whereNull($field)->orWhere($field, '');
+                });
+            } else {
+                $query->whereRaw('LOWER(TRIM(`'.$field.'`)) = ?', [mb_strtolower($value)]);
+            }
+        }
+    }
+
     public function warehouseType(): BelongsTo
     {
         return $this->belongsTo(WarehouseType::class, 'warehouse_type_id');

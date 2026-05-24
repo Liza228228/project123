@@ -28,6 +28,10 @@
         $signatureSlotsCount = \App\Models\RequestLayout::resolvedSignatureSlotsCount($schema);
         $signatureRoles = is_array($schema['signature_roles'] ?? null) ? $schema['signature_roles'] : [];
         $allowApplicationEquipmentInsert = \App\Models\RequestLayout::allowsApplicationEquipmentInsert($schema);
+        $singleApplicationSelection = trim((string) ($schema['category'] ?? '')) === 'installation-act';
+        $signerUserOptions = ($users ?? collect())->isNotEmpty()
+            ? \App\Models\User::layoutReportSignerOptions($users)
+            : [];
     @endphp
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -126,27 +130,35 @@
                         <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
                         <div>
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
-                                <span class="block text-xs text-stone-500 dark:text-stone-400">Заявки (можно несколько или все)</span>
+                                <span class="block text-xs text-stone-500 dark:text-stone-400">{{ $singleApplicationSelection ? 'Заявка' : 'Заявки (можно несколько или все)' }}</span>
                                 <div class="flex flex-wrap gap-2">
-                                    <button type="button" id="report-select-all-apps" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90">Все заявки</button>
+                                    @unless($singleApplicationSelection)
+                                        <button type="button" id="report-select-all-apps" class="text-xs font-medium text-orange-800 hover:underline dark:text-orange-200/90">Все заявки</button>
+                                    @endunless
                                     <button type="button" id="report-clear-apps" class="text-xs font-medium text-stone-600 hover:underline dark:text-stone-400">Снять</button>
                                 </div>
                             </div>
                             <div id="report-source-applications" class="max-h-48 overflow-y-auto rounded-lg border border-orange-200/80 bg-white px-3 py-2 space-y-1.5 dark:border-orange-900/50 dark:bg-stone-900/40">
-                                <label class="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-200 cursor-pointer border-b border-stone-100 pb-1.5 mb-0.5 dark:border-stone-700">
-                                    <input type="checkbox" id="report-source-application-all" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"/>
-                                    <span>Выбрать все заявки</span>
-                                </label>
+                                @unless($singleApplicationSelection)
+                                    <label class="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-200 cursor-pointer border-b border-stone-100 pb-1.5 mb-0.5 dark:border-stone-700">
+                                        <input type="checkbox" id="report-source-application-all" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900"/>
+                                        <span>Выбрать все заявки</span>
+                                    </label>
+                                @endunless
                                 @foreach($applicationOptions as $app)
                                     <label class="flex items-center gap-2 text-sm text-stone-800 dark:text-stone-100 cursor-pointer">
-                                        <input type="checkbox" class="report-app-cb rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" value="{{ $app['id'] }}"/>
+                                        @if($singleApplicationSelection)
+                                            <input type="radio" name="report_application_id" class="report-app-radio border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" value="{{ $app['id'] }}"/>
+                                        @else
+                                            <input type="checkbox" class="report-app-cb rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" value="{{ $app['id'] }}"/>
+                                        @endif
                                         <span class="truncate">{{ $app['label'] }}</span>
                                     </label>
                                 @endforeach
                             </div>
                         </div>
                         <div>
-                            <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">Оборудование из выбранных заявок</label>
+                            <label class="block text-xs text-stone-500 dark:text-stone-400 mb-1">{{ $singleApplicationSelection ? 'Оборудование из заявки' : 'Оборудование из выбранных заявок' }}</label>
                             <select id="report-source-equipment" class="app-select min-h-0" disabled>
                                 <option value="">— Выберите оборудование —</option>
                             </select>
@@ -198,20 +210,16 @@
                             @for($slot = 1; $slot <= $signatureSlotsCount; $slot++)
                                 @php
                                     $roleId = (int) ($signatureRoles[$slot] ?? $signatureRoles[(string) $slot] ?? 0);
-                                    $slotUsers = collect($users ?? [])->filter(fn ($u) => $roleId <= 0 || (int) ($u->role_id ?? 0) === $roleId)->values();
-                                    $roleName = $roleId > 0 ? (string) ($slotUsers->first()?->role?->name ?? '') : '';
+                                    $roleName = $roleId > 0
+                                        ? (string) (collect($signerUserOptions)->firstWhere('role_id', $roleId)['role_name'] ?? '')
+                                        : '';
                                 @endphp
                                 <div>
                                     <label class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1" for="signer_{{ $slot }}_user_id">
-                                        Подпись {{ $slot }}@if($roleName !== '') ({{ $roleName }}) @endif
+                                        Подпись {{ $slot }}@if($roleName !== '') (сотрудник: {{ $roleName }}) @endif
                                     </label>
-                                    <select id="signer_{{ $slot }}_user_id" name="signer_{{ $slot }}_user_id" class="app-select min-h-0">
+                                    <select id="signer_{{ $slot }}_user_id" name="signer_{{ $slot }}_user_id" class="app-select min-h-0 js-report-signer-select" data-signer-slot="{{ $slot }}" data-initial-value="{{ old('signer_'.$slot.'_user_id') }}">
                                         <option value="">— Выберите ФИО —</option>
-                                        @foreach($slotUsers as $u)
-                                            <option value="{{ $u->id }}" @selected((string) old('signer_'.$slot.'_user_id') === (string) $u->id)>
-                                                {{ $u->fullName() }}
-                                            </option>
-                                        @endforeach
                                     </select>
                                     @error('signer_'.$slot.'_user_id')
                                         <p class="mt-1 text-sm text-rose-600 dark:text-rose-400">{{ $message }}</p>
@@ -264,6 +272,11 @@
                 // Нужна только логика DaData + отправка формы; всё остальное не инициализируем.
             }
             const applications = @json($applicationOptions);
+            const singleApplicationSelection = @json($singleApplicationSelection ?? false);
+            const signerUserOptions = @json($signerUserOptions);
+            const signatureRolesBySlot = @json($signatureRoles);
+            const FOREMAN_ROLE_ID = 4;
+            const BOILER_CHIEF_ROLE_ID = 7;
             const warehouseBalances = @json($warehouseOptions);
             let activeTextField = null;
             const appContainer = document.getElementById('report-source-applications');
@@ -307,10 +320,65 @@
                 }
                 return { name, quantity, line };
             };
-            const getSelectedApplicationIds = () =>
-                Array.from(document.querySelectorAll('.report-app-cb:checked'))
+            const getSelectedApplicationIds = () => {
+                if (singleApplicationSelection) {
+                    const radio = document.querySelector('.report-app-radio:checked');
+                    const id = radio ? Number(radio.value) : 0;
+
+                    return id > 0 ? [id] : [];
+                }
+
+                return Array.from(document.querySelectorAll('.report-app-cb:checked'))
                     .map((cb) => Number(cb.value))
                     .filter((id) => id > 0);
+            };
+            const getSelectedApplicationSubdivisionId = () => {
+                const ids = getSelectedApplicationIds();
+                if (ids.length !== 1) {
+                    return 0;
+                }
+                const app = applications.find((x) => Number(x.id || 0) === ids[0]);
+
+                return app ? Number(app.subdivision_id || 0) : 0;
+            };
+            const usersForSignerSlotJs = (slot) => {
+                const roleId = Number(signatureRolesBySlot[slot] || signatureRolesBySlot[String(slot)] || 0);
+                let list = signerUserOptions.filter((u) => !roleId || Number(u.role_id) === roleId);
+                const subdivisionId = getSelectedApplicationSubdivisionId();
+                if (subdivisionId > 0 && (roleId === FOREMAN_ROLE_ID || roleId === BOILER_CHIEF_ROLE_ID)) {
+                    list = list.filter((u) =>
+                        (Array.isArray(u.subdivision_ids) ? u.subdivision_ids : []).some(
+                            (sid) => Number(sid) === subdivisionId
+                        )
+                    );
+                }
+
+                return list;
+            };
+            const renderSignerSelects = () => {
+                document.querySelectorAll('.js-report-signer-select').forEach((select) => {
+                    const slot = select.dataset.signerSlot;
+                    if (!slot) {
+                        return;
+                    }
+                    const keep =
+                        select.value ||
+                        String(select.dataset.initialValue || '').trim();
+                    const list = usersForSignerSlotJs(slot);
+                    select.innerHTML = '<option value="">— Выберите ФИО —</option>';
+                    for (const u of list) {
+                        const opt = document.createElement('option');
+                        opt.value = String(u.id);
+                        opt.textContent = String(u.label || '');
+                        select.appendChild(opt);
+                    }
+                    if (keep !== '' && list.some((u) => String(u.id) === String(keep))) {
+                        select.value = String(keep);
+                    } else {
+                        select.value = '';
+                    }
+                });
+            };
             const syncApplicationMasterCheckbox = () => {
                 const master = document.getElementById('report-source-application-all');
                 if (!master) {
@@ -471,31 +539,47 @@
             if (!minimalFillFieldsOnly && appContainer) {
                 appContainer.addEventListener('change', (e) => {
                     const t = e.target;
-                    if (t && t.id === 'report-source-application-all') {
+                    if (!singleApplicationSelection && t && t.id === 'report-source-application-all') {
                         const on = Boolean(t.checked);
                         appContainer.querySelectorAll('.report-app-cb').forEach((cb) => {
                             cb.checked = on;
                         });
-                    } else if (t && t.classList && t.classList.contains('report-app-cb')) {
+                    } else if (!singleApplicationSelection && t && t.classList && t.classList.contains('report-app-cb')) {
                         syncApplicationMasterCheckbox();
                     }
                     renderEquipmentOptions();
+                    renderSignerSelects();
                 });
             }
-            if (!minimalFillFieldsOnly) document.getElementById('report-select-all-apps')?.addEventListener('click', () => {
-                appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
-                    cb.checked = true;
+            if (!minimalFillFieldsOnly && signerUserOptions.length > 0) {
+                renderSignerSelects();
+            }
+            if (!minimalFillFieldsOnly && !singleApplicationSelection) {
+                document.getElementById('report-select-all-apps')?.addEventListener('click', () => {
+                    appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
+                        cb.checked = true;
+                    });
+                    syncApplicationMasterCheckbox();
+                    renderEquipmentOptions();
+                    renderSignerSelects();
                 });
-                syncApplicationMasterCheckbox();
-                renderEquipmentOptions();
-            });
-            if (!minimalFillFieldsOnly) document.getElementById('report-clear-apps')?.addEventListener('click', () => {
-                appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
-                    cb.checked = false;
+            }
+            if (!minimalFillFieldsOnly) {
+                document.getElementById('report-clear-apps')?.addEventListener('click', () => {
+                    if (singleApplicationSelection) {
+                        appContainer?.querySelectorAll('.report-app-radio').forEach((radio) => {
+                            radio.checked = false;
+                        });
+                    } else {
+                        appContainer?.querySelectorAll('.report-app-cb').forEach((cb) => {
+                            cb.checked = false;
+                        });
+                        syncApplicationMasterCheckbox();
+                    }
+                    renderEquipmentOptions();
+                    renderSignerSelects();
                 });
-                syncApplicationMasterCheckbox();
-                renderEquipmentOptions();
-            });
+            }
             if (!minimalFillFieldsOnly && warehouseSelect) {
                 warehouseSelect.addEventListener('change', renderWarehouseEquipmentOptions);
             }
