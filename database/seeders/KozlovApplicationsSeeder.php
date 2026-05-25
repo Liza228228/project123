@@ -19,6 +19,13 @@ use Illuminate\Support\Facades\Storage;
 
 class KozlovApplicationsSeeder extends Seeder
 {
+    /** @var string Корень зеркала storage в public/ (в git). */
+    private const INSTALLATION_MEDIA_PUBLIC_DIR = 'seeders/kozlov-installation';
+
+    private const INSTALLATION_ACTS_DIR = 'installation-acts';
+
+    private const INSTALLATION_ACT_PHOTOS_DIR = 'installation-act-photos';
+
     private ?array $installationMedia = null;
 
     public function run(): void
@@ -187,8 +194,8 @@ class KozlovApplicationsSeeder extends Seeder
         $photoPath = 'installation-act-photos/'.$applicationId.'/'.$photoFilename;
 
         $disk = Storage::disk('public');
-        $this->publishInstallationMediaFile($disk, $actPath, $actFilename, 'act');
-        $this->publishInstallationMediaFile($disk, $photoPath, $photoFilename, 'photo');
+        $this->publishInstallationMediaFile($disk, $actPath, $actFilename, self::INSTALLATION_ACTS_DIR, $completedIndex);
+        $this->publishInstallationMediaFile($disk, $photoPath, $photoFilename, self::INSTALLATION_ACT_PHOTOS_DIR, $completedIndex);
 
         $application->update(['act_of_installation' => $actPath]);
 
@@ -223,52 +230,48 @@ class KozlovApplicationsSeeder extends Seeder
         Filesystem $disk,
         string $targetRelativePath,
         string $filename,
-        string $type,
+        string $publicSubdir,
+        int $completedIndex,
     ): void {
         $disk->makeDirectory(dirname($targetRelativePath));
 
-        $sourceAbsolutePath = $this->resolveInstallationMediaSourcePath($filename, $type);
+        $sourceAbsolutePath = $this->resolveInstallationMediaSourcePath($publicSubdir, $filename, $completedIndex);
         if ($sourceAbsolutePath === null) {
+            if ($this->command !== null) {
+                $slot = $this->installationMediaSlot($completedIndex);
+                $this->command->warn(
+                    'Файл для сидера не найден: '.$filename
+                    .' (ожидается: public/'.self::INSTALLATION_MEDIA_PUBLIC_DIR.'/'.$publicSubdir.'/'.$slot.'/).'
+                );
+            }
+
             return;
         }
 
         $disk->put($targetRelativePath, (string) file_get_contents($sourceAbsolutePath));
     }
 
-    private function resolveInstallationMediaSourcePath(string $filename, string $type): ?string
+    /**
+     * Номер папки в public (1…N), соответствует порядку выполненных заявок в сидере.
+     */
+    private function installationMediaSlot(int $completedIndex): int
     {
-        $candidates = [
-            database_path('seeders/assets/kozlov-installation/'.$filename),
-        ];
+        return $completedIndex + 1;
+    }
 
-        if ($type === 'photo') {
-            $candidates[] = base_path('Data/фото/'.$filename);
-        }
+    /**
+     * Источник в public: та же структура, что в storage, но вместо id заявки — slot.
+     */
+    private function resolveInstallationMediaSourcePath(string $publicSubdir, string $filename, int $completedIndex): ?string
+    {
+        $slot = $this->installationMediaSlot($completedIndex);
+        $path = public_path(
+            self::INSTALLATION_MEDIA_PUBLIC_DIR
+            .DIRECTORY_SEPARATOR.$publicSubdir
+            .DIRECTORY_SEPARATOR.$slot
+            .DIRECTORY_SEPARATOR.$filename
+        );
 
-        foreach ($candidates as $path) {
-            if (is_file($path)) {
-                return $path;
-            }
-        }
-
-        $publicRoot = storage_path('app/public');
-        $storageDir = $type === 'act' ? 'installation-acts' : 'installation-act-photos';
-
-        foreach (glob($publicRoot.'/'.$storageDir.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
-            $filePath = $directory.DIRECTORY_SEPARATOR.$filename;
-            if (is_file($filePath)) {
-                return $filePath;
-            }
-        }
-
-        if ($type === 'act') {
-            foreach (glob($publicRoot.'/installation-acts/*/*.pdf') ?: [] as $pdfPath) {
-                if (is_file($pdfPath)) {
-                    return $pdfPath;
-                }
-            }
-        }
-
-        return null;
+        return is_file($path) ? $path : null;
     }
 }
