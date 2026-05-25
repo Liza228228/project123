@@ -69,17 +69,25 @@ test('layout application create hides application equipment block for commercial
     $response->assertDontSee('name="signer_1_user_id"', false);
 });
 
-test('layout applications fill catalog includes installation act and commercial proposal', function (): void {
+test('layout applications fill catalog includes all active report layouts', function (): void {
     $this->seed(\Database\Seeders\InstallationActRequestLayoutSeeder::class);
     $this->seed(CommercialProposalRequestLayoutSeeder::class);
+
+    $custom = \App\Models\RequestLayout::query()->create([
+        'title' => 'Пользовательский макет '.uniqid(),
+        'schema' => ['category' => 'lab', 'fields' => []],
+        'has_header' => false,
+        'type' => 'pdf',
+        'version' => 1,
+    ]);
 
     $titles = \App\Support\LayoutApplicationCatalog::layoutsForFillCatalog()->pluck('title')->all();
 
     expect($titles)->toContain(
         \Database\Seeders\InstallationActRequestLayoutSeeder::TITLE,
         CommercialProposalRequestLayoutSeeder::TITLE,
+        $custom->title,
     );
-    expect($titles)->not->toContain('Коммерческое предложение (смета видеонаблюдения)');
 });
 
 test('commercial proposal subdivision picker is limited to foreman assignments', function (): void {

@@ -3,8 +3,40 @@
 use App\Models\RequestLayout;
 use App\Models\RequestSubmission;
 use App\Models\User;
+use App\Support\RequestLayoutDocumentBuilder;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;
+
+test('equipment insert html table in text field is preserved in pdf body', function (): void {
+    $layout = RequestLayout::query()->create([
+        'title' => 'Отчет',
+        'schema' => [
+            'document_title' => 'Отчет',
+            'body_template' => '{{equipment_block}}',
+            'fields' => [
+                ['key' => 'equipment_block', 'label' => 'Оборудование', 'type' => 'text'],
+            ],
+            'signature_slots_count' => 0,
+            'signature_roles' => [],
+        ],
+        'has_header' => false,
+        'type' => 'pdf',
+        'version' => 1,
+    ]);
+
+    $tableHtml = '<table border="1"><thead><tr><th>Наименование</th><th>Количество</th></tr></thead>'
+        .'<tbody><tr><td colspan="2"><strong>Заявка №42</strong></td></tr>'
+        .'<tr><td>Компенсатор</td><td>7 шт</td></tr></tbody></table>';
+
+    $builder = app(RequestLayoutDocumentBuilder::class);
+    $parts = $builder->pdfParts($layout, ['equipment_block' => $tableHtml]);
+    $bodyHtml = $builder->bodyHtmlForPdf($parts['bodyText']);
+
+    expect($parts['bodyText'])->toContain('<table');
+    expect($bodyHtml)->toContain('<table');
+    expect($bodyHtml)->toContain('Компенсатор');
+    expect($bodyHtml)->not->toContain('НаименованиеКоличество');
+});
 
 test('boiler chief can create installation act layout report as pdf', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();

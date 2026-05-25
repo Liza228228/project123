@@ -270,6 +270,27 @@ final class RequestLayoutDocumentBuilder
     }
 
     /**
+     * Значение поля для подстановки в PDF: таблицы и разметка из contenteditable сохраняются.
+     */
+    private function storedFieldValueForSubstitution(mixed $raw, string $fieldType): string
+    {
+        if ($fieldType === 'date') {
+            return $this->formatDateFieldForSubstitution($raw);
+        }
+
+        $text = is_scalar($raw) || $raw === null ? trim((string) $raw) : '';
+        if ($text === '') {
+            return '';
+        }
+
+        if (in_array($fieldType, ['text', 'textarea'], true) && preg_match('/<[a-z][\s\S]*?>/i', $text)) {
+            return $this->sanitizePdfHtml($text);
+        }
+
+        return $this->storedFieldValueToPlain($raw);
+    }
+
+    /**
      * Переносы → &lt;br&gt;, как в PDF-шаблоне (без pre-wrap).
      */
     private function plainToPdfInnerHtml(string $plain): string
@@ -400,9 +421,7 @@ final class RequestLayoutDocumentBuilder
                 continue;
             }
             $raw = $values[$k] ?? '';
-            $map[$k] = ($field['type'] ?? '') === 'date'
-                ? $this->formatDateFieldForSubstitution($raw)
-                : $this->storedFieldValueToPlain($raw);
+            $map[$k] = $this->storedFieldValueForSubstitution($raw, (string) ($field['type'] ?? 'text'));
         }
 
         // Раньше ключи, начинающиеся с цифры, сохранялись как «поле N» — даём подстановку и для {{N}}.

@@ -11,11 +11,10 @@ use Illuminate\Database\Eloquent\Collection;
  */
 final class LayoutApplicationCatalog
 {
-    /** @var list<string> */
-    public const FILL_CATEGORIES = [
-        'installation-act',
-        'commercial-proposal',
-    ];
+    /** Категории встроенных макетов (сидеры, сценарии КП/акта). */
+    public const CATEGORY_INSTALLATION_ACT = 'installation-act';
+
+    public const CATEGORY_COMMERCIAL_PROPOSAL = 'commercial-proposal';
 
     /**
      * @return Collection<int, RequestLayout>
@@ -23,7 +22,6 @@ final class LayoutApplicationCatalog
     public static function layoutsForFillCatalog(): Collection
     {
         return RequestLayout::query()
-            ->whereIn('schema->category', self::FILL_CATEGORIES)
             ->orderBy('title')
             ->get(['id', 'title', 'schema']);
     }
