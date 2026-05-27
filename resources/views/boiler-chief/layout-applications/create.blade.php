@@ -1,5 +1,4 @@
 @php
-    $applicationCommercialOfferFill = (bool) ($applicationCommercialOfferFill ?? false);
     $cancelUrl = $cancelUrl ?? route('boiler-chief.layout-applications.index');
     $layoutOptions = $layouts->map(fn ($l) => ['id' => $l->id, 'title' => $l->title])->values();
     $userOptions = \App\Models\User::layoutReportSignerOptions($users);
@@ -9,13 +8,9 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
-            <x-page-header-nav :href="$cancelUrl">{{ $applicationCommercialOfferFill ? 'Создать заявку' : 'Отчеты по макетам' }}</x-page-header-nav>
+            <x-page-header-nav :href="$cancelUrl">Отчеты по макетам</x-page-header-nav>
             <h2 class="font-semibold text-xl text-stone-900 dark:text-white">
-                @if ($applicationCommercialOfferFill)
-                    Коммерческое предложение к заявке
-                @else
-                    {{ isset($editingSubmission) ? 'Редактирование отчета' : 'Новый отчет по макету' }}
-                @endif
+                {{ isset($editingSubmission) ? 'Редактирование отчета' : 'Новый отчет по макету' }}
             </h2>
         </div>
     </x-slot>
@@ -30,9 +25,9 @@
             schemaJsonBase: @js(url('/applications/installation-act/layout-schema')),
             storeUrl: @js($storeUrl ?? (isset($editingSubmission) ? route('boiler-chief.layout-applications.update', $editingSubmission) : route('boiler-chief.layout-applications.store'))),
             token: @js(csrf_token()),
-            preselectLayoutId: @js((int) (isset($editingSubmission) ? $editingSubmission->layout_structure_id : ($applicationCommercialOfferFill ? ($layouts->first()?->id ?? 0) : request('layout', 0)))),
-            layoutLocked: @js((bool) (isset($editingSubmission) || $applicationCommercialOfferFill)),
-            submitRedirectsOnSuccess: @js($applicationCommercialOfferFill),
+            preselectLayoutId: @js((int) (isset($editingSubmission) ? $editingSubmission->layout_structure_id : request('layout', 0))),
+            layoutLocked: @js((bool) isset($editingSubmission)),
+            submitRedirectsOnSuccess: @js(false),
             initialSubmissionPayload: {{ \Illuminate\Support\Js::from($initialSubmissionPayload ?? []) }},
             layoutViewerContext: {{ \Illuminate\Support\Js::from($layoutViewerContext ?? ['isBoilerChief' => false, 'foremanRoleId' => 4, 'chiefSubdivisionIds' => []]) }},
             measurementMeta: {{ \Illuminate\Support\Js::from($measurementMeta ?? []) }},
@@ -53,9 +48,9 @@
                     <div class="px-5 sm:px-8 py-6 space-y-6 border-b border-orange-100/90 dark:border-orange-900/40">
                         <div>
                             <label for="layout_structure_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет</label>
-                            @if (isset($editingSubmission) || $applicationCommercialOfferFill)
-                                <input type="hidden" name="layout_structure_id" value="{{ isset($editingSubmission) ? $editingSubmission->layout_structure_id : ($layouts->first()?->id ?? '') }}"/>
-                                <p class="text-sm text-stone-800 dark:text-stone-200 py-2 px-3 rounded-lg border border-orange-200/80 bg-orange-50/40 dark:border-orange-900/50 dark:bg-stone-900/50">{{ $layouts->first()?->title ?? '—' }}</p>
+                            @if (isset($editingSubmission))
+                                <input type="hidden" name="layout_structure_id" value="{{ $editingSubmission->layout_structure_id }}"/>
+                                <p class="text-sm text-stone-800 dark:text-stone-200 py-2 px-3 rounded-lg border border-orange-200/80 bg-orange-50/40 dark:border-orange-900/50 dark:bg-stone-900/50">{{ $layouts->firstWhere('id', $editingSubmission->layout_structure_id)?->title ?? '—' }}</p>
                             @else
                             <select id="layout_structure_id" name="layout_structure_id" required
                                     x-model.number="layoutId" @change="loadFields()"
@@ -180,11 +175,7 @@
                                     </div>
                                 </template>
 
-                                <template x-if="field.type === 'table' && isCommercialEstimateField(field)">
-                                    @include('boiler-chief.layout-applications._commercial-estimate-table')
-                                </template>
-
-                                <template x-if="field.type === 'table' && !isCommercialEstimateField(field)">
+                                <template x-if="field.type === 'table'">
                                     <div class="rounded-xl border border-orange-200/75 bg-white p-4 dark:border-orange-900/40 dark:bg-stone-900/40 cursor-pointer transition-shadow"
                                          :class="activeEditorFieldKey === field.key ? 'ring-2 ring-orange-500/70 shadow-sm' : ''"
                                          @click="setActiveEditorField(field.key)">
@@ -232,10 +223,8 @@
                                     <div class="rounded-xl border border-orange-200/75 bg-orange-50/30 p-4 dark:border-orange-900/40 dark:bg-stone-900/40">
                                         <label class="block text-sm font-medium text-stone-800 dark:text-stone-200 mb-1.5" x-text="field.label || field.key"></label>
                                         <input type="text" readonly
-                                               class="app-input bg-stone-50 dark:bg-stone-900/60 text-right font-medium"
-                                               :name="'values[' + field.key + ']'"
-                                               x-model="commercialEstimateGrandTotalFormatted" />
-                                        <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Считается автоматически по таблице оборудования.</p>
+                                               class="app-input bg-stone-50 dark:bg-stone-900/60"
+                                               :name="'values[' + field.key + ']'" />
                                     </div>
                                 </template>
 
@@ -276,11 +265,7 @@
                         <div class="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-2">
                             <a href="{{ $cancelUrl }}" class="ui-btn ui-btn--secondary inline-flex justify-center">Отмена</a>
                             <button type="submit" class="ui-btn ui-btn--primary inline-flex justify-center disabled:opacity-50" :disabled="!layoutId || loading">
-                                @if ($applicationCommercialOfferFill)
-                                    Сохранить и вернуться к заявке
-                                @else
-                                    Сохранить и скачать PDF
-                                @endif
+                                Сохранить и скачать PDF
                             </button>
                         </div>
                     </div>

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\DocumentHeaderLayout;
 use App\Models\RequestLayout;
+use App\Support\ReportLayoutCommercialProposal;
 use Illuminate\Database\Seeder;
 
 class InstallationActRequestLayoutSeeder extends Seeder
@@ -12,6 +13,8 @@ class InstallationActRequestLayoutSeeder extends Seeder
 
     public function run(): void
     {
+        ReportLayoutCommercialProposal::purgeStoredLayouts();
+
         $this->call(InstallationActDocumentHeaderLayoutSeeder::class);
 
         $headerLayout = DocumentHeaderLayout::query()

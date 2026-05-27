@@ -902,53 +902,8 @@
                 }
             });
 
-            const isCommercialProposalLayout = @json(($schema['category'] ?? '') === \App\Support\ReportLayoutCommercialProposal::CATEGORY);
-            const syncCommercialEstimateTotalsForFillForm = () => {
-                const tableKey = 'таблица_оборудование';
-                const parseNum = (raw) => {
-                    const s = String(raw ?? '')
-                        .replace(/\s+/g, '')
-                        .replace(',', '.')
-                        .trim();
-                    if (s === '') return 0;
-                    const n = Number(s);
-                    return Number.isFinite(n) && n >= 0 ? n : 0;
-                };
-                const formatAmount = (n) => {
-                    const v = Math.round(Number(n) * 100) / 100;
-                    if (!Number.isFinite(v)) return '0';
-                    return String(v)
-                        .replace(/(\.\d*?[1-9])0+$/u, '$1')
-                        .replace(/\.0+$/u, '');
-                };
-                let total = 0;
-                for (let rowIdx = 0; rowIdx < 30; rowIdx += 1) {
-                    const qty = form.querySelector(`[name="values[${tableKey}][${rowIdx}][2]"]`);
-                    const price = form.querySelector(`[name="values[${tableKey}][${rowIdx}][3]"]`);
-                    const sumInput = form.querySelector(`[name="values[${tableKey}][${rowIdx}][4]"]`);
-                    if (!qty && !price) {
-                        break;
-                    }
-                    const rowSum = parseNum(qty?.value) * parseNum(price?.value);
-                    if (sumInput) {
-                        sumInput.value = formatAmount(rowSum);
-                    }
-                    total += rowSum;
-                }
-                const formatted = formatAmount(total);
-                for (const totalKey of ['итого_оборудование', 'итого_вся_смета']) {
-                    const el = form.querySelector(`[name="values[${totalKey}]"]`);
-                    if (el) {
-                        el.value = formatted;
-                    }
-                }
-            };
-
             form.addEventListener('submit', async function (e) {
                 e.preventDefault();
-                if (isCommercialProposalLayout) {
-                    syncCommercialEstimateTotalsForFillForm();
-                }
                 for (const fieldBlock of addressFields) {
                     const input = fieldBlock.querySelector('[data-dadata-address-input]');
                     const metaInput = fieldBlock.querySelector('[data-dadata-meta-input]');

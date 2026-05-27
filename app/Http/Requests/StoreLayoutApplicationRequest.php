@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\RequestLayout;
+use App\Support\ReportLayoutCommercialProposal;
 use App\Support\RequestLayoutTableField;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
@@ -65,6 +66,11 @@ class StoreLayoutApplicationRequest extends FormRequest
             }
             $layout = RequestLayout::query()->find($id);
             if (! $layout) {
+                return;
+            }
+            if (ReportLayoutCommercialProposal::isExcludedLayoutModel($layout)) {
+                $validator->errors()->add('layout_structure_id', 'Выбранный макет недоступен.');
+
                 return;
             }
 

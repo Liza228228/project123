@@ -15,6 +15,7 @@ use App\Models\Role;
 use App\Models\Subdivision;
 use App\Models\User;
 use App\Support\ListingPerPage;
+use App\Support\LayoutFormOptions;
 use App\Support\ReportLayoutCommercialProposal;
 use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutDocumentBuilder;
@@ -30,10 +31,11 @@ class BoilerChiefRequestLayoutController extends Controller
 {
     public function index(Request $request): View
     {
-        $layouts = RequestLayout::query()
-            ->with(['documentHeaderLayout'])
-            ->orderByDesc('updated_at')
-            ->get();
+        $layouts = ReportLayoutCommercialProposal::scopeVisibleInReportCatalog(
+            RequestLayout::query()
+                ->with(['documentHeaderLayout'])
+                ->orderByDesc('updated_at')
+        )->get();
 
         $canDesignReportLayouts = $request->user()?->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS) ?? false;
 
@@ -106,6 +108,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function fill(Request $request, RequestLayout $requestLayout): View
     {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $this->assertLayoutReportPdfFill($request->user());
         $user = $request->user();
         $isDesigner = $user instanceof User && $user->hasAnyRoleId(User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
@@ -132,7 +135,7 @@ class BoilerChiefRequestLayoutController extends Controller
                 ? route('boiler-chief.request-layouts.index')
                 : route('boiler-chief.layout-applications.index'),
             'formAction' => route('boiler-chief.request-layouts.filled-pdf', $requestLayout),
-            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
+            'measurementMeta' => LayoutFormOptions::measurementMetaForUi(),
         ]);
     }
 
@@ -144,6 +147,7 @@ class BoilerChiefRequestLayoutController extends Controller
         RequestLayout $requestLayout,
         RequestLayoutDocumentBuilder $builder
     ): Response {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $this->assertLayoutReportPdfFill($request->user());
         $values = $this->valuesFromReportSubmissionRequest($request, $requestLayout);
 
@@ -162,6 +166,7 @@ class BoilerChiefRequestLayoutController extends Controller
      */
     public function layoutSchemaJsonForReportFillers(Request $request, RequestLayout $requestLayout): JsonResponse
     {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $this->assertSiteForeman($request->user());
 
         return response()->json($requestLayout->clientFillPayload());
@@ -170,6 +175,7 @@ class BoilerChiefRequestLayoutController extends Controller
     /** JSON схемы для модального «Новый отчёт» в каталоге макетов (роли каталога, без middleware «Заявки»). */
     public function layoutFillSchemaJsonForCatalog(Request $request, RequestLayout $requestLayout): JsonResponse
     {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $user = $request->user();
         if (! $user instanceof User || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS)) {
             abort(403, 'Загрузка схемы макета вам недоступна.');
@@ -183,10 +189,11 @@ class BoilerChiefRequestLayoutController extends Controller
         $user = $request->user();
         $this->assertSiteForeman($user);
 
-        $layouts = RequestLayout::query()
-            ->with(['approver:id,surname,name,patronymic'])
-            ->orderByDesc('updated_at')
-            ->get();
+        $layouts = ReportLayoutCommercialProposal::scopeVisibleInReportCatalog(
+            RequestLayout::query()
+                ->with(['approver:id,surname,name,patronymic'])
+                ->orderByDesc('updated_at')
+        )->get();
 
         $parent = $user instanceof User
             ? $this->installationActParentLink($user)
@@ -228,6 +235,7 @@ class BoilerChiefRequestLayoutController extends Controller
 
     public function foremanFill(Request $request, RequestLayout $requestLayout): View
     {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $this->assertSiteForeman($request->user());
 
         return view('applications.installation-act-layout-fill-rich', [
@@ -249,6 +257,7 @@ class BoilerChiefRequestLayoutController extends Controller
         RequestLayout $requestLayout,
         RequestLayoutDocumentBuilder $builder
     ): Response {
+        ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
         $this->assertSiteForeman($request->user());
         $values = $this->valuesFromReportSubmissionRequest($request, $requestLayout);
         $submission = RequestSubmission::query()->create([
@@ -485,7 +494,7 @@ class BoilerChiefRequestLayoutController extends Controller
             ];
         }
 
-        if ($user->hasAnyRoleId(User::APPLICATION_CREATOR_ROLE_IDS)) {
+        if ($user->hasAnyRoleId(User::APPLICATION_INSTALLATION_ACT_ROLE_IDS)) {
             return [
                 'href' => route('applications.installation-act.upload'),
                 'label' => 'Акт установки',

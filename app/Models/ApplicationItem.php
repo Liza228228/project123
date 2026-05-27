@@ -22,12 +22,6 @@ class ApplicationItem extends Model
     /** Максимальная длина свободного наименования в форме заявки (совпадает с колонкой БД). */
     public const EQUIPMENT_NAME_MAX_LENGTH = 255;
 
-    /** Маркер в raw_input: позиция добавлена через «Как заказать» по согласованному КП. */
-    public const RAW_INPUT_COMMERCIAL_OFFER_ORDER = '__commercial_offer_order__';
-
-    /** Маркер в reason_not_selected: каталожная позиция зарезервирована со склада по КП. */
-    public const REASON_COMMERCIAL_OFFER_WAREHOUSE_RESERVE = '__commercial_offer_warehouse__';
-
     public const SIZE_VALUE_MAX_LENGTH = 120;
 
     public const QUANTITY_UNIT_MAX_LENGTH = 20;
@@ -92,6 +86,7 @@ class ApplicationItem extends Model
         'delivery_status_id',
         'delivery_warehouse_id',
         'transport_option_id',
+        'expected_arrival_at',
     ];
 
     protected function casts(): array
@@ -101,6 +96,7 @@ class ApplicationItem extends Model
             'is_checked' => 'boolean',
             'custom_equipment_supply_status_id' => 'integer',
             'delivery_status_id' => 'integer',
+            'expected_arrival_at' => 'date',
         ];
     }
 
@@ -390,24 +386,6 @@ class ApplicationItem extends Model
         return $this->equipment_id === null;
     }
 
-    public function isOrderedFromCommercialOffer(): bool
-    {
-        if ($this->equipment_id !== null) {
-            return false;
-        }
-
-        return trim((string) ($this->raw_input ?? '')) === self::RAW_INPUT_COMMERCIAL_OFFER_ORDER;
-    }
-
-    public function isCommercialOfferWarehouseReserved(): bool
-    {
-        if ($this->equipment_id === null) {
-            return false;
-        }
-
-        return trim((string) ($this->reason_not_selected ?? '')) === self::REASON_COMMERCIAL_OFFER_WAREHOUSE_RESERVE;
-    }
-
     /**
      * Оборудование по согласованной позиции уже на складе (для подстановки в отчёт по макету).
      */
@@ -581,6 +559,11 @@ class ApplicationItem extends Model
             self::DELIVERY_DELIVERED => 'Доставлено',
             default => null,
         };
+    }
+
+    public function formattedExpectedArrivalAt(): ?string
+    {
+        return $this->expected_arrival_at?->format('d.m.Y');
     }
 
     public function canMarkDeliveryInTransit(): bool

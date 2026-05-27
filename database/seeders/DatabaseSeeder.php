@@ -29,8 +29,6 @@ class DatabaseSeeder extends Seeder
             KozlovCompletedApplicationsWarehouseSeeder::class,
             InstallationActDocumentHeaderLayoutSeeder::class,
             InstallationActRequestLayoutSeeder::class,
-            CommercialProposalDocumentHeaderLayoutSeeder::class,
-            CommercialProposalRequestLayoutSeeder::class,
         ]);
     }
 }

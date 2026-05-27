@@ -15,8 +15,8 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /**
-     * Директор, технический директор и начальник отдела снабжения — одинаковая работа с заявками:
-     * список и создание, согласование, КП, отметки поставки, списание со склада «Администрация».
+     * Директор, технический директор и начальник отдела снабжения — согласование заявок,
+     * КП, отметки поставки, списание со склада «Администрация» (без создания заявок).
      *
      * @var list<int>
      */
@@ -94,14 +94,23 @@ class User extends Authenticatable
     public const BOILER_CHIEF_ROLE_ID = 7;
 
     /**
-     * Роли, которые создают заявки (и могут принудительно переносить их в архив).
+     * Роли, которые создают заявки: мастер участка и начальник котельной.
      *
      * @var list<int>
      */
     public const APPLICATION_CREATOR_ROLE_IDS = [
-        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
         4,
         self::BOILER_CHIEF_ROLE_ID,
+    ];
+
+    /**
+     * Загрузка акта установки (руководство + создатели заявок).
+     *
+     * @var list<int>
+     */
+    public const APPLICATION_INSTALLATION_ACT_ROLE_IDS = [
+        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        ...self::APPLICATION_CREATOR_ROLE_IDS,
     ];
 
     /** Технический директор. */

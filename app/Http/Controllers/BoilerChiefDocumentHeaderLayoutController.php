@@ -16,6 +16,7 @@ class BoilerChiefDocumentHeaderLayoutController extends Controller
     public function index(Request $request): View
     {
         $layouts = DocumentHeaderLayout::query()
+            ->where('title', 'not like', '%оммерческ%')
             ->orderByDesc('updated_at')
             ->get();
 

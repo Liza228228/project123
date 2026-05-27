@@ -50,23 +50,6 @@ final class ApplicationIndexPresenter
         }
 
         if ($application->items->isEmpty()) {
-            if ($application->hasCommercialOfferAttached()) {
-                if (self::needsBoilerChiefReviewBeforeManagement($application)) {
-                    return 'boiler';
-                }
-                if (self::needsManagementCommercialOfferReview($application)) {
-                    return 'management';
-                }
-                if ($application->commercialOfferChiefIsRejected() || $application->commercialOfferManagementIsRejected()) {
-                    return 'rejected';
-                }
-                if ($application->commercialOfferManagementIsApproved()) {
-                    return 'approved';
-                }
-
-                return 'pending';
-            }
-
             return 'empty';
         }
 
@@ -76,6 +59,14 @@ final class ApplicationIndexPresenter
 
         if (self::isApprovedDeliveryFullyInTransit($application)) {
             return 'in_transit';
+        }
+
+        if (self::needsBoilerChiefReviewBeforeManagement($application)) {
+            return 'boiler';
+        }
+
+        if ($application->isPendingManagementReview()) {
+            return 'management';
         }
 
         $resolvedStatus = self::resolvedStatusName($application);
@@ -88,16 +79,8 @@ final class ApplicationIndexPresenter
             return 'partial';
         }
 
-        if (self::isCreatorDraftApplication($application, $draftStatusId)) {
+        if ($application->isWorkflowDraftForDisplay()) {
             return 'draft';
-        }
-
-        if (self::needsBoilerChiefReviewBeforeManagement($application)) {
-            return 'boiler';
-        }
-
-        if (self::awaitsManagementEquipmentApproval($application)) {
-            return 'management';
         }
 
         if ($resolvedStatus === ApplicationStatus::NAME_REJECTED) {
@@ -201,9 +184,7 @@ final class ApplicationIndexPresenter
 
     private static function needsBoilerChiefReviewBeforeManagement(Application $application): bool
     {
-        if (self::isForemanDraftBeforeBoilerChief($application, ApplicationStatus::idForDraft())
-            || ((int) ($application->user?->role_id ?? 0) === 7
-                && (int) $application->application_status_id === ApplicationStatus::idForDraft())) {
+        if ($application->isWorkflowDraftForDisplay()) {
             return false;
         }
 
@@ -219,10 +200,6 @@ final class ApplicationIndexPresenter
             return false;
         }
 
-        if ($application->isCommercialOfferOnlyApplication()) {
-            return $application->commercialOfferChiefReviewPending();
-        }
-
         if ($application->items->isEmpty()) {
             return true;
         }
@@ -234,11 +211,6 @@ final class ApplicationIndexPresenter
         }
 
         return false;
-    }
-
-    private static function needsManagementCommercialOfferReview(Application $application): bool
-    {
-        return $application->needsManagementCommercialOfferReview();
     }
 
     private static function awaitsManagementEquipmentApproval(Application $application): bool
@@ -274,26 +246,6 @@ final class ApplicationIndexPresenter
 
     private static function resolvedStatusName(Application $application): string
     {
-        if ($application->isCommercialOfferOnlyApplication()) {
-            if (self::needsBoilerChiefReviewBeforeManagement($application)) {
-                return ApplicationStatus::NAME_PENDING;
-            }
-            if ($application->commercialOfferChiefIsRejected()) {
-                return ApplicationStatus::NAME_REJECTED;
-            }
-            if (self::needsManagementCommercialOfferReview($application)) {
-                return ApplicationStatus::NAME_PENDING;
-            }
-            if ($application->commercial_offer_management_is_checked === false) {
-                return ApplicationStatus::NAME_REJECTED;
-            }
-            if ($application->commercialOfferManagementIsApproved()) {
-                return ApplicationStatus::NAME_APPROVED;
-            }
-
-            return ApplicationStatus::NAME_PENDING;
-        }
-
         if ($application->items->isEmpty()) {
             return ApplicationStatus::NAME_PENDING;
         }

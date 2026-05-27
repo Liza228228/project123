@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreLayoutApplicationRequest;
 use App\Models\Application;
 use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
@@ -11,7 +10,6 @@ use App\Models\Equipment;
 use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\MeasurementUnit;
-use App\Models\RequestLayout;
 use App\Models\Subdivision;
 use App\Models\TransportOption;
 use App\Models\UnitType;
@@ -19,18 +17,12 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Support\AdministrationWarehouse;
 use App\Support\ApplicationCatalogStockAvailability;
-use App\Support\ApplicationCommercialOfferDraft;
-use App\Support\CommercialOfferApplicationLines;
-use App\Support\CommercialOfferOrderStockSplit;
-use App\Support\LayoutApplicationCatalog;
 use App\Support\ListingPerPage;
 use App\Support\PieceQuantity;
-use App\Support\ReportLayoutCommercialProposal;
 use App\Support\ReportLayoutEquipmentApplications;
-use App\Support\RequestLayoutPdfExporter;
 use App\Support\RussianVehiclePlate;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -64,10 +56,6 @@ class ApplicationController extends Controller
             $request->input('approval_filter', $request->input('equipment_filter', 'all'))
         );
         $approvalFilterOptions = \App\Support\ApplicationApprovalListingFilter::options();
-        $commercialOfferFilter = \App\Support\ApplicationCommercialOfferListingFilter::normalize(
-            $request->input('commercial_offer_filter', 'all')
-        );
-        $commercialOfferFilterOptions = \App\Support\ApplicationCommercialOfferListingFilter::options();
 
         $foremen = User::query()
             ->where('role_id', 4)
@@ -151,8 +139,6 @@ class ApplicationController extends Controller
             'search',
             'approvalFilter',
             'approvalFilterOptions',
-            'commercialOfferFilter',
-            'commercialOfferFilterOptions',
             'isSiteForeman',
             'isBoilerChief',
             'foremen',
@@ -354,19 +340,6 @@ class ApplicationController extends Controller
     }
 
     /**
-     * Снабжение / руководство: заявки с согласованным коммерческим предложением, ожидающие закупки.
-     */
-    public function commercialOfferProcurementIndex(Request $request): View
-    {
-        abort(404);
-    }
-
-    public function commercialOfferProcurementForm(Request $request, Application $application): View
-    {
-        abort(404);
-    }
-
-    /**
      * Способы доставки без привязки к конкретному госномеру (категории в справочнике транспорта).
      *
      * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
@@ -496,12 +469,6 @@ class ApplicationController extends Controller
     {
         $this->authorizeCanCreateApplications($request);
 
-        if ($request->boolean('discard_commercial_offer_draft')) {
-            ApplicationCommercialOfferDraft::clear();
-
-            return redirect()->route('applications.create');
-        }
-
         $subdivisions = $this->availableSubdivisionsForCreate($request);
         $equipment = $this->catalogEquipmentForForms();
         $usersQuery = User::query()
@@ -528,9 +495,6 @@ class ApplicationController extends Controller
         $responsibleFilterMode = $this->usesSubdivisionFirstResponsibleFilter($request)
             ? 'subdivision_first'
             : 'foreman_first';
-        $commercialOfferDraftReady = ApplicationCommercialOfferDraft::exists()
-            || $request->boolean('commercial_offer_ready');
-        $commercialProposalFillUrl = route('applications.commercial-proposal.fill');
 
         return view('applications.create', compact(
             'subdivisions',
@@ -544,146 +508,7 @@ class ApplicationController extends Controller
             'measurementMeta',
             'usesDraftSubmitFlow',
             'responsibleFilterMode',
-            'commercialOfferDraftReady',
-            'commercialProposalFillUrl',
         ));
-    }
-
-    public function createCommercialProposalFill(Request $request): View|RedirectResponse
-    {
-        $this->authorizeCanCreateApplications($request);
-
-        $layout = LayoutApplicationCatalog::commercialProposalLayout();
-        if (! $layout instanceof RequestLayout) {
-            return redirect()
-                ->route('applications.create')
-                ->with('error', 'Макет «Коммерческое предложение» не найден. Обратитесь к администратору.');
-        }
-
-        $subdivisionId = (int) $request->integer('subdivision_id', 0);
-
-        return $this->commercialProposalFillView($request, $layout, $subdivisionId, [
-            'cancelUrl' => route('applications.create'),
-            'storeUrl' => route('applications.commercial-proposal.fill.store'),
-        ]);
-    }
-
-    /**
-     * @param  array{cancelUrl: string, storeUrl: string}  $urls
-     */
-    private function commercialProposalFillView(
-        Request $request,
-        RequestLayout $layout,
-        int $subdivisionId,
-        array $urls
-    ): View {
-        $warehouseRef = ReportLayoutCommercialProposal::defaultWarehouseRefForSubdivision(
-            $request->user(),
-            $subdivisionId
-        );
-        $initialSubmissionPayload = $warehouseRef !== null ? ['_подразделение_ref' => $warehouseRef] : [];
-
-        $layouts = collect([$layout]);
-        $layoutSchemasById = [$layout->id => $layout->clientFillPayload()];
-
-        return view('boiler-chief.layout-applications.create', [
-            'layouts' => $layouts,
-            'users' => collect(),
-            'applicationOptions' => collect(),
-            'layoutSchemasById' => $layoutSchemasById,
-            'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
-            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
-            'subdivisionWarehouseOptions' => ReportLayoutCommercialProposal::subdivisionWarehouseOptionsForUser($request->user()),
-            'editingSubmission' => null,
-            'initialSubmissionPayload' => $initialSubmissionPayload,
-            'formDocumentDate' => '',
-            'applicationCommercialOfferFill' => true,
-            'cancelUrl' => $urls['cancelUrl'],
-            'storeUrl' => $urls['storeUrl'],
-        ]);
-    }
-
-    public function storeCommercialProposalFill(
-        StoreLayoutApplicationRequest $request,
-        BoilerChiefLayoutApplicationController $layoutApplications,
-        RequestLayoutPdfExporter $exporter
-    ): JsonResponse {
-        $this->authorizeCanCreateApplications($request);
-
-        $layout = $request->layout();
-        $schema = is_array($layout->schema) ? $layout->schema : [];
-        if (trim((string) ($schema['category'] ?? '')) !== ReportLayoutCommercialProposal::CATEGORY) {
-            abort(422, 'Недопустимый макет.');
-        }
-
-        $values = $layoutApplications->layoutApplicationValuesFromRequest($request, $layout);
-        $lines = CommercialOfferApplicationLines::extractFromLayoutValues($layout, $values);
-        ApplicationCommercialOfferDraft::store($exporter->outputBinary($layout, $values), null, $lines);
-
-        return response()->json([
-            'redirect' => route('applications.create', ['commercial_offer_ready' => 1]),
-            'message' => 'Коммерческое предложение сформировано. Проверьте данные и создайте заявку.',
-        ]);
-    }
-
-    public function editCommercialProposalFill(Request $request, Application $application): View|RedirectResponse
-    {
-        $redirect = $this->redirectIfApplicationEditUnavailable($request, $application);
-        if ($redirect instanceof RedirectResponse) {
-            return $redirect;
-        }
-
-        if (! filled(trim((string) $application->commercial_offer))) {
-            return redirect()
-                ->route('applications.edit', $application)
-                ->withErrors(['commercial_offer' => 'У заявки нет коммерческого предложения для изменения.']);
-        }
-
-        $layout = LayoutApplicationCatalog::commercialProposalLayout();
-        if (! $layout instanceof RequestLayout) {
-            return redirect()
-                ->route('applications.edit', $application)
-                ->with('error', 'Макет «Коммерческое предложение» не найден. Обратитесь к администратору.');
-        }
-
-        $subdivisionId = (int) $request->integer('subdivision_id', (int) $application->subdivision_id);
-
-        return $this->commercialProposalFillView($request, $layout, $subdivisionId, [
-            'cancelUrl' => route('applications.edit', $application),
-            'storeUrl' => route('applications.commercial-proposal.fill.edit.store', $application),
-        ]);
-    }
-
-    public function storeCommercialProposalFillForEdit(
-        StoreLayoutApplicationRequest $request,
-        Application $application,
-        BoilerChiefLayoutApplicationController $layoutApplications,
-        RequestLayoutPdfExporter $exporter
-    ): JsonResponse {
-        $redirect = $this->redirectIfApplicationEditUnavailable($request, $application);
-        if ($redirect instanceof RedirectResponse) {
-            abort(403, 'Редактирование заявки недоступно.');
-        }
-
-        if (! filled(trim((string) $application->commercial_offer))) {
-            abort(422, 'У заявки нет коммерческого предложения.');
-        }
-
-        $layout = $request->layout();
-        $schema = is_array($layout->schema) ? $layout->schema : [];
-        if (trim((string) ($schema['category'] ?? '')) !== ReportLayoutCommercialProposal::CATEGORY) {
-            abort(422, 'Недопустимый макет.');
-        }
-
-        $values = $layoutApplications->layoutApplicationValuesFromRequest($request, $layout);
-        $lines = CommercialOfferApplicationLines::extractFromLayoutValues($layout, $values);
-        ApplicationCommercialOfferDraft::store($exporter->outputBinary($layout, $values), (int) $application->id, $lines);
-        CommercialOfferApplicationLines::persistForApplication((int) $application->id, $lines);
-
-        return response()->json([
-            'redirect' => route('applications.edit', ['application' => $application, 'commercial_offer_ready' => 1]),
-            'message' => 'Коммерческое предложение сформировано. Сохраните заявку, чтобы заменить файл.',
-        ]);
     }
 
     public function createInstallationActUpload(Request $request): View
@@ -967,8 +792,6 @@ class ApplicationController extends Controller
         $responsibleFilterMode = $this->usesSubdivisionFirstResponsibleFilter($request)
             ? 'subdivision_first'
             : 'foreman_first';
-        $commercialOfferDraftReady = ApplicationCommercialOfferDraft::exists();
-        $commercialProposalFillUrl = route('applications.commercial-proposal.fill');
 
         return view('applications.create', compact(
             'subdivisions',
@@ -982,8 +805,6 @@ class ApplicationController extends Controller
             'measurementMeta',
             'usesDraftSubmitFlow',
             'responsibleFilterMode',
-            'commercialOfferDraftReady',
-            'commercialProposalFillUrl',
         ));
     }
 
@@ -1021,12 +842,9 @@ class ApplicationController extends Controller
             'items.*.quantity_unit' => ['nullable', 'string', 'max:'.ApplicationItem::QUANTITY_UNIT_MAX_LENGTH],
             'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
-            'commercial_offer' => ['nullable', 'file', 'mimes:pdf,docx', 'max:10240'],
         ], array_merge([
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
-            'commercial_offer.mimes' => 'Коммерческое предложение можно прикрепить только в формате PDF или DOCX.',
-            'commercial_offer.max' => 'Максимальный размер файла: 10 МБ.',
             'responsible_user_id.required' => 'Выберите ответственного мастера участка для выбранного подразделения.',
         ], ApplicationItem::applicationFormValidationMessages()));
 
@@ -1098,11 +916,7 @@ class ApplicationController extends Controller
 
         $hasValidItem = collect($validated['items'])->contains(fn (array $item) => ! empty($item['equipment_id'] ?? null) || ! empty(trim($item['equipment_name'] ?? ''))
         );
-        $hasCommercialOffer = $request->hasFile('commercial_offer');
-        $usesCommercialOfferDraft = ! $hasCommercialOffer
-            && $request->boolean('use_commercial_offer_draft')
-            && ApplicationCommercialOfferDraft::exists();
-        if (! $hasValidItem && ! $hasCommercialOffer && ! $usesCommercialOfferDraft) {
+        if (! $hasValidItem) {
             return back()->withErrors(['equipment' => 'Укажите оборудование: выберите из списка или введите вручную.'])->withInput();
         }
 
@@ -1111,13 +925,6 @@ class ApplicationController extends Controller
             $validated['responsible_user_id'] = $request->user()->id;
         } elseif (! $isBoilerChiefCreator && empty($validated['responsible_user_id'])) {
             $validated['responsible_user_id'] = $request->user()->id;
-        }
-        $commercialOfferFile = null;
-        if ($request->hasFile('commercial_offer')) {
-            ApplicationCommercialOfferDraft::clear();
-            $commercialOfferFile = $request->file('commercial_offer');
-        } elseif ($usesCommercialOfferDraft) {
-            $commercialOfferFile = ApplicationCommercialOfferDraft::pullUploadedFile();
         }
 
         $applicationStatusId = $this->resolveApplicationStatusIdOnCreate(
@@ -1139,15 +946,8 @@ class ApplicationController extends Controller
             'transport_option_id' => null,
             'desired_delivery_date' => $validated['desired_delivery_date'],
             'user_id' => $validated['user_id'],
-            'commercial_offer' => null,
             'application_status_id' => $applicationStatusId,
         ]);
-
-        if ($commercialOfferFile instanceof UploadedFile) {
-            $application->update([
-                'commercial_offer' => $this->storeCommercialOfferForApplication($commercialOfferFile, $application),
-            ]);
-        }
 
         $itemsToSave = $this->expandCatalogRowsAgainstMainWarehouseVirtualStock($validated['items']);
 
@@ -1176,10 +976,6 @@ class ApplicationController extends Controller
             $this->syncCatalogItemManualDetail($createdItem, $normalized);
         }
 
-        if ($commercialOfferFile instanceof UploadedFile) {
-            CommercialOfferApplicationLines::commitDraftToApplication($application->fresh());
-        }
-
         $application->refresh();
         $this->applyBoilerChiefAutoGate($application);
         $this->applyManagementDelegationSupplyRelease($application, $request->user());
@@ -1204,11 +1000,11 @@ class ApplicationController extends Controller
         $this->authorizeForemanCanModifyApplication($request, $application);
 
         if ($application->isForemanDraftBeforeBoilerChief()) {
-            if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+            if (! $application->items()->exists()) {
                 return $this->redirectAfterApplicationSubmitAction(
                     $request,
                     $application,
-                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.']
                 );
             }
 
@@ -1224,11 +1020,11 @@ class ApplicationController extends Controller
         }
 
         if ($application->foremanCanResubmitAwaitingItemsToBoilerChief()) {
-            if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+            if (! $application->items()->exists()) {
                 return $this->redirectAfterApplicationSubmitAction(
                     $request,
                     $application,
-                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                    errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.']
                 );
             }
 
@@ -1273,11 +1069,11 @@ class ApplicationController extends Controller
             );
         }
 
-        if (! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+        if (! $application->items()->exists()) {
             return $this->redirectAfterApplicationSubmitAction(
                 $request,
                 $application,
-                errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.']
+                errors: ['submit' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.']
             );
         }
 
@@ -1285,12 +1081,9 @@ class ApplicationController extends Controller
         if ($application->isBoilerChiefDraftBeforeManagement()) {
             $update['application_status_id'] = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
             $update['approved_by_user_id'] = $request->user()->id;
-            if ($application->hasCommercialOfferApprovalColumns() && $application->hasCommercialOfferAttached()) {
-                $update['commercial_offer_chief_is_checked'] = true;
-                $update['commercial_offer_chief_reason_not_selected'] = null;
-            }
         } elseif ($application->isForemanCreatedApplication()
             && ! $application->needsBoilerChiefReviewBeforeManagement()) {
+            $update['application_status_id'] = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
             $update['approved_by_user_id'] = $request->user()->id;
         }
         $application->update($update);
@@ -1395,13 +1188,6 @@ class ApplicationController extends Controller
         $canForceArchiveApplications = $this->canForceArchiveApplications($request->user());
         $measurementMeta = $this->measurementMetaForUi();
         $equipmentNameMax = ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH;
-        $canAddCommercialOfferOrderLines = $application->commercialOfferReadyForManualOrderLines()
-            && ! $application->approvalLockedByShipmentProgress()
-            && $request->user()?->hasAnyRoleId($this->managementEditorRoleIds());
-        $commercialOfferOrderPrefillLines = [];
-        if ($canAddCommercialOfferOrderLines) {
-            $commercialOfferOrderPrefillLines = $this->commercialOfferOrderPrefillLinesForForm($request, $application);
-        }
 
         return view('applications.show', compact(
             'application',
@@ -1420,161 +1206,7 @@ class ApplicationController extends Controller
             'canForceArchiveApplications',
             'measurementMeta',
             'equipmentNameMax',
-            'canAddCommercialOfferOrderLines',
-            'commercialOfferOrderPrefillLines',
         ));
-    }
-
-    /**
-     * @return list<array{equipment_name: string, quantity: int, quantity_unit: string, measurement_type: string}>
-     */
-    private function commercialOfferOrderPrefillLinesForForm(Request $request, Application $application): array
-    {
-        $oldItems = $request->old('items');
-        if (is_array($oldItems) && $oldItems !== []) {
-            $lines = [];
-            foreach ($oldItems as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $name = trim((string) ($row['equipment_name'] ?? ''));
-                if ($name === '') {
-                    continue;
-                }
-                $lines[] = [
-                    'equipment_name' => $name,
-                    'quantity' => max(1, (int) ($row['quantity'] ?? 1)),
-                    'quantity_unit' => trim((string) ($row['quantity_unit'] ?? 'шт')) ?: 'шт',
-                    'measurement_type' => trim((string) ($row['measurement_type'] ?? 'piece')) ?: 'piece',
-                ];
-            }
-
-            return $lines;
-        }
-
-        return CommercialOfferApplicationLines::linesForOrderFormPrefill($application);
-    }
-
-    public function storeCommercialOfferOrderLines(Request $request, Application $application): RedirectResponse
-    {
-        if (! $request->user()->hasAnyRoleId($this->managementEditorRoleIds())) {
-            abort(403, 'Добавление оборудования по КП доступно только руководству и снабжению.');
-        }
-
-        $this->authorizeViewApplication($request, $application);
-
-        if ($application->archived_at !== null) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['co_order_lines' => 'Заявка в архиве.']);
-        }
-
-        if (! $application->commercialOfferReadyForManualOrderLines()) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['co_order_lines' => 'Сначала сохраните согласование коммерческого предложения.']);
-        }
-
-        if ($this->approvalLockedByDeliveryProgress($application)) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['co_order_lines' => 'Нельзя добавить позиции: по заявке уже есть оборудование «В пути» или «Доставлено».']);
-        }
-
-        $unitTypes = array_keys($this->measurementUnitsMap());
-        $validated = $request->validate([
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.equipment_name' => ['required', 'string', 'max:'.ApplicationItem::EQUIPMENT_NAME_MAX_LENGTH],
-            'items.*.measurement_type' => ['required', Rule::in($unitTypes)],
-            'items.*.quantity_unit' => ['nullable', 'string', 'max:'.ApplicationItem::QUANTITY_UNIT_MAX_LENGTH],
-            'items.*.quantity' => ['required'],
-            'items.*.size_value' => ['nullable', 'string', 'max:'.ApplicationItem::SIZE_VALUE_MAX_LENGTH],
-        ], array_merge([
-            'items.required' => 'Добавьте хотя бы одну позицию оборудования.',
-            'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
-            'items.*.equipment_name.required' => 'Укажите наименование оборудования.',
-            'items.*.measurement_type.required' => 'Выберите тип измерения.',
-        ], ApplicationItem::applicationFormValidationMessages()));
-
-        $reservedCount = 0;
-        $orderCount = 0;
-
-        DB::transaction(function () use ($application, $validated, &$reservedCount, &$orderCount): void {
-            $rows = CommercialOfferOrderStockSplit::expandRows(
-                $validated['items'],
-                (int) $application->id
-            );
-
-            foreach ($rows as $row) {
-                $typeId = $row['equipment_id'] ?? null;
-                $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
-                $name = trim((string) ($row['equipment_name'] ?? ''));
-                if ($typeId === null && $name === '') {
-                    continue;
-                }
-
-                $catalogName = $typeId !== null
-                    ? Equipment::query()->whereKey($typeId)->value('name')
-                    : null;
-                $normalized = $this->normalizeItemPayload($row, is_string($catalogName) ? $catalogName : null);
-
-                if ($typeId !== null) {
-                    $createdItem = $application->items()->create([
-                        'equipment_id' => $typeId,
-                        'equipment_name' => null,
-                        'base_name' => $normalized['base_name'],
-                        'size_value' => $normalized['size_value'],
-                        'quantity' => $normalized['quantity'],
-                        'measurement_type' => $normalized['measurement_type'],
-                        'quantity_unit' => $normalized['quantity_unit'],
-                        'raw_input' => null,
-                        'is_checked' => true,
-                        'reason_not_selected' => ApplicationItem::REASON_COMMERCIAL_OFFER_WAREHOUSE_RESERVE,
-                        'custom_equipment_supply_status_id' => null,
-                        'delivery_status_id' => null,
-                        'delivery_warehouse_id' => null,
-                    ]);
-                    $this->syncCatalogItemManualDetail($createdItem, $normalized);
-                    $reservedCount++;
-
-                    continue;
-                }
-
-                $normalized['raw_input'] = ApplicationItem::RAW_INPUT_COMMERCIAL_OFFER_ORDER;
-                $application->items()->create([
-                    'equipment_id' => null,
-                    'equipment_name' => $normalized['equipment_name'],
-                    'base_name' => $normalized['base_name'],
-                    'size_value' => $normalized['size_value'],
-                    'quantity' => $normalized['quantity'],
-                    'measurement_type' => $normalized['measurement_type'],
-                    'quantity_unit' => $normalized['quantity_unit'],
-                    'raw_input' => $normalized['raw_input'],
-                    'is_checked' => true,
-                    'reason_not_selected' => null,
-                    'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID,
-                    'delivery_status_id' => null,
-                    'delivery_warehouse_id' => null,
-                ]);
-                $orderCount++;
-            }
-        });
-
-        $created = $reservedCount + $orderCount;
-        if ($created === 0) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['co_order_lines' => 'Не удалось сохранить ни одной позиции. Проверьте наименование и тип.'])
-                ->withInput();
-        }
-
-        $statusParts = [];
-        if ($reservedCount > 0) {
-            $statusParts[] = 'зарезервировано со склада администрации: '.$reservedCount;
-        }
-        if ($orderCount > 0) {
-            $statusParts[] = 'к заказу у поставщика: '.$orderCount.' (раздел «Оборудование к заказу»)';
-        }
-        $status = 'По КП обработано позиций: '.$created.' ('.implode('; ', $statusParts).').';
-
-        return redirect()->route('applications.show', $application)
-            ->with('status', $status);
     }
 
     public function editResponsible(Request $request, Application $application): View
@@ -1828,32 +1460,6 @@ class ApplicationController extends Controller
             ->with('status', $status);
     }
 
-    public function viewCommercialOffer(Request $request, Application $application): BinaryFileResponse
-    {
-        $this->authorizeViewApplication($request, $application);
-
-        $path = $this->resolveCommercialOfferPath($application);
-        if (! $path) {
-            abort(404, 'Файл коммерческого предложения не найден.');
-        }
-
-        return response()->file($path);
-    }
-
-    public function downloadCommercialOffer(Request $request, Application $application): BinaryFileResponse
-    {
-        $this->authorizeViewApplication($request, $application);
-
-        $path = $this->resolveCommercialOfferPath($application);
-        if (! $path) {
-            abort(404, 'Файл коммерческого предложения не найден.');
-        }
-
-        $name = basename($path);
-
-        return response()->download($path, $name);
-    }
-
     public function viewInstallationAct(Request $request, Application $application): BinaryFileResponse
     {
         $this->authorizeViewInstallationActFiles($request, $application);
@@ -1903,12 +1509,6 @@ class ApplicationController extends Controller
             return $redirect;
         }
 
-        if ($request->boolean('discard_commercial_offer_draft')) {
-            ApplicationCommercialOfferDraft::clear();
-
-            return redirect()->route('applications.edit', $application);
-        }
-
         $subdivisions = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
             ? Subdivision::query()->active()->orderBy('name')->get()
             : $this->availableSubdivisionsForCreate($request);
@@ -1933,9 +1533,6 @@ class ApplicationController extends Controller
         $foremanMayReviseRejectedByBoilerChiefOnly = $request->user()?->hasRoleId(4)
             && $application->foremanCanReviseAfterBoilerChiefRejection();
         $foremanCanResubmitToBoilerChief = $application->foremanCanResubmitAwaitingItemsToBoilerChief();
-        $commercialOfferDraftReady = ApplicationCommercialOfferDraft::existsFor((int) $application->id)
-            || $request->boolean('commercial_offer_ready');
-        $commercialProposalFillUrl = route('applications.commercial-proposal.fill.edit', $application);
 
         return view('applications.edit', compact(
             'application',
@@ -1950,8 +1547,6 @@ class ApplicationController extends Controller
             'isCreatorDraft',
             'foremanMayReviseRejectedByBoilerChiefOnly',
             'foremanCanResubmitToBoilerChief',
-            'commercialOfferDraftReady',
-            'commercialProposalFillUrl',
         ));
     }
 
@@ -2004,13 +1599,9 @@ class ApplicationController extends Controller
             'items.*.quantity_unit' => ['nullable', 'string', 'max:'.ApplicationItem::QUANTITY_UNIT_MAX_LENGTH],
             'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'transport_option_id' => $this->transportOptionIdRuleForCreateUpdateForms(),
-            'commercial_offer' => ['nullable', 'file', 'mimes:pdf,docx', 'max:10240'],
-            'use_commercial_offer_draft' => ['nullable', 'boolean'],
         ];
 
         $validated = $request->validate($rules, array_merge([
-            'commercial_offer.mimes' => 'Коммерческое предложение можно прикрепить только в формате PDF или DOCX.',
-            'commercial_offer.max' => 'Максимальный размер файла: 10 МБ.',
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ], ApplicationItem::applicationFormValidationMessages()));
@@ -2056,9 +1647,9 @@ class ApplicationController extends Controller
         $this->validateUniqueEquipmentLines($validated['items']);
 
         if (in_array((string) $request->input('submit_action'), ['submit_to_boiler_chief', 'submit_for_management'], true)
-            && ! $this->willHaveEquipmentOrCommercialOfferForSubmission($application, $request, $validated['items'])) {
+            && ! $this->willHaveEquipmentForSubmission($application, $validated['items'])) {
             throw ValidationException::withMessages([
-                'submit_action' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.',
+                'submit_action' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.',
             ]);
         }
 
@@ -2173,9 +1764,6 @@ class ApplicationController extends Controller
         }
 
         $previousSubdivisionId = (int) $application->subdivision_id;
-
-        $this->replaceCommercialOfferOnUpdate($request, $application);
-        $application->refresh();
 
         DB::transaction(function () use (
             $application,
@@ -2302,9 +1890,9 @@ class ApplicationController extends Controller
             $application->refresh();
             $application->load('items');
 
-            if ($submitForApprovalOnUpdate && ! $application->hasEquipmentOrCommercialOfferForSubmission()) {
+            if ($submitForApprovalOnUpdate && ! $application->items()->exists()) {
                 throw ValidationException::withMessages([
-                    'submit_action' => 'Добавьте хотя бы одну позицию оборудования или прикрепите коммерческое предложение перед отправкой.',
+                    'submit_action' => 'Добавьте хотя бы одну позицию оборудования перед отправкой.',
                 ]);
             }
 
@@ -2409,22 +1997,13 @@ class ApplicationController extends Controller
                 ->withErrors(['approval' => 'Согласование нельзя изменять после отметки оборудования «В пути» или «Доставлено».']);
         }
 
-        if ($application->isCommercialOfferOnlyApplication()) {
-            return $this->saveManagementCommercialOfferApproval($request, $application);
-        }
-
         if ($application->items->isEmpty()) {
             return redirect()->route('applications.show', $application)
                 ->with('status', 'Нет позиций для согласования.');
         }
 
-        $commercialOfferErrors = [];
-        if ($application->needsManagementCommercialOfferReview()) {
-            $commercialOfferErrors = $this->validateCommercialOfferManagementApprovalInput($request);
-        }
-
         $itemsInput = $request->input('items', []);
-        $errors = $commercialOfferErrors;
+        $errors = [];
 
         foreach ($application->items as $item) {
             $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id] ?? null;
@@ -2451,11 +2030,7 @@ class ApplicationController extends Controller
                 ->withInput();
         }
 
-        $commercialOfferUpdate = $application->needsManagementCommercialOfferReview()
-            ? $this->commercialOfferManagementApprovalUpdateFromRequest($request)
-            : null;
-
-        DB::transaction(function () use ($application, $itemsInput, $request, $commercialOfferUpdate) {
+        DB::transaction(function () use ($application, $itemsInput, $request) {
             foreach ($application->items as $item) {
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
                 $checkedRaw = $row['is_checked'] ?? '0';
@@ -2482,13 +2057,7 @@ class ApplicationController extends Controller
             $application->refresh();
             $application->load('items');
 
-            if ($commercialOfferUpdate !== null) {
-                $application->update($commercialOfferUpdate);
-                $application->refresh();
-            }
-
             $payload = Application::aggregateApprovalPayloadFromItems($application->items);
-            $payload = $this->mergeManagementApprovalStatusWithCommercialOffer($application, $payload);
             $approvalUpdate = [
                 'application_status_id' => $payload['application_status_id'],
                 'reason_for_refusal' => $payload['reason_for_refusal'],
@@ -2497,7 +2066,6 @@ class ApplicationController extends Controller
             if (Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
                 && ! $application->needsBoilerChiefReviewBeforeManagement()) {
                 $approvalUpdate['management_supply_items_saved_at'] = $application->hasApprovedEquipmentLines()
-                    || $application->commercialOfferManagementIsApproved()
                     ? now()
                     : null;
             }
@@ -2529,10 +2097,6 @@ class ApplicationController extends Controller
         }
 
         $application->load('items');
-
-        if ($application->isCommercialOfferOnlyApplication()) {
-            return $this->saveBoilerChiefCommercialOfferApproval($request, $application);
-        }
 
         if ($application->items->isEmpty()) {
             return redirect()->route('applications.show', $application)
@@ -2584,21 +2148,13 @@ class ApplicationController extends Controller
             }
         }
 
-        $commercialOfferUpdate = null;
-        if ($application->hasCommercialOfferAttached() && $application->commercialOfferChiefReviewPending()) {
-            $errors = array_merge($errors, $this->validateCommercialOfferChiefApprovalInput($request));
-            if ($errors === []) {
-                $commercialOfferUpdate = $this->commercialOfferChiefApprovalUpdateForMixedApplication($request);
-            }
-        }
-
         if ($errors !== []) {
             return redirect()->route('applications.show', $application)
                 ->withErrors($errors)
                 ->withInput();
         }
 
-        DB::transaction(function () use ($application, $itemsInput, $bulkUncheckedReason, $commercialOfferUpdate, $itemsForChiefApproval) {
+        DB::transaction(function () use ($itemsInput, $bulkUncheckedReason, $itemsForChiefApproval) {
             foreach ($itemsForChiefApproval as $item) {
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
                 $checkedRaw = $row['is_checked'] ?? '0';
@@ -2612,13 +2168,6 @@ class ApplicationController extends Controller
                     'reason_not_selected' => $isChecked ? null : $reason,
                 ]);
             }
-
-            if ($commercialOfferUpdate !== null) {
-                $application->update($commercialOfferUpdate);
-            }
-
-            $application->refresh();
-            $application->load('items');
         });
 
         $application->refresh();
@@ -2627,6 +2176,8 @@ class ApplicationController extends Controller
             $application->update([
                 'approved_by_user_id' => null,
                 'management_supply_items_saved_at' => null,
+                'application_status_id' => ApplicationStatus::idForDraft(),
+                'reason_for_refusal' => null,
             ]);
         }
 
@@ -2699,9 +2250,23 @@ class ApplicationController extends Controller
                 continue;
             }
 
+            try {
+                $expectedArrivalAt = $this->parseDeliveryExpectedArrivalAt(
+                    isset($row['expected_arrival_at']) ? (string) $row['expected_arrival_at'] : null,
+                    "items.{$itemId}"
+                );
+            } catch (ValidationException $e) {
+                foreach ($e->errors() as $key => $messages) {
+                    $errors[$key] = $messages;
+                }
+
+                continue;
+            }
+
             $resolved[] = [
                 'item_id' => (int) $itemId,
                 'transport_option_id' => $transportOptionId,
+                'expected_arrival_at' => $expectedArrivalAt,
             ];
         }
 
@@ -2725,6 +2290,7 @@ class ApplicationController extends Controller
                         'delivery_status_id' => ApplicationItem::DELIVERY_IN_TRANSIT_ID,
                         'delivery_warehouse_id' => null,
                         'transport_option_id' => $row['transport_option_id'],
+                        'expected_arrival_at' => $row['expected_arrival_at'],
                     ]);
             }
         });
@@ -2740,6 +2306,37 @@ class ApplicationController extends Controller
 
         return redirect()->route('applications.show', $application)
             ->with('status', $status);
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function parseDeliveryExpectedArrivalAt(?string $raw, string $errorKeyPrefix): Carbon
+    {
+        $value = trim((string) ($raw ?? ''));
+        if ($value === '') {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.expected_arrival_at" => 'Укажите дату прибытия оборудования.',
+            ]);
+        }
+
+        $parsed = Carbon::createFromFormat('Y-m-d', $value);
+
+        if ($parsed === false) {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.expected_arrival_at" => 'Некорректная дата прибытия.',
+            ]);
+        }
+
+        $parsed = $parsed->startOfDay();
+
+        if ($parsed->lt(now()->startOfDay())) {
+            throw ValidationException::withMessages([
+                "{$errorKeyPrefix}.expected_arrival_at" => 'Дата прибытия не может быть в прошлом.',
+            ]);
+        }
+
+        return $parsed;
     }
 
     /**
@@ -3125,37 +2722,6 @@ class ApplicationController extends Controller
         return null;
     }
 
-    private function replaceCommercialOfferOnUpdate(Request $request, Application $application): void
-    {
-        $application->refresh();
-        $previousPath = trim((string) ($application->commercial_offer ?? ''));
-        if ($previousPath === '') {
-            return;
-        }
-
-        $replacement = null;
-        if ($request->hasFile('commercial_offer')) {
-            ApplicationCommercialOfferDraft::clear();
-            $replacement = $request->file('commercial_offer');
-        } elseif ($request->boolean('use_commercial_offer_draft')
-            && ApplicationCommercialOfferDraft::existsFor((int) $application->id)) {
-            $replacement = ApplicationCommercialOfferDraft::pullUploadedFile((int) $application->id);
-        }
-
-        if (! $replacement instanceof UploadedFile) {
-            return;
-        }
-
-        $newPath = $this->storeCommercialOfferForApplication($replacement, $application);
-        $application->update(['commercial_offer' => $newPath]);
-
-        if ($previousPath !== $newPath) {
-            $this->deleteStoredPublicDiskFile($previousPath);
-        }
-
-        CommercialOfferApplicationLines::commitDraftToApplication($application->fresh());
-    }
-
     private function customEquipmentBulkReturnUrl(Request $request, Application $application): string
     {
         return route('applications.custom-equipment-order', $application);
@@ -3171,57 +2737,6 @@ class ApplicationController extends Controller
         if (Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
         }
-    }
-
-    private function storeCommercialOfferForApplication(UploadedFile $file, Application $application): string
-    {
-        $storageDisk = 'public';
-        $storageDir = 'commercial-offers';
-        Storage::disk($storageDisk)->makeDirectory($storageDir);
-
-        $storedName = $this->commercialOfferStorageFileName($file, (int) $application->id);
-        $storedName = $this->uniqueStorageFileName($storageDisk, $storageDir, $storedName, (int) $application->id);
-
-        return $file->storeAs($storageDir, $storedName, $storageDisk);
-    }
-
-    private function commercialOfferStorageFileName(UploadedFile $file, int $applicationId): string
-    {
-        $clientName = mb_strtolower(trim((string) $file->getClientOriginalName()));
-        $isGeneratedDraft = in_array($clientName, [
-            'kommercheskoe-predlozhenie.pdf',
-            'kommercheskoe-predlozhenie.docx',
-        ], true);
-
-        if ($isGeneratedDraft) {
-            $extension = mb_strtolower(trim((string) $file->getClientOriginalExtension()));
-            if ($extension === '') {
-                $extension = mb_strtolower(trim((string) $file->extension()));
-            }
-            $extension = in_array($extension, ['pdf', 'docx'], true) ? $extension : 'pdf';
-
-            return "Коммерческое предложение (заявка {$applicationId}).{$extension}";
-        }
-
-        return $this->safeUploadedOriginalName($file, 'kommercheskoe-predlozhenie');
-    }
-
-    private function uniqueStorageFileName(string $disk, string $directory, string $fileName, int $applicationId): string
-    {
-        $relativePath = trim($directory, '/').'/'.$fileName;
-        if (! Storage::disk($disk)->exists($relativePath)) {
-            return $fileName;
-        }
-
-        $dotPosition = mb_strrpos($fileName, '.');
-        if ($dotPosition !== false && $dotPosition > 0) {
-            $stem = mb_substr($fileName, 0, $dotPosition);
-            $extension = mb_substr($fileName, $dotPosition);
-
-            return "заявка-{$applicationId}-{$stem}{$extension}";
-        }
-
-        return "заявка-{$applicationId}-{$fileName}";
     }
 
     private function safeUploadedOriginalName(UploadedFile $file, string $fallbackPrefix): string
@@ -3467,21 +2982,12 @@ class ApplicationController extends Controller
                 $item->update($payload);
             }
 
-            $applicationUpdate = [
+            $application->update([
                 'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
                 'approved_by_user_id' => $creator->id,
                 'reason_for_refusal' => null,
                 'management_supply_items_saved_at' => now(),
-            ];
-
-            if ($application->hasCommercialOfferAttached() && $application->hasCommercialOfferApprovalColumns()) {
-                $applicationUpdate['commercial_offer_chief_is_checked'] = true;
-                $applicationUpdate['commercial_offer_chief_reason_not_selected'] = null;
-                $applicationUpdate['commercial_offer_management_is_checked'] = true;
-                $applicationUpdate['commercial_offer_management_reason_not_selected'] = null;
-            }
-
-            $application->update($applicationUpdate);
+            ]);
         });
     }
 
@@ -3495,7 +3001,7 @@ class ApplicationController extends Controller
         $allowed = $request->user() && $request->user()->hasAnyRoleId(User::APPLICATION_CREATOR_ROLE_IDS);
 
         if (! $allowed) {
-            abort(403, 'Создание заявок разрешено только директору, техническому директору, начальнику отдела снабжения, мастеру участка и начальнику котельной.');
+            abort(403, 'Создание заявок разрешено только мастеру участка и начальнику котельной.');
         }
     }
 
@@ -3570,17 +3076,9 @@ class ApplicationController extends Controller
     private function finalizeForemanResubmissionToBoilerChief(Application $application): void
     {
         DB::transaction(function () use ($application): void {
-            $applicationUpdate = [
+            $application->update([
                 'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING),
-            ];
-
-            if ($application->hasCommercialOfferApprovalColumns()
-                && $application->commercialOfferChiefIsRejected()) {
-                $applicationUpdate['commercial_offer_chief_is_checked'] = null;
-                $applicationUpdate['commercial_offer_chief_reason_not_selected'] = null;
-            }
-
-            $application->update($applicationUpdate);
+            ]);
         });
 
         $application->refresh();
@@ -3674,11 +3172,6 @@ class ApplicationController extends Controller
         }
 
         return Subdivision::query()->active()->orderBy('name')->get();
-    }
-
-    private function resolveCommercialOfferPath(Application $application): ?string
-    {
-        return $this->resolveStoredPublicDiskAbsolutePath(trim((string) ($application->commercial_offer ?? '')));
     }
 
     private function resolveInstallationActPath(Application $application): ?string
@@ -3893,199 +3386,6 @@ class ApplicationController extends Controller
     private function resolveMainWarehouseForAccounting(): ?Warehouse
     {
         return \App\Support\AdministrationWarehouse::resolvePrimaryWarehouse();
-    }
-
-    private function saveBoilerChiefCommercialOfferApproval(Request $request, Application $application): RedirectResponse
-    {
-        if (! $application->hasCommercialOfferAttached()) {
-            return redirect()->route('applications.show', $application)
-                ->with('status', 'У заявки нет коммерческого предложения.');
-        }
-
-        if (! $application->needsBoilerChiefReviewBeforeManagement()) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['boiler_chief' => 'Коммерческое предложение уже согласовано начальником котельной.']);
-        }
-
-        $commercialOfferErrors = $this->validateCommercialOfferChiefApprovalInput($request);
-        if ($commercialOfferErrors !== []) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors($commercialOfferErrors)
-                ->withInput();
-        }
-
-        $checkedRaw = $request->input('commercial_offer_chief_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_chief_reason_not_selected', ''));
-
-        $statusPayload = Application::aggregateApprovalPayloadFromCommercialOffer($isChecked, $isChecked ? null : $reason);
-
-        $update = array_merge($statusPayload, [
-            'commercial_offer_chief_is_checked' => $isChecked,
-            'commercial_offer_chief_reason_not_selected' => $isChecked ? null : $reason,
-            'commercial_offer_management_is_checked' => null,
-            'commercial_offer_management_reason_not_selected' => null,
-            'management_supply_items_saved_at' => null,
-        ]);
-
-        if ($isChecked) {
-            $update['approved_by_user_id'] = $request->user()->id;
-        } else {
-            $update['approved_by_user_id'] = null;
-        }
-
-        $application->update($update);
-
-        $statusMessage = $isChecked
-            ? 'Коммерческое предложение согласовано и отправлено на согласование руководству и снабжению.'
-            : 'Коммерческое предложение не согласовано. Указана причина отказа.';
-
-        return redirect()->route('applications.show', $application)
-            ->with('status', $statusMessage);
-    }
-
-    private function saveManagementCommercialOfferApproval(Request $request, Application $application): RedirectResponse
-    {
-        if (! $application->needsManagementCommercialOfferReview()) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['approval' => 'Согласование коммерческого предложения на этом этапе недоступно.']);
-        }
-
-        $checkedRaw = $request->input('commercial_offer_management_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_management_reason_not_selected', ''));
-
-        if (! $isChecked && $reason === '') {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['commercial_offer_management_reason_not_selected' => 'Укажите причину не согласования коммерческого предложения.'])
-                ->withInput();
-        }
-
-        if (mb_strlen($reason) > 500) {
-            return redirect()->route('applications.show', $application)
-                ->withErrors(['commercial_offer_management_reason_not_selected' => 'Причина не может быть длиннее 500 символов.'])
-                ->withInput();
-        }
-
-        $statusPayload = Application::aggregateApprovalPayloadFromCommercialOffer($isChecked, $isChecked ? null : $reason);
-
-        $application->update(array_merge($statusPayload, [
-            'commercial_offer_management_is_checked' => $isChecked,
-            'commercial_offer_management_reason_not_selected' => $isChecked ? null : $reason,
-            'approved_by_user_id' => $request->user()->id,
-            'management_supply_items_saved_at' => $isChecked ? now() : null,
-        ]));
-
-        $statusMessage = $isChecked
-            ? 'Коммерческое предложение согласовано руководством и снабжением.'
-            : 'Коммерческое предложение не согласовано. Указана причина отказа.';
-
-        return redirect()->route('applications.show', $application)
-            ->with('status', $statusMessage);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function validateCommercialOfferManagementApprovalInput(Request $request): array
-    {
-        $checkedRaw = $request->input('commercial_offer_management_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_management_reason_not_selected', ''));
-
-        if (! $isChecked && $reason === '') {
-            return ['commercial_offer_management_reason_not_selected' => 'Укажите причину не согласования коммерческого предложения.'];
-        }
-
-        if (mb_strlen($reason) > 500) {
-            return ['commercial_offer_management_reason_not_selected' => 'Причина не может быть длиннее 500 символов.'];
-        }
-
-        return [];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function commercialOfferManagementApprovalUpdateFromRequest(Request $request): array
-    {
-        $checkedRaw = $request->input('commercial_offer_management_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_management_reason_not_selected', ''));
-
-        return [
-            'commercial_offer_management_is_checked' => $isChecked,
-            'commercial_offer_management_reason_not_selected' => $isChecked ? null : $reason,
-        ];
-    }
-
-    /**
-     * @param  array{application_status_id: int, reason_for_refusal: string|null}  $itemsPayload
-     * @return array{application_status_id: int, reason_for_refusal: string|null}
-     */
-    private function mergeManagementApprovalStatusWithCommercialOffer(Application $application, array $itemsPayload): array
-    {
-        if (! $application->hasCommercialOfferAttached()) {
-            return $itemsPayload;
-        }
-
-        if ($application->commercialOfferManagementIsRejected()) {
-            $coReason = trim((string) ($application->commercial_offer_management_reason_not_selected ?? ''));
-
-            return [
-                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
-                'reason_for_refusal' => $coReason !== '' ? $coReason : $itemsPayload['reason_for_refusal'],
-            ];
-        }
-
-        if ($application->commercialOfferChiefIsRejected()) {
-            $coReason = trim((string) ($application->commercial_offer_chief_reason_not_selected ?? ''));
-
-            return [
-                'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
-                'reason_for_refusal' => $coReason !== '' ? $coReason : $itemsPayload['reason_for_refusal'],
-            ];
-        }
-
-        return $itemsPayload;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function validateCommercialOfferChiefApprovalInput(Request $request): array
-    {
-        $checkedRaw = $request->input('commercial_offer_chief_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_chief_reason_not_selected', ''));
-
-        if (! $isChecked && $reason === '') {
-            return ['commercial_offer_chief_reason_not_selected' => 'Укажите причину не согласования коммерческого предложения.'];
-        }
-
-        if (mb_strlen($reason) > 500) {
-            return ['commercial_offer_chief_reason_not_selected' => 'Причина не может быть длиннее 500 символов.'];
-        }
-
-        return [];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function commercialOfferChiefApprovalUpdateForMixedApplication(Request $request): array
-    {
-        $checkedRaw = $request->input('commercial_offer_chief_is_checked', '0');
-        $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
-        $reason = trim((string) $request->input('commercial_offer_chief_reason_not_selected', ''));
-
-        return [
-            'commercial_offer_chief_is_checked' => $isChecked,
-            'commercial_offer_chief_reason_not_selected' => $isChecked ? null : $reason,
-            'commercial_offer_management_is_checked' => null,
-            'commercial_offer_management_reason_not_selected' => null,
-            'management_supply_items_saved_at' => null,
-        ];
     }
 
     /**
@@ -5071,22 +4371,13 @@ class ApplicationController extends Controller
     /**
      * @param  array<int, array<string, mixed>>  $items
      */
-    private function willHaveEquipmentOrCommercialOfferForSubmission(Application $application, Request $request, array $items): bool
+    private function willHaveEquipmentForSubmission(Application $application, array $items): bool
     {
         if ($this->requestHasSubstantiveEquipmentItems($items)) {
             return true;
         }
 
-        if ($application->hasCommercialOfferAttached()) {
-            return true;
-        }
-
-        if ($request->hasFile('commercial_offer')) {
-            return true;
-        }
-
-        return $request->boolean('use_commercial_offer_draft')
-            && ApplicationCommercialOfferDraft::existsFor((int) $application->id);
+        return $application->items()->exists();
     }
 
     private function validateUniqueEquipmentLines(array $items): void

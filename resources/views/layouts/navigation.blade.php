@@ -73,7 +73,7 @@
                         </a>
                     @endif
 
-                    @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS))
+                    @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_INSTALLATION_ACT_ROLE_IDS))
                         <a href="{{ route('applications.installation-act.upload') }}"
                            class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')) aria-current="page" @endif>
@@ -279,7 +279,7 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS))
+            @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_INSTALLATION_ACT_ROLE_IDS))
                 <x-responsive-nav-link :href="route('applications.installation-act.upload')" :active="request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store')">
                     Акт установки
                 </x-responsive-nav-link>

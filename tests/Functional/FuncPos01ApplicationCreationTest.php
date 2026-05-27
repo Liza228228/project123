@@ -1,10 +1,10 @@
 <?php
 
 use App\Models\Application;
+use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
 use App\Models\User;
 use App\Support\ApplicationIndexPresenter;
-use App\Support\CommercialOfferApplicationLines;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;
 
@@ -92,6 +92,12 @@ test('foreman can save draft and submit to boiler chief when chief assigned', fu
     $app->refresh();
     expect($app->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING));
     expect($app->needsBoilerChiefReviewBeforeManagement())->toBeTrue();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $chief
+    );
+    expect($app->index_list_status)->toBe('boiler');
 
     $this->actingAs($ctx['foreman'])->get(route('applications.edit', $app))
         ->assertForbidden();
@@ -562,33 +568,24 @@ test('boiler chief can save draft and submit for management approval', function 
         ->assertForbidden();
 });
 
-test('management creator cannot assign responsible foreman from another subdivision', function (): void {
+test('management roles cannot create applications', function (int $roleId): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
-    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-ответственный-mgmt');
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-запрет-создания-'.$roleId);
 
-    $otherSubdivision = \App\Models\Subdivision::query()->create(['name' => 'Другое подразделение ответственный mgmt']);
-    $otherForeman = \App\Models\User::query()->create([
-        'surname' => 'Чужой',
-        'name' => 'Мастер',
-        'patronymic' => 'Руководство',
-        'email' => 'other-foreman-resp-mgmt-'.uniqid('', true).'@test.local',
+    $managementUser = \App\Models\User::query()->create([
+        'surname' => 'Руководство',
+        'name' => 'Создатель',
+        'patronymic' => 'Запрет',
+        'email' => 'mgmt-no-create-'.$roleId.'-'.uniqid('', true).'@test.local',
         'password' => \Illuminate\Support\Facades\Hash::make('password'),
-        'role_id' => 4,
-    ]);
-    $otherForeman->assignedSubdivisions()->sync([$otherSubdivision->id]);
-
-    $supplyHead = \App\Models\User::query()->create([
-        'surname' => 'Снаб',
-        'name' => 'Начальник',
-        'patronymic' => 'Ответственный',
-        'email' => 'supply-resp-block-'.uniqid('', true).'@test.local',
-        'password' => \Illuminate\Support\Facades\Hash::make('password'),
-        'role_id' => 2,
+        'role_id' => $roleId,
     ]);
 
-    $this->actingAs($supplyHead)->from(route('applications.create'))->post(route('applications.store'), [
+    $this->actingAs($managementUser)->get(route('applications.create'))->assertForbidden();
+
+    $this->actingAs($managementUser)->post(route('applications.store'), [
         'subdivision_id' => $ctx['subdivision']->id,
-        'responsible_user_id' => $otherForeman->id,
+        'responsible_user_id' => $ctx['foreman']->id,
         'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
         'items' => [
             [
@@ -598,15 +595,10 @@ test('management creator cannot assign responsible foreman from another subdivis
                 'quantity_unit' => 'шт',
             ],
         ],
-    ])->assertRedirect(route('applications.create'))
-        ->assertSessionHasErrors('responsible_user_id');
+    ])->assertForbidden();
 
-    expect(Application::query()->where('user_id', $supplyHead->id)->exists())->toBeFalse();
-
-    $this->actingAs($supplyHead)->get(route('applications.create'))
-        ->assertOk()
-        ->assertSee('"subdivision_first"', false);
-});
+    expect(Application::query()->where('user_id', $managementUser->id)->exists())->toBeFalse();
+})->with(\App\Models\User::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS);
 
 test('boiler chief cannot assign responsible foreman from another subdivision', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
@@ -881,10 +873,19 @@ test('boiler chief submits foreman application to management after boiler approv
     ])->assertRedirect(route('applications.show', $app));
 
     $app->refresh();
+    expect($app->application_status_id)->toBe(ApplicationStatus::idForDraft());
+    expect($app->isForemanDraftAfterBoilerChiefBeforeManagement())->toBeTrue();
+    expect($app->isWorkflowDraftForDisplay())->toBeTrue();
     expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
     expect($app->boilerChiefCanSubmitToManagement())->toBeTrue();
     expect($app->boilerChiefReleasedToManagement())->toBeFalse();
     expect($app->isVisibleToManagementEditors())->toBeFalse();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $chief
+    );
+    expect($app->index_list_status)->toBe('draft');
 
     $this->actingAs($management)->get(route('applications.index'))
         ->assertOk()
@@ -902,9 +903,17 @@ test('boiler chief submits foreman application to management after boiler approv
         ->assertRedirect(route('applications.show', $app));
 
     $app->refresh();
+    expect($app->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING));
     expect($app->boilerChiefReleasedToManagement())->toBeTrue();
     expect($app->approved_by_user_id)->toBe($chief->id);
     expect($app->boilerChiefCanSubmitToManagement())->toBeFalse();
+    expect($app->isPendingManagementReview())->toBeTrue();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $management
+    );
+    expect($app->index_list_status)->toBe('management');
 
     $this->actingAs($management)->get(route('applications.index'))
         ->assertOk()
@@ -1114,19 +1123,9 @@ test('management rejection of all equipment lines marks application rejected and
         ->assertDontSee('На согласование', false);
 });
 
-test('management creator with assigned foreman skips approval and is supply-ready', function (): void {
+test('legacy management-delegated application with assigned foreman is supply-ready', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-500');
-
-    $chief = \App\Models\User::query()->create([
-        'surname' => 'Начальник',
-        'name' => 'Котельный',
-        'patronymic' => 'Менеджмент',
-        'email' => 'chief-mgmt-skip-'.uniqid('', true).'@test.local',
-        'password' => \Illuminate\Support\Facades\Hash::make('password'),
-        'role_id' => 7,
-    ]);
-    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
 
     $supplyHead = \App\Models\User::query()->create([
         'surname' => 'Снаб',
@@ -1137,21 +1136,24 @@ test('management creator with assigned foreman skips approval and is supply-read
         'role_id' => 2,
     ]);
 
-    $this->actingAs($supplyHead)->post(route('applications.store'), [
+    $app = Application::query()->create([
+        'user_id' => $supplyHead->id,
         'subdivision_id' => $ctx['subdivision']->id,
         'responsible_user_id' => $ctx['foreman']->id,
-        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
-        'items' => [
-            [
-                'equipment_id' => $ctx['equipment']->id,
-                'quantity' => 1,
-                'measurement_type' => 'piece',
-                'quantity_unit' => 'шт',
-            ],
-        ],
-    ])->assertRedirect(route('applications.index'));
-
-    $app = Application::query()->where('user_id', $supplyHead->id)->first();
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+        'desired_delivery_date' => now()->addDays(7)->toDateString(),
+        'approved_by_user_id' => $supplyHead->id,
+        'management_supply_items_saved_at' => now(),
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $app->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+    ]);
+    $app = $app->fresh(['items', 'user']);
     expect($app)->not->toBeNull();
     expect($app->isManagementDelegatedToSiteForeman())->toBeTrue();
     expect($app->needsBoilerChiefReviewBeforeManagement())->toBeFalse();
@@ -1166,10 +1168,6 @@ test('management creator with assigned foreman skips approval and is supply-read
     $this->actingAs($ctx['foreman'])->get(route('applications.show', $app))
         ->assertOk()
         ->assertDontSee('Изменить', false);
-
-    $this->actingAs($chief)->get(route('applications.show', $app))
-        ->assertOk()
-        ->assertDontSee('id="boiler-chief-approval-form"', false);
 
     $this->actingAs($supplyHead)->get(route('applications.show', $app))
         ->assertOk()
@@ -1431,9 +1429,8 @@ test('director technical director and supply head share application workflow acc
     ]);
 
     $this->actingAs($user)->get(route('applications.index'))->assertOk();
-    $this->actingAs($user)->get(route('applications.create'))->assertOk();
-    $this->actingAs($user)->get(route('applications.commercial-offer-procurement'))->assertNotFound();
-
+    $this->actingAs($user)->get(route('applications.create'))->assertForbidden();
+    $this->actingAs($user)->get(route('applications.installation-act.upload'))->assertOk();
     if ($roleId === User::TECHNICAL_DIRECTOR_ROLE_ID) {
         $this->actingAs($user)->get(route('applications.custom-equipment-to-order'))->assertForbidden();
     } else {

@@ -58,8 +58,6 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
         return redirect()->route('applications.index', $query);
     })->name('archive');
     Route::get('/create', [ApplicationController::class, 'create'])->name('create');
-    Route::get('/commercial-proposal/fill', [ApplicationController::class, 'createCommercialProposalFill'])->name('commercial-proposal.fill');
-    Route::post('/commercial-proposal/fill', [ApplicationController::class, 'storeCommercialProposalFill'])->name('commercial-proposal.fill.store');
     Route::get('/installation-act/upload', [ApplicationController::class, 'createInstallationActUpload'])->name('installation-act.upload');
     Route::post('/installation-act/upload', [ApplicationController::class, 'storeInstallationActUpload'])->name('installation-act.upload.store');
     Route::get('/installation-act/browse', [ApplicationController::class, 'browseInstallationActs'])->name('installation-act.browse');
@@ -70,26 +68,19 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::get('/installation-act/layout-fill/submissions/{submission}/pdf', [BoilerChiefRequestLayoutController::class, 'foremanSubmissionPdf'])->name('installation-act.layout-fill.submission-pdf');
     Route::get('/installation-act/layout-schema/{requestLayout}', [BoilerChiefRequestLayoutController::class, 'layoutSchemaJsonForReportFillers'])->name('installation-act.layout-schema');
     Route::get('/custom-equipment-to-order', [ApplicationController::class, 'customEquipmentToOrder'])->name('custom-equipment-to-order');
-    Route::get('/commercial-offer-procurement', [ApplicationController::class, 'commercialOfferProcurementIndex'])->name('commercial-offer-procurement');
     Route::get('/{application}/custom-equipment-order', [ApplicationController::class, 'customEquipmentOrderForm'])->name('custom-equipment-order');
     Route::post('/{application}/custom-equipment-order/ordered', [ApplicationController::class, 'markCustomEquipmentOrderedBulk'])->name('custom-equipment-order.ordered');
     Route::post('/{application}/custom-equipment-order/on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouseBulk'])->name('custom-equipment-order.on-warehouse');
-    Route::get('/{application}/commercial-offer-procurement', [ApplicationController::class, 'commercialOfferProcurementForm'])->name('commercial-offer-procurement.show');
     Route::get('/{application}/repeat', [ApplicationController::class, 'repeat'])->name('repeat');
     Route::get('/{application}/installation-act/photos/{installationActPhoto}', [ApplicationController::class, 'viewInstallationActPhoto'])
         ->name('installation-act.photo');
     Route::get('/{application}/installation-act/download', [ApplicationController::class, 'downloadInstallationAct'])->name('installation-act.download');
     Route::get('/{application}/installation-act', [ApplicationController::class, 'viewInstallationAct'])->name('installation-act.view');
-    Route::get('/{application}/commercial-offer', [ApplicationController::class, 'viewCommercialOffer'])->name('commercial-offer.view');
-    Route::get('/{application}/commercial-offer/download', [ApplicationController::class, 'downloadCommercialOffer'])->name('commercial-offer.download');
-    Route::get('/{application}/commercial-proposal/fill', [ApplicationController::class, 'editCommercialProposalFill'])->name('commercial-proposal.fill.edit');
-    Route::post('/{application}/commercial-proposal/fill', [ApplicationController::class, 'storeCommercialProposalFillForEdit'])->name('commercial-proposal.fill.edit.store');
     Route::post('/', [ApplicationController::class, 'store'])->name('store');
     Route::post('/{application}/archive-completion', [ApplicationController::class, 'tryArchiveCompletion'])->name('archive-completion');
     Route::post('/{application}/admin-archive', [ApplicationController::class, 'adminArchive'])->name('admin-archive');
     Route::post('/{application}/admin-unarchive', [ApplicationController::class, 'adminUnarchive'])->name('admin-unarchive');
     Route::post('/{application}/approval', [ApplicationController::class, 'saveApproval'])->name('approval');
-    Route::post('/{application}/commercial-offer-order-lines', [ApplicationController::class, 'storeCommercialOfferOrderLines'])->name('commercial-offer-order-lines.store');
     Route::post('/{application}/boiler-chief-approval', [ApplicationController::class, 'saveBoilerChiefApproval'])->name('boiler-chief-approval');
     Route::post('/{application}/delivery-in-transit', [ApplicationController::class, 'markApplicationDeliveryInTransit'])->name('delivery-in-transit');
     Route::post('/{application}/items/delivery-delivered/bulk', [ApplicationController::class, 'markItemsDeliveryDeliveredBulk'])->name('delivery-delivered.bulk');

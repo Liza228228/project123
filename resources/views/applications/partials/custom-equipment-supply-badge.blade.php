@@ -1,12 +1,3 @@
-@if($item->isCommercialOfferWarehouseReserved())
-    <span class="inline-flex items-center rounded-full border border-emerald-300/90 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-950 dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-100">
-        Зарезервировано по КП
-    </span>
-@elseif($item->isOrderedFromCommercialOffer())
-    <span class="inline-flex items-center rounded-full border border-orange-300/90 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-950 dark:border-orange-700/60 dark:bg-orange-950/40 dark:text-orange-100">
-        Заказано по КП
-    </span>
-@endif
 @if($item->usesFreeTextEquipment())
     @php
         $code = $item->resolvedCustomSupplyStatus();
@@ -33,4 +24,9 @@
     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border {{ $deliveryClass }}">
         {{ $item->deliveryStatusLabel() }}
     </span>
+    @if($item->resolvedDeliveryStatus() === \App\Models\ApplicationItem::DELIVERY_IN_TRANSIT && $item->formattedExpectedArrivalAt())
+        <span class="block text-xs text-black/75 dark:text-white/75 mt-0.5">
+            Прибытие: {{ $item->formattedExpectedArrivalAt() }}
+        </span>
+    @endif
 @endif

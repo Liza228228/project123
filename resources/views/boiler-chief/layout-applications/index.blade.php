@@ -44,7 +44,7 @@
                         </section>
                     @elseif($submissions->isEmpty())
                         <p class="rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/45 dark:bg-amber-950/25 dark:text-amber-100">
-                            Доступных макетов пока нет. Запустите сидеры акта установки и коммерческого предложения или создайте макет в разделе «Макеты отчетов (PDF)».
+                            Доступных макетов пока нет. Запустите сидер акта установки или создайте макет в разделе «Макеты отчетов (PDF)».
                         </p>
                     @endif
 

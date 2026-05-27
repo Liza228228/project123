@@ -225,13 +225,12 @@
                     @php $cat = old('category', $initialCategory); @endphp
                     <option value="" @selected($cat === '' || $cat === null)>Без категории (не попадёт в «Новый отчёт»)</option>
                     <option value="installation-act" @selected($cat === 'installation-act')>Акт установки — отчёт по заявке</option>
-                    <option value="commercial-proposal" @selected($cat === 'commercial-proposal')>Коммерческое предложение</option>
                     <option value="lab" @selected($cat === 'lab')>Технический контроль</option>
                     <option value="boiler" @selected($cat === 'boiler')>Котельная</option>
                     <option value="safety" @selected($cat === 'safety')>Охрана труда</option>
                 </select>
                 <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                    Категория «Акт установки» или «Коммерческое предложение» включает особый режим заполнения (заявки, смета). Любой сохранённый макет доступен в «Новый отчёт».
+                    Категория «Акт установки» включает особый режим заполнения (заявки). Любой сохранённый макет доступен в «Новый отчёт».
                 </p>
             </div>
         </div>

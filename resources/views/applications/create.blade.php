@@ -16,12 +16,6 @@
                     @csrf
                     <input type="hidden" name="source_application_id" value="{{ old('source_application_id', $prefill['source_application_id'] ?? '') }}">
 
-                    @if (request()->boolean('commercial_offer_ready'))
-                        <div class="flex items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-100">
-                            Коммерческое предложение сформировано. Проверьте блок «Документы» и завершите создание заявки.
-                        </div>
-                    @endif
-
                     @if($prefill)
                         <div class="flex items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3 text-sm text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-100">
                             <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-200/80 text-xs font-bold dark:bg-sky-800/80">↻</span>
@@ -67,60 +61,6 @@
                             @endif
 
  
-                        </div>
-                    </section>
-
-                    @php
-                        $commercialOfferDraftReady = $commercialOfferDraftReady ?? false;
-                        $showCommercialOffer = $commercialOfferDraftReady
-                            || old('attach_commercial_offer') === '1'
-                            || $errors->has('commercial_offer');
-                    @endphp
-                    <section class="space-y-3" aria-labelledby="create-section-files">
-                        <h3 id="create-section-files" class="app-section-title">Документы</h3>
-                        <input type="hidden" name="attach_commercial_offer" id="attach-commercial-offer-input" value="{{ $showCommercialOffer ? '1' : '0' }}">
-                        <input type="hidden" name="use_commercial_offer_draft" id="use-commercial-offer-draft-input" value="{{ ($commercialOfferDraftReady && ! old('commercial_offer')) ? '1' : '0' }}">
-
-                        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap {{ $showCommercialOffer ? 'hidden' : '' }}" id="commercial-offer-actions">
-                            <button
-                                type="button"
-                                id="add-commercial-offer-btn"
-                                class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto"
-                            >
-                                + Прикрепить коммерческое предложение
-                            </button>
-                            <a
-                                href="{{ $commercialProposalFillUrl ?? route('applications.commercial-proposal.fill') }}"
-                                id="fill-commercial-proposal-btn"
-                                class="ui-btn ui-btn--secondary ui-btn--sm w-full sm:w-auto text-center"
-                            >
-                                Заполнить коммерческое предложение
-                            </a>
-                        </div>
-
-                        <div id="commercial-offer-block" class="{{ $showCommercialOffer ? '' : 'hidden' }} space-y-3 rounded-xl border border-dashed border-orange-300/80 bg-orange-50/40 p-4 dark:border-orange-800/50 dark:bg-orange-950/20">
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <label for="commercial_offer" class="app-form-label !mb-0">Коммерческое предложение</label>
-                                <button type="button" id="remove-commercial-offer-btn" class="min-h-10 shrink-0 rounded-lg px-2 text-xs font-medium text-stone-500 underline decoration-stone-300 hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800/60 dark:hover:text-stone-200">
-                                    Убрать КП
-                                </button>
-                            </div>
-                            @if ($commercialOfferDraftReady && ! $errors->has('commercial_offer'))
-                                <div class="rounded-lg border border-emerald-200/80 bg-emerald-50/70 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/25 dark:text-emerald-100">
-                                    PDF сформирован и будет прикреплён к заявке при сохранении. Чтобы заменить файл, выберите другой документ ниже.
-                                </div>
-                            @endif
-                            <input
-                                id="commercial_offer"
-                                type="file"
-                                name="commercial_offer"
-                                accept=".pdf,.docx"
-                                class="block w-full text-sm text-stone-600 file:mr-4 file:rounded-lg file:border-0 file:bg-orange-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-stone-800 hover:file:bg-orange-200/90 dark:text-stone-300 dark:file:bg-orange-950/50 dark:file:text-orange-100 dark:hover:file:bg-orange-900/60"
-                            />
-                            <p class="text-xs text-stone-500 dark:text-stone-400">
-                                Только PDF или DOCX · до 10 МБ
-                            </p>
-                            <x-input-error :messages="$errors->get('commercial_offer')" class="mt-1" />
                         </div>
                     </section>
 
@@ -1278,83 +1218,6 @@
             container.querySelectorAll('.equipment-row--custom').forEach(function(row) {
                 syncQuantityInputsForRow(row, measurementTypeFromRow(row));
             });
-
-            var addCommercialOfferBtn = document.getElementById('add-commercial-offer-btn');
-            var removeCommercialOfferBtn = document.getElementById('remove-commercial-offer-btn');
-            var commercialOfferBlock = document.getElementById('commercial-offer-block');
-            var commercialOfferActions = document.getElementById('commercial-offer-actions');
-            var attachCommercialOfferInput = document.getElementById('attach-commercial-offer-input');
-            var useCommercialOfferDraftInput = document.getElementById('use-commercial-offer-draft-input');
-            var fillCommercialProposalBtn = document.getElementById('fill-commercial-proposal-btn');
-            var subdivisionSelectForCp = document.getElementById('subdivision_id');
-
-            function showCommercialOfferBlock() {
-                if (commercialOfferBlock) {
-                    commercialOfferBlock.classList.remove('hidden');
-                }
-                if (attachCommercialOfferInput) {
-                    attachCommercialOfferInput.value = '1';
-                }
-                if (commercialOfferActions) {
-                    commercialOfferActions.classList.add('hidden');
-                }
-            }
-
-            if (addCommercialOfferBtn) {
-                addCommercialOfferBtn.addEventListener('click', function() {
-                    if (useCommercialOfferDraftInput) {
-                        useCommercialOfferDraftInput.value = '0';
-                    }
-                    showCommercialOfferBlock();
-                });
-            }
-            if (commercialOfferBlock && !commercialOfferBlock.classList.contains('hidden')) {
-                showCommercialOfferBlock();
-            }
-            if (fillCommercialProposalBtn && subdivisionSelectForCp) {
-                fillCommercialProposalBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    var subId = subdivisionSelectForCp.value || '';
-                    if (!subId) {
-                        window.alert('Сначала выберите подразделение в разделе «Основное».');
-                        return;
-                    }
-                    var base = fillCommercialProposalBtn.getAttribute('href') || '';
-                    var sep = base.indexOf('?') >= 0 ? '&' : '?';
-                    window.location.href = base + sep + 'subdivision_id=' + encodeURIComponent(subId);
-                });
-            }
-            var commercialOfferFileInput = document.getElementById('commercial_offer');
-            if (commercialOfferFileInput && useCommercialOfferDraftInput) {
-                commercialOfferFileInput.addEventListener('change', function() {
-                    if (commercialOfferFileInput.files && commercialOfferFileInput.files.length > 0) {
-                        useCommercialOfferDraftInput.value = '0';
-                    }
-                });
-            }
-            if (removeCommercialOfferBtn) {
-                removeCommercialOfferBtn.addEventListener('click', function() {
-                    var hadDraft = useCommercialOfferDraftInput && useCommercialOfferDraftInput.value === '1';
-                    if (commercialOfferBlock) {
-                        commercialOfferBlock.classList.add('hidden');
-                    }
-                    if (attachCommercialOfferInput) {
-                        attachCommercialOfferInput.value = '0';
-                    }
-                    if (useCommercialOfferDraftInput) {
-                        useCommercialOfferDraftInput.value = '0';
-                    }
-                    if (commercialOfferActions) {
-                        commercialOfferActions.classList.remove('hidden');
-                    }
-                    if (commercialOfferFileInput) {
-                        commercialOfferFileInput.value = '';
-                    }
-                    if (hadDraft) {
-                        window.location.href = @json(route('applications.create', ['discard_commercial_offer_draft' => 1]));
-                    }
-                });
-            }
 
             bindDuplicateEquipmentChecks(container);
             syncAllCatalogSearchHiddenIds();

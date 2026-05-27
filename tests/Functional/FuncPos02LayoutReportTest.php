@@ -183,7 +183,8 @@ test('accountant layout application create embeds same rich form as chief', func
         'schema' => [
             'document_title' => 'Док',
             'body_template' => '{{k}}',
-            'category' => \App\Support\ReportLayoutCommercialProposal::CATEGORY,
+            'category' => 'installation-act',
+            'allow_application_equipment_insert' => true,
             'fields' => [
                 ['key' => 'k', 'label' => 'Ключевое поле', 'type' => 'textarea'],
             ],

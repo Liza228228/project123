@@ -3,14 +3,14 @@
     if ($statusKey === null) {
         $statusKey = match (true) {
             $application->isAdminArchived() => 'archived_admin',
-            $application->isCreatorDraftApplication() => 'draft',
+            $application->isWorkflowDraftForDisplay() => 'draft',
             $application->items->isEmpty() => 'empty',
             $application->isLifecycleCompleted() => 'completed',
             $application->isApprovedDeliveryFullyInTransit() => 'in_transit',
+            $application->needsBoilerChiefReviewBeforeManagement() => 'boiler',
+            $application->isPendingManagementReview() => 'management',
             $application->isStatusApproved() => 'approved',
             $application->isStatusPartial() => 'partial',
-            $application->needsBoilerChiefReviewBeforeManagement() => 'boiler',
-            $application->awaitsManagementEquipmentApproval() => 'management',
             $application->isStatusRejected() => 'rejected',
             default => 'pending',
         };

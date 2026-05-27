@@ -2,256 +2,75 @@
 
 namespace App\Support;
 
-use App\Models\MeasurementUnit;
-use App\Models\Subdivision;
-use App\Models\UnitType;
-use App\Models\User;
-use App\Models\Warehouse;
-use Illuminate\Database\Eloquent\Collection;
+use App\Models\DocumentHeaderLayout;
+use App\Models\RequestLayout;
+use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * Исключение макетов «Коммерческое предложение» из каталогов отчётов и генератора.
+ */
 final class ReportLayoutCommercialProposal
 {
     public const CATEGORY = 'commercial-proposal';
 
-    public const TABLE_MODE = 'commercial_estimate';
-
-    /** @var list<string> */
-    public const TABLE_COLUMNS = [
-        'Наименование',
-        'Ед. измер',
-        'Кол-во',
-        'Цена',
-        'Сумма',
-    ];
-
-    /**
-     * @return array{
-     *     typeOptions: array<string, string>,
-     *     unitsByType: array<string, list<string>>,
-     *     unitToType: array<string, string>,
-     *     defaultType: string,
-     *     defaultUnit: string
-     * }
-     */
-    public static function measurementMetaForUi(): array
+    public static function matchesTitle(string $title): bool
     {
-        $unitsByType = [];
-        $unitToType = [];
+        return mb_stripos($title, 'оммерческ') !== false;
+    }
 
-        $rows = MeasurementUnit::query()
-            ->with('unitType:id,code,name')
-            ->orderBy('unit_type_id')
-            ->orderBy('id')
-            ->get(['unit_type_id', 'code']);
+    public static function matchesSchema(?array $schema): bool
+    {
+        $schema = is_array($schema) ? $schema : [];
 
-        foreach ($rows as $row) {
-            $typeCode = trim((string) ($row->unitType?->code ?? ''));
-            $unitCode = trim((string) $row->code);
-            if ($typeCode === '' || $unitCode === '') {
-                continue;
-            }
-            $unitsByType[$typeCode] ??= [];
-            if (! in_array($unitCode, $unitsByType[$typeCode], true)) {
-                $unitsByType[$typeCode][] = $unitCode;
-            }
-            $unitToType[$unitCode] = $typeCode;
-        }
+        return trim((string) ($schema['category'] ?? '')) === self::CATEGORY;
+    }
 
-        if ($unitsByType === []) {
-            $unitsByType = [
-                'piece' => ['шт'],
-                'mass' => ['г', 'кг', 'т'],
-                'length' => ['мм', 'см', 'м', 'км'],
-                'clothing_size' => ['разм'],
-            ];
-            foreach ($unitsByType as $typeCode => $codes) {
-                foreach ($codes as $unitCode) {
-                    $unitToType[$unitCode] = $typeCode;
-                }
-            }
-        }
+    public static function isExcludedLayout(string $title, ?array $schema): bool
+    {
+        return self::matchesSchema($schema) || self::matchesTitle($title);
+    }
 
-        $typeOptions = [];
-        $types = UnitType::query()
-            ->orderBy('id')
-            ->get(['code', 'name']);
-
-        foreach ($types as $type) {
-            $code = trim((string) $type->code);
-            if ($code === '' || ! isset($unitsByType[$code])) {
-                continue;
-            }
-            $typeOptions[$code] = trim((string) $type->name) !== '' ? (string) $type->name : $code;
-        }
-
-        if ($typeOptions === []) {
-            $typeOptions = [
-                'piece' => 'Штучные',
-                'mass' => 'Масса',
-                'length' => 'Длина',
-                'clothing_size' => 'Размер',
-            ];
-        }
-
-        $defaultType = array_key_exists('piece', $unitsByType) ? 'piece' : (array_key_first($unitsByType) ?: 'piece');
-        $defaultUnit = $unitsByType[$defaultType][0] ?? 'шт';
-
-        return [
-            'typeOptions' => $typeOptions,
-            'unitsByType' => $unitsByType,
-            'unitToType' => $unitToType,
-            'defaultType' => $defaultType,
-            'defaultUnit' => $defaultUnit,
-        ];
+    public static function isExcludedLayoutModel(RequestLayout $layout): bool
+    {
+        return self::isExcludedLayout(
+            (string) $layout->title,
+            is_array($layout->schema) ? $layout->schema : null
+        );
     }
 
     /**
-     * @return list<string>
+     * @param  Builder<RequestLayout>  $query
+     * @return Builder<RequestLayout>
      */
-    public static function measurementUnitOptions(): array
+    public static function scopeVisibleInReportCatalog(Builder $query): Builder
     {
-        $meta = self::measurementMetaForUi();
-        $all = [];
-        foreach ($meta['unitsByType'] as $codes) {
-            foreach ($codes as $code) {
-                $all[] = $code;
-            }
-        }
-
-        return $all !== [] ? array_values(array_unique($all)) : ['шт', 'м', 'кг', 'г'];
+        return $query
+            ->where(function (Builder $q): void {
+                $q->where('schema->category', '!=', self::CATEGORY)
+                    ->orWhereNull('schema->category')
+                    ->orWhere('schema->category', '');
+            })
+            ->where('title', 'not like', '%оммерческ%');
     }
 
-    /**
-     * Подразделения, доступные пользователю в форме КП (как при создании заявки).
-     *
-     * @return Collection<int, Subdivision>
-     */
-    public static function subdivisionsForUser(?User $user): Collection
+    public static function purgeStoredLayouts(): void
     {
-        if (! $user) {
-            return new Collection;
-        }
+        RequestLayout::query()
+            ->where(function (Builder $q): void {
+                $q->where('schema->category', self::CATEGORY)
+                    ->orWhere('title', 'like', '%оммерческ%');
+            })
+            ->each(fn (RequestLayout $layout) => $layout->delete());
 
-        if ($user->hasRoleId(4)) {
-            $query = $user->assignedSubdivisions()->active()->orderBy('name');
-            if (($adminId = AdministrationWarehouse::subdivisionId()) !== null) {
-                $query->where('subdivisions.id', '!=', $adminId);
-            }
-
-            return $query->get(['subdivisions.id', 'subdivisions.name']);
-        }
-
-        if ($user->hasRoleId(User::BOILER_CHIEF_ROLE_ID)) {
-            return $user->boilerChiefSubdivisions()
-                ->active()
-                ->orderBy('subdivisions.name')
-                ->get(['subdivisions.id', 'subdivisions.name']);
-        }
-
-        return Subdivision::query()
-            ->active()
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        DocumentHeaderLayout::query()
+            ->where('title', 'like', '%оммерческ%')
+            ->each(fn (DocumentHeaderLayout $layout) => $layout->delete());
     }
 
-    /**
-     * Подразделения и склады для выбора в форме КП.
-     *
-     * @return list<array{
-     *     value: string,
-     *     kind: string,
-     *     label: string,
-     *     display_name: string,
-     *     address: string,
-     *     subdivision_name: string
-     * }>
-     */
-    public static function subdivisionWarehouseOptionsForUser(?User $user): array
+    public static function abortIfExcluded(RequestLayout $layout): void
     {
-        $subdivisions = static::subdivisionsForUser($user);
-        if ($subdivisions->isEmpty()) {
-            return [];
+        if (self::isExcludedLayoutModel($layout)) {
+            abort(404);
         }
-
-        $subdivisions->load(['warehouses' => fn ($q) => $q->orderBy('name')]);
-
-        return static::buildSubdivisionWarehouseOptions($subdivisions);
     }
-
-    /**
-     * @param  Collection<int, Subdivision>  $subdivisions
-     * @return list<array{
-     *     value: string,
-     *     kind: string,
-     *     label: string,
-     *     display_name: string,
-     *     address: string,
-     *     subdivision_name: string
-     * }>
-     */
-    private static function buildSubdivisionWarehouseOptions(Collection $subdivisions): array
-    {
-        $options = [];
-
-        foreach ($subdivisions as $subdivision) {
-            $subName = trim((string) $subdivision->name);
-            if ($subName === '') {
-                continue;
-            }
-            foreach ($subdivision->warehouses as $warehouse) {
-                $warehouseName = trim((string) $warehouse->name);
-                if ($warehouseName === '') {
-                    continue;
-                }
-                $address = trim((string) $warehouse->formatted_address);
-                $displayName = 'Склад «'.$warehouseName.'»';
-                $pdfLine = $subName !== '' ? $subName.', '.$displayName : $displayName;
-                $options[] = [
-                    'value' => 'warehouse:'.$warehouse->id,
-                    'kind' => 'warehouse',
-                    'label' => $displayName.' ('.$subName.')',
-                    'display_name' => $displayName,
-                    'pdf_line' => $pdfLine,
-                    'address' => $address,
-                    'subdivision_name' => $subName,
-                ];
-            }
-        }
-
-        return $options;
-    }
-
-    /**
-     * Первая доступная пользователю строка склада для подразделения (для предзаполнения КП из заявки).
-     */
-    public static function defaultWarehouseRefForSubdivision(?User $user, int $subdivisionId): ?string
-    {
-        if ($subdivisionId <= 0) {
-            return null;
-        }
-
-        $allowedRefs = collect(self::subdivisionWarehouseOptionsForUser($user))
-            ->pluck('value')
-            ->filter(fn ($value) => is_string($value) && str_starts_with($value, 'warehouse:'))
-            ->all();
-
-        if ($allowedRefs === []) {
-            return null;
-        }
-
-        $warehouses = Warehouse::query()
-            ->where('subdivision_id', $subdivisionId)
-            ->orderBy('name')
-            ->get(['id']);
-
-        foreach ($warehouses as $warehouse) {
-            $ref = 'warehouse:'.$warehouse->id;
-            if (in_array($ref, $allowedRefs, true)) {
-                return $ref;
-            }
-        }
-
-        return null;
-    }
-
 }

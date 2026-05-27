@@ -66,7 +66,7 @@ class RequestLayout extends Model
             return (bool) $schema['allow_application_equipment_insert'];
         }
 
-        return trim((string) ($schema['category'] ?? '')) !== 'commercial-proposal';
+        return true;
     }
 
     public static function resolvedSignatureSlotsCount(?array $schema): int

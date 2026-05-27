@@ -21,16 +21,16 @@
                     <span class="{{ $statusBadge }} applications-index-status-badge--transit" title="Все согласованные позиции в пути">
                         В пути
                     </span>
+                @elseif($application->isWorkflowDraftForDisplay())
+                    <span class="{{ $statusBadge }} applications-index-status-badge--draft">Черновик</span>
+                @elseif($application->needsBoilerChiefReviewBeforeManagement())
+                    <span class="{{ $statusBadge }} applications-index-status-badge--boiler">У начальника котельной</span>
+                @elseif($application->isPendingManagementReview())
+                    <span class="{{ $statusBadge }} applications-index-status-badge--management">У руководства / снабжения</span>
                 @elseif($application->isStatusApproved())
                     <span class="{{ $statusBadge }} applications-index-status-badge--approved">Согласована</span>
                 @elseif($application->isStatusPartial())
                     <span class="{{ $statusBadge }} applications-index-status-badge--partial">Частично согласована</span>
-                @elseif($application->isCreatorDraftApplication())
-                    <span class="{{ $statusBadge }} applications-index-status-badge--draft">Черновик</span>
-                @elseif($application->needsBoilerChiefReviewBeforeManagement())
-                    <span class="{{ $statusBadge }} applications-index-status-badge--boiler">У начальника котельной</span>
-                @elseif($application->awaitsManagementEquipmentApproval())
-                    <span class="{{ $statusBadge }} applications-index-status-badge--management">У руководства / снабжения</span>
                 @elseif($application->isStatusRejected())
                     <span class="{{ $statusBadge }} applications-index-status-badge--rejected">Не согласована</span>
                 @else
@@ -204,13 +204,19 @@
                             <div class="sm:col-span-2">
                                 <dt class="app-form-label !normal-case">Транспорт / доставка</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
-                                    @if($application->transportOption)
-                                        {{ $application->transportOption->name }}
+                                    @if($line = $application->transportAndVehicleLine())
+                                        {{ $line }}
                                     @else
                                         —
                                     @endif
                                 </dd>
                             </div>
+                            @if($expectedArrivalLine = $application->expectedArrivalSummaryLine())
+                                <div class="sm:col-span-2">
+                                    <dt class="app-form-label !normal-case">Ожидаемое прибытие</dt>
+                                    <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">{{ $expectedArrivalLine }}</dd>
+                                </div>
+                            @endif
                             <div>
                                 <dt class="app-form-label !normal-case">Заявку создал(а)</dt>
                                 <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
@@ -233,34 +239,6 @@
                                         @if($application->approvedBy->role?->name)
                                             <span class="block text-xs font-normal opacity-80 mt-0.5">{{ $application->approvedBy->role->name }}</span>
                                         @endif
-                                    @else
-                                        —
-                                    @endif
-                                </dd>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <dt class="app-form-label !normal-case">Коммерческое предложение</dt>
-                                <dd class="mt-0.5 text-sm font-medium text-black dark:text-white">
-                                    @if($application->commercial_offer)
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span>{{ basename($application->commercial_offer) }}</span>
-                                        </div>
-                                        <div class="mt-2 flex flex-wrap items-center gap-2">
-                                            <a
-                                                href="{{ route('applications.commercial-offer.view', $application) }}"
-                                                target="_blank"
-                                                rel="noopener"
-                                                class="ui-btn ui-btn--primary ui-btn--sm"
-                                            >
-                                                Открыть файл
-                                            </a>
-                                            <a
-                                                href="{{ route('applications.commercial-offer.download', $application) }}"
-                                                class="ui-btn ui-btn--secondary ui-btn--sm"
-                                            >
-                                                Скачать
-                                            </a>
-                                        </div>
                                     @else
                                         —
                                     @endif
@@ -332,21 +310,9 @@
                             $canManagementApprove = false;
                         }
                         $canBoilerChiefApprove = Auth::user()->hasRoleId(7)
-                            && $application->needsBoilerChiefReviewBeforeManagement()
-                            && ! ($application->isCommercialOfferOnlyApplication() && $application->boilerChiefReleasedToManagement());
-                        $canManagementApproveCommercialOffer = Auth::user()->hasApplicationSupplyWorkflowRole()
-                            && $application->needsManagementCommercialOfferReview();
-                        if ($approvalLockedAfterTransit) {
-                            $canManagementApproveCommercialOffer = false;
-                        }
+                            && $application->needsBoilerChiefReviewBeforeManagement();
                         $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id));
                         $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id));
-                        $hasCommercialOfferForDisplay = $application->hasCommercialOfferAttached();
-                        $coShowsApproved = $hasCommercialOfferForDisplay && $application->commercialOfferShowsAsApproved();
-                        $coShowsRejected = $hasCommercialOfferForDisplay && $application->commercialOfferShowsAsRejected();
-                        $coShowsPending = $hasCommercialOfferForDisplay && $application->commercialOfferShowsAsPendingApproval();
-                        $showCoInUncheckedDisplay = $coShowsRejected || $coShowsPending;
-                        $showCoInCheckedDisplay = $coShowsApproved;
                         $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked);
                         $itemsAwaitingBoilerChiefReview = $application->items->filter(
                             fn ($i) => $application->itemAwaitingBoilerChiefReview($i)
@@ -369,17 +335,8 @@
                                 fn ($i) => in_array($i->id, $boilerPendingItemIds, true)
                             );
                         }
-                        $showBoilerAwaitingSection = $awaitingBoilerChiefApprovalList
-                            || ($showCoInUncheckedDisplay && $application->commercialOfferChiefReviewPending());
-                        $coInBoilerAwaitingSection = $showCoInUncheckedDisplay && $application->commercialOfferChiefReviewPending();
-                        $showBoilerRejectedItemsSection = $itemsRejectedByBoilerChiefReadonly->isNotEmpty()
-                            || ($showCoInUncheckedDisplay && $coShowsRejected && $application->commercialOfferChiefIsRejected());
-                        $coInBoilerRejectedItemsSection = $showCoInUncheckedDisplay
-                            && $coShowsRejected
-                            && $application->commercialOfferChiefIsRejected();
-                        $coInUncheckedItemsSection = $showCoInUncheckedDisplay
-                            && ! $coInBoilerAwaitingSection
-                            && ! $coInBoilerRejectedItemsSection;
+                        $showBoilerAwaitingSection = $awaitingBoilerChiefApprovalList;
+                        $showBoilerRejectedItemsSection = $itemsRejectedByBoilerChiefReadonly->isNotEmpty();
                         $canManageDeliveryTransit = Auth::user()->hasApplicationSupplyWorkflowRole();
                         $inTransitCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryInTransit());
                         $showCatalogDeliveryInTransitForm = $canManageDeliveryTransit
@@ -391,129 +348,14 @@
                             && $application->isBoilerChiefDraftBeforeManagement();
                     @endphp
                     <section class="space-y-4" aria-labelledby="show-section-equipment">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h3 id="show-section-equipment" class="app-section-title !mb-0">Оборудование</h3>
-                            @if(filled(trim((string) ($application->commercial_offer ?? ''))) && $application->items->isNotEmpty())
-                                <a
-                                    href="{{ route('applications.commercial-offer.view', $application) }}"
-                                    target="_blank"
-                                    rel="noopener"
-                                    class="ui-btn ui-btn--secondary ui-btn--sm"
-                                >
-                                    КП
-                                </a>
-                            @endif
-                        </div>
-                       
+                        <h3 id="show-section-equipment" class="app-section-title">Оборудование</h3>
 
                         @if($application->items->isEmpty())
-                            @if(filled(trim((string) ($application->commercial_offer ?? ''))))
-                                <div class="py-2 flex flex-wrap items-center gap-2">
-                                    <a
-                                        href="{{ route('applications.commercial-offer.view', $application) }}"
-                                        target="_blank"
-                                        rel="noopener"
-                                        class="ui-btn ui-btn--secondary ui-btn--sm"
-                                    >
-                                        Коммерческое предложение
-                                    </a>
-                                </div>
-                                @if($canBoilerChiefApprove && $application->isCommercialOfferOnlyApplication())
-                                    @include('applications.partials.commercial-offer-approval-form', [
-                                        'application' => $application,
-                                        'formAction' => route('applications.boiler-chief-approval', $application),
-                                        'checkboxName' => 'commercial_offer_chief_is_checked',
-                                        'reasonName' => 'commercial_offer_chief_reason_not_selected',
-                                        'submitLabel' => 'Согласовать и отправить руководству',
-                                        'formId' => 'boiler-chief-commercial-offer-approval-form',
-                                    ])
-                                @elseif($canManagementApproveCommercialOffer)
-                                    <p class="text-xs text-stone-600 dark:text-stone-400">
-                                        Согласование коммерческого предложения директором, техническим директором или начальником отдела снабжения.
-                                    </p>
-                                    @include('applications.partials.commercial-offer-approval-form', [
-                                        'application' => $application,
-                                        'formAction' => route('applications.approval', $application),
-                                        'checkboxName' => 'commercial_offer_management_is_checked',
-                                        'reasonName' => 'commercial_offer_management_reason_not_selected',
-                                        'submitLabel' => 'Сохранить согласование КП',
-                                        'formId' => 'management-commercial-offer-approval-form',
-                                    ])
-                                @elseif($application->commercialOfferChiefIsRejected())
-                                    <p class="rounded-xl border border-red-200/80 bg-red-50/60 px-4 py-3 text-sm text-red-950 dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-100">
-                                        <span class="font-medium">Не согласовано начальником котельной.</span>
-                                        @if(filled(trim((string) ($application->commercial_offer_chief_reason_not_selected ?? ''))))
-                                            <span class="block mt-1">{{ $application->commercial_offer_chief_reason_not_selected }}</span>
-                                        @endif
-                                    </p>
-                                @elseif($application->commercialOfferManagementIsRejected())
-                                    <p class="rounded-xl border border-red-200/80 bg-red-50/60 px-4 py-3 text-sm text-red-950 dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-100">
-                                        <span class="font-medium">Не согласовано руководством / снабжением.</span>
-                                        @if(filled(trim((string) ($application->commercial_offer_management_reason_not_selected ?? ''))))
-                                            <span class="block mt-1">{{ $application->commercial_offer_management_reason_not_selected }}</span>
-                                        @endif
-                                    </p>
-                                @elseif($application->commercialOfferManagementIsApproved())
-                                    @php
-                                        $commercialOfferOrderedItemsCount = $application->items
-                                            ->filter(fn ($i) => $i->isOrderedFromCommercialOffer())
-                                            ->count();
-                                    @endphp
-                                    <div class="rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/45 dark:bg-emerald-950/25 dark:text-emerald-100 space-y-2">
-                                        <p>Коммерческое предложение согласовано.</p>
-                                        @if($commercialOfferOrderedItemsCount > 0)
-                                            <p class="text-xs font-medium">
-                                                По КП в заказ добавлено позиций: {{ $commercialOfferOrderedItemsCount }}.
-                                                Снабжение оформляет их в разделе «Оборудование к заказу».
-                                            </p>
-                                        @endif
-                                        @if($canAddCommercialOfferOrderLines ?? false)
-                                            <button type="button" class="ui-btn ui-btn--primary ui-btn--sm" data-app-open-modal="commercial-offer-order-lines">
-                                                Как заказать
-                                            </button>
-                                        @endif
-                                    </div>
-                                @elseif($application->commercialOfferChiefIsApproved() && $application->boilerChiefReleasedToManagement())
-                                    <p class="text-sm text-stone-600 dark:text-stone-400">
-                                        Коммерческое предложение согласовано начальником котельной и передано на согласование руководству и снабжению.
-                                    </p>
-                                @endif
-                            @else
-                                <p class="text-sm text-stone-600 dark:text-stone-400 py-2">Позиций нет.</p>
-                            @endif
+                            <p class="text-sm text-stone-600 dark:text-stone-400 py-2">Позиций нет.</p>
                         @elseif($canBoilerChiefApprove)
 
                             <form method="POST" action="{{ route('applications.boiler-chief-approval', $application) }}" id="boiler-chief-approval-form" class="space-y-4">
                                 @csrf
-                                @if($application->hasCommercialOfferAttached())
-                                    @if($application->commercialOfferChiefReviewPending())
-                                        @include('applications.partials.commercial-offer-approval-fields', [
-                                            'application' => $application,
-                                            'checkboxName' => 'commercial_offer_chief_is_checked',
-                                            'reasonName' => 'commercial_offer_chief_reason_not_selected',
-                                            'showViewLink' => true,
-                                        ])
-                                    @elseif($application->commercialOfferChiefIsApproved())
-                                        <p class="rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900/45 dark:bg-emerald-950/25 dark:text-emerald-100">
-                                            Коммерческое предложение согласовано.
-                                            <a
-                                                href="{{ route('applications.commercial-offer.view', $application) }}"
-                                                target="_blank"
-                                                rel="noopener"
-                                                class="ml-2 ui-btn ui-btn--secondary ui-btn--sm align-middle"
-                                            >
-                                                Открыть КП
-                                            </a>
-                                        </p>
-                                    @elseif($application->commercialOfferChiefIsRejected())
-                                        <p class="rounded-xl border border-red-200/80 bg-red-50/60 px-4 py-3 text-sm text-red-950 dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-100">
-                                            <span class="font-medium">Коммерческое предложение не согласовано.</span>
-                                            @if(filled(trim((string) ($application->commercial_offer_chief_reason_not_selected ?? ''))))
-                                                <span class="block mt-1">{{ $application->commercial_offer_chief_reason_not_selected }}</span>
-                                            @endif
-                                        </p>
-                                    @endif
-                                @endif
                                 @if($application->boilerChiefSubdivisionReviewCycleStarted() && $application->hasApprovedEquipmentLines())
                                 
                                 @endif
@@ -686,15 +528,6 @@
                             @endif
                             <form method="POST" action="{{ route('applications.approval', $application) }}" id="approval-form" class="space-y-4">
                                 @csrf
-
-                                @if($application->hasCommercialOfferAttached() && $application->needsManagementCommercialOfferReview())
-                                    @include('applications.partials.commercial-offer-approval-fields', [
-                                        'application' => $application,
-                                        'checkboxName' => 'commercial_offer_management_is_checked',
-                                        'reasonName' => 'commercial_offer_management_reason_not_selected',
-                                        'showViewLink' => true,
-                                    ])
-                                @endif
 
                                 @if($itemsFrozenAsBoilerRejectedForSupply->isNotEmpty())
                                     <div class="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 dark:border-amber-800/50 dark:bg-amber-950/20">
@@ -930,12 +763,6 @@
                                     Ожидается согласование начальником котельной.
                                 </p>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
-                                    @if($coInBoilerAwaitingSection)
-                                        @include('applications.partials.commercial-offer-approval-list-item', [
-                                            'application' => $application,
-                                            'variant' => 'pending',
-                                        ])
-                                    @endif
                                     @foreach($boilerUncheckedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-amber-50/50 dark:bg-amber-950/20 space-y-1">
                                             <span class="text-sm font-medium text-black dark:text-white">
@@ -957,12 +784,6 @@
                                     @endif
                                 </p>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
-                                    @if($coInBoilerRejectedItemsSection)
-                                        @include('applications.partials.commercial-offer-approval-list-item', [
-                                            'application' => $application,
-                                            'variant' => 'rejected',
-                                        ])
-                                    @endif
                                     @foreach($itemsRejectedByBoilerChiefReadonly->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-amber-50/50 dark:bg-amber-950/20 space-y-1">
                                             <span class="text-sm font-medium text-black dark:text-white">
@@ -975,15 +796,9 @@
                                     @endforeach
                                 </ul>
                             @endif
-                            @if($uncheckedItemsForDisplay->isNotEmpty() || $coInUncheckedItemsSection)
+                            @if($uncheckedItemsForDisplay->isNotEmpty())
                                 <h4 class="app-form-label !normal-case !mb-2">Не согласовано</h4>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
-                                    @if($coInUncheckedItemsSection)
-                                        @include('applications.partials.commercial-offer-approval-list-item', [
-                                            'application' => $application,
-                                            'variant' => $coShowsRejected ? 'rejected' : 'pending',
-                                        ])
-                                    @endif
                                     @foreach($uncheckedItemsForDisplay->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-stone-50/80 dark:bg-stone-900/25 space-y-1">
                                             <span class="text-sm font-medium text-black dark:text-white">
@@ -998,16 +813,9 @@
                                 </ul>
                             @endif
 
-                            @if($checkedItems->isNotEmpty() || $showCoInCheckedDisplay)
+                            @if($checkedItems->isNotEmpty())
                                 <h4 class="app-form-label !normal-case !mb-2">Согласовано</h4>
                                 <ul class="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200/90 dark:divide-stone-700 dark:border-stone-600">
-                                    @if($showCoInCheckedDisplay)
-                                        @include('applications.partials.commercial-offer-approval-list-item', [
-                                            'application' => $application,
-                                            'variant' => 'approved',
-                                            'showOrderButton' => (bool) ($canAddCommercialOfferOrderLines ?? false),
-                                        ])
-                                    @endif
                                     @foreach($checkedItems->sortBy('id') as $item)
                                         <li class="px-4 py-3 bg-stone-100/60 dark:bg-stone-900/30 space-y-1">
                                             <span class="text-sm font-medium text-black dark:text-white">
@@ -1137,6 +945,10 @@
                                                 'transportOptions' => $transportOptions,
                                                 'serviceVehiclePlateOptions' => $serviceVehiclePlateOptions,
                                             ])
+                                            @include('applications.partials.delivery-expected-arrival-field', [
+                                                'fieldUid' => 'delivery-bulk',
+                                                'expectedArrivalValue' => old('bulk_expected_arrival_at'),
+                                            ])
                                             <div class="flex flex-wrap gap-2">
                                                 <button type="button" id="delivery-apply-bulk" class="ui-btn ui-btn--secondary ui-btn--sm">
                                                     Применить ко всем позициям
@@ -1162,6 +974,7 @@
                                                 $itemMarked = array_key_exists('mark', $oldRow) ? filled($oldRow['mark']) : true;
                                                 $itemMethodId = $oldRow['transport_option_id'] ?? $deliveryItem->transportMethodOptionIdForDeliveryForm() ?? $bulkMethodId;
                                                 $itemPlate = $oldRow['vehicle_plate'] ?? trim((string) ($deliveryItem->transportOption?->plate ?? $bulkPlate));
+                                                $itemExpectedArrival = $oldRow['expected_arrival_at'] ?? $deliveryItem->expected_arrival_at?->format('Y-m-d');
                                             @endphp
                                             <li class="delivery-in-transit-row rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 p-3 space-y-3" data-delivery-transport-block data-item-id="{{ $itemId }}">
                                                 @if($inTransitCandidates->count() === 1)
@@ -1192,12 +1005,20 @@
                                                     'transportOptions' => $transportOptions,
                                                     'serviceVehiclePlateOptions' => $serviceVehiclePlateOptions,
                                                 ])
-                                                @if($errors->has("items.{$itemId}.transport_option_id") || $errors->has("items.{$itemId}.vehicle_plate"))
+                                                @include('applications.partials.delivery-expected-arrival-field', [
+                                                    'fieldUid' => 'delivery-item-'.$itemId,
+                                                    'nameExpectedArrival' => "items[{$itemId}][expected_arrival_at]",
+                                                    'expectedArrivalValue' => $itemExpectedArrival,
+                                                ])
+                                                @if($errors->has("items.{$itemId}.transport_option_id") || $errors->has("items.{$itemId}.vehicle_plate") || $errors->has("items.{$itemId}.expected_arrival_at"))
                                                     <ul class="text-xs text-red-700 dark:text-red-300 space-y-0.5">
                                                         @foreach($errors->get("items.{$itemId}.transport_option_id") as $message)
                                                             <li>{{ $message }}</li>
                                                         @endforeach
                                                         @foreach($errors->get("items.{$itemId}.vehicle_plate") as $message)
+                                                            <li>{{ $message }}</li>
+                                                        @endforeach
+                                                        @foreach($errors->get("items.{$itemId}.expected_arrival_at") as $message)
                                                             <li>{{ $message }}</li>
                                                         @endforeach
                                                     </ul>
@@ -1357,10 +1178,12 @@
                                                 const bulkMethod = bulkBlock.querySelector('[data-delivery-method]');
                                                 const bulkPlateText = bulkBlock.querySelector('[data-delivery-plate-text]');
                                                 const bulkPlateSelect = bulkBlock.querySelector('[data-delivery-plate-select]');
+                                                const bulkExpectedArrival = bulkBlock.querySelector('[data-delivery-expected-arrival]');
                                                 form.querySelectorAll('.delivery-in-transit-row').forEach(function (row) {
                                                     const method = row.querySelector('[data-delivery-method]');
                                                     const plateText = row.querySelector('[data-delivery-plate-text]');
                                                     const plateSelect = row.querySelector('[data-delivery-plate-select]');
+                                                    const expectedArrival = row.querySelector('[data-delivery-expected-arrival]');
                                                     if (method && bulkMethod) {
                                                         method.value = bulkMethod.value;
                                                         method.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1370,6 +1193,9 @@
                                                     } else if (bulkPlateText && plateText) {
                                                         plateText.value = bulkPlateText.value;
                                                         plateText.dispatchEvent(new Event('input', { bubbles: true }));
+                                                    }
+                                                    if (bulkExpectedArrival && expectedArrival) {
+                                                        expectedArrival.value = bulkExpectedArrival.value;
                                                     }
                                                 });
                                             });
@@ -1426,21 +1252,4 @@
         </x-confirm-action-modal>
     @endif
 
-    @if ($canAddCommercialOfferOrderLines ?? false)
-        @include('applications.partials.commercial-offer-order-lines-modal', [
-            'application' => $application,
-            'measurementMeta' => $measurementMeta,
-            'equipmentNameMax' => $equipmentNameMax,
-            'commercialOfferOrderPrefillLines' => $commercialOfferOrderPrefillLines ?? [],
-        ])
-        @if ($errors->has('co_order_lines') || $errors->has('items') || $errors->has('items.*'))
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    if (typeof openAppModal === 'function') {
-                        openAppModal('commercial-offer-order-lines');
-                    }
-                });
-            </script>
-        @endif
-    @endif
 </x-app-layout>

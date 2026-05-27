@@ -10,14 +10,8 @@
     $oldTable = old('values.'.$key);
     $initialRowCount = RequestLayoutTableField::rowCountFromRaw($oldTable);
     $rows = RequestLayoutTableField::decodeValues($oldTable, $initialRowCount, $colCount);
-    $tableMode = trim((string) ($field['table_mode'] ?? ''));
 @endphp
-@if($key !== '' && $tableMode === \App\Support\ReportLayoutCommercialProposal::TABLE_MODE)
-    @include('boiler-chief.request-layouts._fill-field-commercial-estimate-table', [
-        'field' => $field,
-        'measurementMeta' => $measurementMeta ?? [],
-    ])
-@elseif($key !== '')
+@if($key !== '')
     <div
         x-data="requestLayoutTableFill({
             columns: {{ \Illuminate\Support\Js::from($columns) }},

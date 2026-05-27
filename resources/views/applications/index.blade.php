@@ -90,15 +90,6 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="min-w-0">
-                                <label for="applications-commercial-offer-filter" class="app-form-label">Коммерческое предложение</label>
-                                <select name="commercial_offer_filter" id="applications-commercial-offer-filter"
-                                    class="app-select">
-                                    @foreach($commercialOfferFilterOptions as $value => $label)
-                                        <option value="{{ $value }}" @selected($commercialOfferFilter === $value)>{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
                             @unless($isSiteForeman || ($isBoilerChief ?? false))
                                 <div class="min-w-0">
                                     <label for="applications-foreman-filter" class="app-form-label">Мастер участка</label>
@@ -169,7 +160,6 @@
                             @if(
                                 $search !== ''
                                 || $approvalFilter !== 'all'
-                                || ($commercialOfferFilter ?? 'all') !== 'all'
                                 || (($archiveFilter ?? 'active') !== 'active')
                                 || $selectedForemanId !== null
                                 || (($sortState['primary_field'] ?? 'created_at') !== 'created_at')
@@ -186,7 +176,7 @@
 
                     @if($applications->isEmpty())
                         <p class="md:hidden py-6 text-center text-sm text-black dark:text-white">
-                            @if($search !== '' || $approvalFilter !== 'all' || ($commercialOfferFilter ?? 'all') !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                 По заданным условиям заявок не найдено.
                             @else
                                 Заявок пока нет.
@@ -251,6 +241,11 @@
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Транспорт</p>
                                                 <p class="break-words">{{ $application->transportAndVehicleLine() ?? '—' }}</p>
+                                                @if($expectedArrivalLine = $application->expectedArrivalSummaryLine())
+                                                    <p class="mt-1 text-xs text-black/70 dark:text-white/70 break-words">
+                                                        Прибытие: {{ $expectedArrivalLine }}
+                                                    </p>
+                                                @endif
                                             </div>
                                         </div>
                                         <div>
@@ -431,6 +426,11 @@
                                             @else
                                                 —
                                             @endif
+                                            @if($expectedArrivalLine = $application->expectedArrivalSummaryLine())
+                                                <span class="block text-xs opacity-75 mt-0.5 line-clamp-2 break-words" title="Прибытие: {{ $expectedArrivalLine }}">
+                                                    Прибытие: {{ $expectedArrivalLine }}
+                                                </span>
+                                            @endif
                                         </td>
                                         <td class="text-black dark:text-white tabular-nums">{{ $application->desired_delivery_date->format('d.m.Y') }}</td>
                                         <td class="align-top min-w-0">
@@ -490,7 +490,7 @@
                                 @empty
                                     <tr>
                                         <td colspan="10" class="px-4 py-6 text-center text-sm text-black dark:text-white">
-                                            @if($search !== '' || $approvalFilter !== 'all' || ($commercialOfferFilter ?? 'all') !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
+                                            @if($search !== '' || $approvalFilter !== 'all' || (($archiveFilter ?? 'active') !== 'active') || $selectedForemanId !== null)
                                                 По заданным условиям заявок не найдено.
                                             @else
                                                 Заявок пока нет.

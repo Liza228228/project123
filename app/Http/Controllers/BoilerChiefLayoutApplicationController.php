@@ -9,7 +9,7 @@ use App\Models\RequestSubmission;
 use App\Models\User;
 use App\Support\LayoutApplicationCatalog;
 use App\Support\ListingPerPage;
-use App\Support\ReportLayoutCommercialProposal;
+use App\Support\LayoutFormOptions;
 use App\Support\ReportLayoutEquipmentApplications;
 use App\Support\RequestLayoutDocumentBuilder;
 use App\Support\RequestLayoutPdfExporter;
@@ -68,8 +68,8 @@ class BoilerChiefLayoutApplicationController extends Controller
             'installationActApplicationOptions' => $installationActApplicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
-            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
-            'subdivisionWarehouseOptions' => ReportLayoutCommercialProposal::subdivisionWarehouseOptionsForUser($request->user()),
+            'measurementMeta' => LayoutFormOptions::measurementMetaForUi(),
+            'subdivisionWarehouseOptions' => LayoutFormOptions::subdivisionWarehouseOptionsForUser($request->user()),
         ]);
     }
 
@@ -107,8 +107,8 @@ class BoilerChiefLayoutApplicationController extends Controller
             'installationActApplicationOptions' => $installationActApplicationOptions,
             'layoutSchemasById' => $layoutSchemasById,
             'layoutViewerContext' => User::layoutReportViewerContext($request->user()),
-            'measurementMeta' => ReportLayoutCommercialProposal::measurementMetaForUi(),
-            'subdivisionWarehouseOptions' => ReportLayoutCommercialProposal::subdivisionWarehouseOptionsForUser($request->user()),
+            'measurementMeta' => LayoutFormOptions::measurementMetaForUi(),
+            'subdivisionWarehouseOptions' => LayoutFormOptions::subdivisionWarehouseOptionsForUser($request->user()),
             'editingSubmission' => $submission,
             'initialSubmissionPayload' => $data,
             'formDocumentDate' => $formDocumentDate,
