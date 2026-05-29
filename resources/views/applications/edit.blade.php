@@ -56,39 +56,35 @@
                     </div>
                 @endif
 
-                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" enctype="multipart/form-data" class="max-sm:pb-40 space-y-8 sm:space-y-10">
+                <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" enctype="multipart/form-data" class="max-sm:pb-40 space-y-8 sm:space-y-10" data-app-initial-subdivision="{{ (int) $application->subdivision_id }}" data-app-initial-delivery="{{ $application->desired_delivery_date?->format('Y-m-d') }}">
                     @csrf
                     @method('PUT')
+
+                    <div id="removed-item-reasons-panel">
+                        @if(is_array(old('removed_item_reasons')))
+                            @foreach(old('removed_item_reasons') as $rid => $rText)
+                                @if((string) $rid !== '' && trim((string) $rText) !== '')
+                                    <input type="hidden" name="removed_item_reasons[{{ $rid }}]" value="{{ $rText }}" />
+                                @endif
+                            @endforeach
+                        @endif
+                    </div>
 
                     <section class="space-y-4" aria-labelledby="edit-section-main">
                         <h3 id="edit-section-main" class="app-section-title">Основное</h3>
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div class="sm:col-span-2">
-                                <label for="subdivision_id" class="app-form-label">Подразделение</label>
-                                <select id="subdivision_id" name="subdivision_id" class="app-select" required>
-                                    <option value="">Выберите подразделение</option>
+                                <label for="subdivision_display" class="app-form-label">Подразделение</label>
+                                <input type="hidden" name="subdivision_id" value="{{ (int) $application->subdivision_id }}" />
+                                <select id="subdivision_display" class="app-select" disabled aria-readonly="true">
                                     @foreach($subdivisions as $sub)
-                                        <option value="{{ $sub->id }}" @selected(old('subdivision_id', $application->subdivision_id) == $sub->id)>{{ $sub->name }}</option>
+                                        <option value="{{ $sub->id }}" @selected((int) $application->subdivision_id === (int) $sub->id)>{{ $sub->name }}</option>
                                     @endforeach
                                 </select>
                                 <x-input-error :messages="$errors->get('subdivision_id')" class="mt-1.5" />
                             </div>
 
                             @include('applications.partials.subdivision-warehouses-hint')
-
-                            @if (Auth::user()->hasApplicationSupplyWorkflowRole())
-                                <div id="management-change-reason-block" class="sm:col-span-2 space-y-2 {{ (old('management_change_reason') || $errors->has('management_change_reason')) ? '' : 'hidden' }}">
-                                    <label for="management_change_reason" class="app-form-label">Причина изменения</label>
-                                    <textarea
-                                        id="management_change_reason"
-                                        name="management_change_reason"
-                                        rows="3"
-                                        maxlength="500"
-                                        class="app-input min-h-[6rem] text-sm"
-                                    >{{ old('management_change_reason') }}</textarea>
-                                    <x-input-error :messages="$errors->get('management_change_reason')" class="mt-1.5" />
-                                </div>
-                            @endif
 
                             
                         </div>
@@ -200,6 +196,16 @@
                                                 <select @if($typeChosen) name="items[{{ $idx }}][quantity_unit]" @endif class="measurement-unit app-select" data-current="{{ $typeChosen ? $cqu : '' }}" @if(! $typeChosen) disabled @endif></select>
                                             </div>
                                         </div>
+                                        @if($itemId && $dbItem && ! $locked)
+                                            @include('applications.partials.item-field-change-reasons-inputs', [
+                                                'itemId' => $itemId,
+                                                'dbItem' => $dbItem,
+                                                'locked' => $locked,
+                                                'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
+                                            ])
+                                        @elseif(! $locked && ! $itemId)
+                                            @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                        @endif
                                     </div>
                                 @else
                                     @php
@@ -263,6 +269,16 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        @if($itemId && $dbItem && ! $locked)
+                                            @include('applications.partials.item-field-change-reasons-inputs', [
+                                                'itemId' => $itemId,
+                                                'dbItem' => $dbItem,
+                                                'locked' => $locked,
+                                                'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
+                                            ])
+                                        @elseif(! $locked && ! $itemId)
+                                            @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                        @endif
                                     </div>
                                 @endif
                             @endforeach
@@ -278,6 +294,13 @@
                             </div>
                         @endunless
                         <x-input-error :messages="$errors->get('equipment')" class="mt-1.5" />
+                        @foreach($errors->getMessages() as $errKey => $errMessages)
+                            @if(\Illuminate\Support\Str::startsWith((string) $errKey, 'removed_item_reasons.'))
+                                @foreach($errMessages as $msg)
+                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $msg }}</p>
+                                @endforeach
+                            @endif
+                        @endforeach
                     </section>
 
                     <section class="space-y-4 border-t border-stone-100 pt-8 dark:border-stone-800" aria-labelledby="edit-section-date">
@@ -286,6 +309,7 @@
                             <label for="desired_delivery_date" class="app-form-label">Желаемая дата поставки</label>
                             <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="app-input min-h-[3.25rem] sm:min-h-[2.75rem]" />
                             <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1.5" />
+                            @include('applications.partials.application-level-change-reason-inputs', ['block' => 'delivery'])
                         </div>
                     </section>
 
@@ -354,6 +378,11 @@
                     </div>
                 </div>
             </div>
+            <div class="new-line-field-change-reasons mt-3 space-y-1 border-t border-stone-200/80 pt-3 dark:border-stone-600/80 hidden" data-new-line-change-reasons="__INDEX__" data-server-error="0">
+                <label class="app-form-label !text-xs">Комментарий: почему добавляете позицию</label>
+                <p class="text-xs text-stone-600 dark:text-stone-400">Увидит мастер участка при просмотре заявки.</p>
+                <textarea name="items[__INDEX__][addition_reason]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
+            </div>
         </div>
     </script>
     <script type="text/template" id="equipment-row-custom-tpl">
@@ -402,67 +431,243 @@
                     <select class="measurement-unit app-select" data-current="" disabled></select>
                 </div>
             </div>
+            <div class="new-line-field-change-reasons mt-3 space-y-2 border-t border-stone-200/80 pt-3 dark:border-stone-600/80" data-new-line-change-reasons="__INDEX__">
+                <p class="text-xs text-stone-600 dark:text-stone-400">Для новой позиции укажите комментарий по каждому пункту — их увидит мастер участка.</p>
+                <div class="new-line-reason-aspect new-line-reason-aspect--equipment hidden space-y-1" data-aspect="equipment" data-server-error="0">
+                    <label class="app-form-label !text-xs">Комментарий (новая позиция): оборудованию / наименованию</label>
+                    <textarea name="items[__INDEX__][addition_reasons][equipment]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
+                </div>
+                <div class="new-line-reason-aspect new-line-reason-aspect--quantity hidden space-y-1" data-aspect="quantity" data-server-error="0">
+                    <label class="app-form-label !text-xs">Комментарий (новая позиция): количеству</label>
+                    <textarea name="items[__INDEX__][addition_reasons][quantity]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
+                </div>
+                <div class="new-line-reason-aspect new-line-reason-aspect--measurement hidden space-y-1" data-aspect="measurement" data-server-error="0">
+                    <label class="app-form-label !text-xs">Комментарий (новая позиция): типу измерения, единице или размеру</label>
+                    <textarea name="items[__INDEX__][addition_reasons][measurement]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
+                </div>
+            </div>
         </div>
     </script>
     <script>
         (function() {
-            var managementReasonBlock = document.getElementById('management-change-reason-block');
-            var managementReasonInput = document.getElementById('management_change_reason');
             var form = document.getElementById('application-edit-form');
-            var managementReasonServerError = @json($errors->has('management_change_reason'));
+            var subdivWrap = document.getElementById('field-reason-subdivision-wrap');
+            var subdivInput = document.getElementById('field_change_reasons_subdivision_id');
+            var subdivSelect = document.getElementById('subdivision_id');
+            var initSubdiv = form ? (form.getAttribute('data-app-initial-subdivision') || '') : '';
 
-            function trackedElements() {
-                if (!form) {
-                    return [];
-                }
-                return Array.prototype.slice.call(form.querySelectorAll(
-                    'select[name="subdivision_id"], ' +
-                    'select[name="responsible_user_id"], ' +
-                    'select[name="transport_option_id"], ' +
-                    'input[name="desired_delivery_date"], ' +
-                    'input[name^="items["][name$="[item_id]"], ' +
-                    'input[name^="items["][name$="[equipment_id]"], ' +
-                    'input[name^="items["][name$="[equipment_name]"], ' +
-                    'input[name^="items["][name$="[quantity]"]'
-                ));
-            }
+            var delWrap = document.getElementById('field-reason-delivery-wrap');
+            var delInput = document.getElementById('field_change_reasons_desired_delivery_date');
+            var delDateEl = document.getElementById('desired_delivery_date');
+            var initDel = form ? (form.getAttribute('data-app-initial-delivery') || '') : '';
 
-            function buildSnapshot() {
-                var data = trackedElements().map(function(el) {
-                    return [el.name, (el.value || '').trim()];
-                });
-                data.sort(function(a, b) {
-                    if (a[0] < b[0]) return -1;
-                    if (a[0] > b[0]) return 1;
-                    if (a[1] < b[1]) return -1;
-                    if (a[1] > b[1]) return 1;
-                    return 0;
-                });
-                return JSON.stringify(data);
-            }
+            var serverSubdivErr = @json($errors->has('field_change_reasons.subdivision_id'));
+            var serverDelErr = @json($errors->has('field_change_reasons.desired_delivery_date'));
 
-            var initialSnapshot = '';
-
-            function syncManagementReasonVisibility() {
-                if (!managementReasonBlock || !managementReasonInput) {
+            function toggleSubdivReason() {
+                if (!subdivWrap || !subdivSelect) {
                     return;
                 }
-                if (managementReasonServerError) {
-                    managementReasonBlock.classList.remove('hidden');
-                    managementReasonInput.required = true;
+                if (serverSubdivErr) {
+                    subdivWrap.classList.remove('hidden');
+                    if (subdivInput) {
+                        subdivInput.required = true;
+                    }
                     return;
                 }
-                var changed = buildSnapshot() !== initialSnapshot;
-                managementReasonBlock.classList.toggle('hidden', !changed);
-                managementReasonInput.required = changed;
-                if (!changed) {
-                    managementReasonInput.value = '';
+                var changed = String(subdivSelect.value || '') !== String(initSubdiv);
+                subdivWrap.classList.toggle('hidden', !changed);
+                if (subdivInput) {
+                    subdivInput.required = changed;
+                    if (!changed) {
+                        subdivInput.value = '';
+                    }
                 }
             }
 
-            if (form) {
-                form.addEventListener('input', syncManagementReasonVisibility);
-                form.addEventListener('change', syncManagementReasonVisibility);
+            function toggleDeliveryReason() {
+                if (!delWrap || !delDateEl) {
+                    return;
+                }
+                if (serverDelErr) {
+                    delWrap.classList.remove('hidden');
+                    if (delInput) {
+                        delInput.required = true;
+                    }
+                    return;
+                }
+                var cur = String(delDateEl.value || '');
+                var changed = cur !== String(initDel);
+                delWrap.classList.toggle('hidden', !changed);
+                if (delInput) {
+                    delInput.required = changed;
+                    if (!changed) {
+                        delInput.value = '';
+                    }
+                }
+            }
+
+            function rowHasNewEquipmentContent(row) {
+                if (!row.classList.contains('equipment-row--editable')) {
+                    return false;
+                }
+                var idInput = row.querySelector('input[name*="[item_id]"]');
+                if (!idInput || String(idInput.value || '').trim() !== '') {
+                    return false;
+                }
+                if (row.classList.contains('equipment-row--list')) {
+                    var tid = row.querySelector('.equipment-type-id');
+                    return !!(tid && String(tid.value || '').trim() !== '');
+                }
+                if (row.classList.contains('equipment-row--custom')) {
+                    var nameInput = row.querySelector('.custom-equipment-input');
+                    return !!(nameInput && String(nameInput.value || '').trim() !== '');
+                }
+                return false;
+            }
+
+            function syncNewLineFieldReasonPanels() {
+                Array.prototype.forEach.call(document.querySelectorAll('[data-new-line-change-reasons]'), function(wrap) {
+                    var row = wrap.closest('.equipment-row');
+                    if (!row) {
+                        return;
+                    }
+                    var hasContent = rowHasNewEquipmentContent(row);
+                    var serverFlag = wrap.getAttribute('data-server-error') === '1';
+                    var vis = serverFlag || hasContent;
+                    wrap.classList.toggle('hidden', !vis);
+                    var ta = wrap.querySelector('textarea');
+                    if (ta) {
+                        ta.required = !!vis;
+                        if (!vis && !serverFlag) {
+                            ta.value = '';
+                        }
+                    }
+                });
+            }
+
+            function readListRowState(row) {
+                var tid = row.querySelector('.equipment-type-id');
+                var qty = row.querySelector('.list-amount-number');
+                var mt = row.querySelector('.list-measurement-type-field');
+                var qu = row.querySelector('.list-quantity-unit-field');
+                var sv = row.querySelector('.list-size-value-field');
+                var sizeSel = row.querySelector('.list-amount-size');
+                var svLive = sizeSel && !sizeSel.disabled ? String(sizeSel.value || '').trim() : String((sv && sv.value) || '');
+                return {
+                    equipmentId: String((tid && tid.value) || ''),
+                    equipmentName: '',
+                    quantity: qty ? parseInt(qty.value, 10) || 1 : 1,
+                    measurementType: String((mt && mt.value) || 'piece'),
+                    quantityUnit: String((qu && qu.value) || 'шт'),
+                    sizeValue: svLive,
+                };
+            }
+
+            function readCustomRowState(row) {
+                var nameInput = row.querySelector('.custom-equipment-input');
+                var mt = row.querySelector('select.measurement-type');
+                var qty = row.querySelector('.custom-amount-number');
+                var qu = row.querySelector('select.measurement-unit');
+                var svField = row.querySelector('.custom-size-value-field');
+                var sizeSel = row.querySelector('.custom-amount-size');
+                var svLive = '';
+                if (sizeSel && !sizeSel.disabled) {
+                    svLive = String(sizeSel.value || '').trim();
+                } else if (svField) {
+                    svLive = String(svField.value || '').trim();
+                }
+                return {
+                    equipmentId: '',
+                    equipmentName: String((nameInput && nameInput.value) || '').trim(),
+                    quantity: qty && !qty.disabled ? (parseInt(qty.value, 10) || 1) : 1,
+                    measurementType: String((mt && mt.value) || ''),
+                    quantityUnit: qu && !qu.disabled ? String(qu.value || '').trim() : '',
+                    sizeValue: svLive,
+                };
+            }
+
+            function normalizeReasonState(state) {
+                var measurementType = String((state && state.measurementType) || '').trim();
+                var quantityUnit = String((state && state.quantityUnit) || '').trim();
+                var sizeValue = String((state && state.sizeValue) || '').trim();
+                if (measurementType === '') {
+                    measurementType = 'piece';
+                }
+                if (quantityUnit === '') {
+                    quantityUnit = measurementType === 'length'
+                        ? 'м'
+                        : (measurementType === 'mass' ? 'кг' : 'шт');
+                }
+                if (measurementType !== 'clothing_size') {
+                    sizeValue = '';
+                }
+
+                return {
+                    equipmentId: String((state && state.equipmentId) || '').trim(),
+                    equipmentName: String((state && state.equipmentName) || '').trim(),
+                    quantity: parseInt((state && state.quantity) || 1, 10) || 1,
+                    measurementType: measurementType,
+                    quantityUnit: quantityUnit,
+                    sizeValue: sizeValue,
+                };
+            }
+
+            function syncItemFieldReasonPanels() {
+                Array.prototype.forEach.call(document.querySelectorAll('[data-item-field-change-reasons]'), function(wrap) {
+                    var row = wrap.closest('.equipment-row');
+                    if (!row) {
+                        return;
+                    }
+                    var mode = wrap.getAttribute('data-row-mode') || 'list';
+                    var init = {
+                        equipmentId: String(wrap.getAttribute('data-initial-equipment-id') || ''),
+                        equipmentName: String(wrap.getAttribute('data-initial-equipment-name') || '').trim(),
+                        quantity: parseInt(wrap.getAttribute('data-initial-quantity') || '1', 10) || 1,
+                        measurementType: String(wrap.getAttribute('data-initial-measurement-type') || 'piece'),
+                        quantityUnit: String(wrap.getAttribute('data-initial-quantity-unit') || 'шт'),
+                        sizeValue: String(wrap.getAttribute('data-initial-size-value') || '').trim(),
+                    };
+                    var cur = normalizeReasonState(mode === 'list' ? readListRowState(row) : readCustomRowState(row));
+                    var wrapInitKey = 'data-ui-initial-state';
+                    if (!wrap.hasAttribute(wrapInitKey)) {
+                        // Фиксируем стартовое состояние из реального UI, чтобы не требовать комментарий
+                        // из-за служебных автоподстановок при первом рендере.
+                        wrap.setAttribute(wrapInitKey, JSON.stringify(cur));
+                    }
+                    var initFromUi = null;
+                    try {
+                        initFromUi = JSON.parse(String(wrap.getAttribute(wrapInitKey) || '{}'));
+                    } catch (e) {
+                        initFromUi = null;
+                    }
+                    init = normalizeReasonState(initFromUi || init);
+                    var equipmentChanged = mode === 'list'
+                        ? cur.equipmentId !== init.equipmentId
+                        : cur.equipmentName !== init.equipmentName;
+                    var quantityChanged = cur.quantity !== init.quantity;
+                    var measurementChanged = cur.measurementType !== init.measurementType
+                        || cur.quantityUnit !== init.quantityUnit
+                        || cur.sizeValue !== init.sizeValue;
+                    var changed = equipmentChanged || quantityChanged || measurementChanged;
+                    var serverFlag = wrap.getAttribute('data-server-error') === '1';
+                    var vis = serverFlag || changed;
+                    wrap.classList.toggle('hidden', !vis);
+                    var ta = wrap.querySelector('textarea');
+                    if (ta) {
+                        ta.required = !!vis;
+                        if (!vis && !serverFlag) {
+                            ta.value = '';
+                        }
+                    }
+                });
+            }
+
+            function syncAllPerFieldReasonUi() {
+                toggleSubdivReason();
+                toggleDeliveryReason();
+                syncNewLineFieldReasonPanels();
+                syncItemFieldReasonPanels();
             }
 
             var responsibleSelect = document.getElementById('responsible_user_id');
@@ -514,13 +719,11 @@
                 renderSubdivisionOptions();
             }
 
-            initialSnapshot = buildSnapshot();
-
             if (form) {
-                form.addEventListener('input', syncManagementReasonVisibility);
-                form.addEventListener('change', syncManagementReasonVisibility);
+                form.addEventListener('input', syncAllPerFieldReasonUi);
+                form.addEventListener('change', syncAllPerFieldReasonUi);
             }
-            syncManagementReasonVisibility();
+            syncAllPerFieldReasonUi();
         })();
     </script>
 
@@ -1249,6 +1452,10 @@
                 }
                 bindDuplicateEquipmentChecks(container);
                 refreshDuplicateEquipmentErrors();
+                var appEditFormSync = document.getElementById('application-edit-form');
+                if (appEditFormSync) {
+                    appEditFormSync.dispatchEvent(new Event('input', { bubbles: true }));
+                }
             }
 
             document.getElementById('add-equipment-from-list').addEventListener('click', function() {
@@ -1269,8 +1476,38 @@
                 if (editable <= 1 && locked === 0) {
                     return;
                 }
+                var itemIdInput = row.querySelector('input[name*="[item_id]"]');
+                var itemId = itemIdInput && itemIdInput.value ? String(parseInt(itemIdInput.value, 10) || 0) : '0';
+                if (itemId !== '0' && parseInt(itemId, 10) > 0) {
+                    var reason = window.prompt('Укажите причину снятия этой позиции с заявки (будет видна мастеру участка). Не менее 3 символов:', '');
+                    if (reason === null) {
+                        return;
+                    }
+                    reason = String(reason).trim();
+                    if (reason.length < 3) {
+                        window.alert('Причина должна быть не короче 3 символов.');
+                        return;
+                    }
+                    var panel = document.getElementById('removed-item-reasons-panel');
+                    if (panel) {
+                        var existing = panel.querySelector('input[name="removed_item_reasons[' + itemId + ']"]');
+                        if (existing) {
+                            existing.value = reason;
+                        } else {
+                            var hidden = document.createElement('input');
+                            hidden.type = 'hidden';
+                            hidden.name = 'removed_item_reasons[' + itemId + ']';
+                            hidden.value = reason;
+                            panel.appendChild(hidden);
+                        }
+                    }
+                }
                 row.remove();
                 refreshDuplicateEquipmentErrors();
+                var appEditForm = document.getElementById('application-edit-form');
+                if (appEditForm) {
+                    appEditForm.dispatchEvent(new Event('input', { bubbles: true }));
+                }
             }
 
             bindRemoveButtons();

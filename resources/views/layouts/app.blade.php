@@ -10,7 +10,6 @@
         @include('partials.theme-init-script')
 
         
-        <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="font-sans antialiased text-stone-900 dark:text-stone-100">
@@ -18,7 +17,6 @@
         <div class="relative z-10 flex min-h-screen flex-col text-stone-900 dark:text-stone-100">
             @include('layouts.navigation')
 
-            <!-- Page Heading -->
             @isset($header)
                 <header class="border-b border-orange-400/70 dark:border-orange-800/60 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100">
                     <div @class([
@@ -33,7 +31,6 @@
                 </header>
             @endisset
 
-            <!-- Page Content -->
             <main class="flex-1 overflow-x-hidden bg-white dark:bg-orange-950/80 py-4 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 <div class="mx-auto w-full max-w-[min(100%,1920px)] px-0 sm:px-6 lg:px-8 mb-4 sm:mb-6 empty:hidden">
                     <x-flash-messages />

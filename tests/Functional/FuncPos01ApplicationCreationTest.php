@@ -764,6 +764,12 @@ test('foreman can revise items rejected by boiler chief and resubmit without rel
     $this->actingAs($ctx['foreman'])->put(route('applications.update', $app), [
         'subdivision_id' => $ctx['subdivision']->id,
         'desired_delivery_date' => $newDeliveryDate,
+        'field_change_reasons' => [
+            'desired_delivery_date' => 'Срок по замечанию котельной.',
+        ],
+        'item_change_reasons' => [
+            $modifiedRejectedItemId => 'Уточнили количество после отказа котельной.',
+        ],
         'items' => [
             [
                 'item_id' => $approvedItemId,
@@ -919,8 +925,12 @@ test('boiler chief submits foreman application to management after boiler approv
         ->assertOk()
         ->assertSee('applications/'.$app->id, false);
 
+    $app->refresh();
+    expect($app->managementCanEditApplication())->toBeTrue();
+
     $this->actingAs($management)->get(route('applications.show', $app))
-        ->assertOk();
+        ->assertOk()
+        ->assertSee(route('applications.edit', $app), false);
 
     $this->actingAs($management)->post(route('applications.approval', $app), [
         'items' => [
@@ -930,6 +940,7 @@ test('boiler chief submits foreman application to management after boiler approv
 
     $app->refresh();
     expect($app->managementHasSavedApproval())->toBeTrue();
+    expect($app->managementCanEditApplication())->toBeFalse();
 
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertOk()
@@ -1000,7 +1011,12 @@ test('management edit of released application requires manual approval without b
     $this->actingAs($management)->put(route('applications.update', $app), [
         'subdivision_id' => $ctx['subdivision']->id,
         'desired_delivery_date' => now()->addDays(14)->format('Y-m-d'),
-        'management_change_reason' => 'Корректировка количества',
+        'field_change_reasons' => [
+            'desired_delivery_date' => 'Срок поставки скорректирован снабжением.',
+        ],
+        'item_change_reasons' => [
+            $itemId => 'Корректировка количества.',
+        ],
         'items' => [
             [
                 'item_id' => $itemId,
@@ -1022,8 +1038,11 @@ test('management edit of released application requires manual approval without b
     expect($app->items()->find($itemId)?->is_checked)->toBeFalse();
     expect($app->items()->find($itemId)?->quantity)->toBe($newQuantity);
 
+    expect($app->managementCanEditApplication())->toBeTrue();
+
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertOk()
+        ->assertSee(route('applications.edit', $app), false)
         ->assertSee('id="approval-form"', false)
         ->assertSee('approval-item-checkbox', false)
         ->assertDontSee('не в согласовании снабжения', false)
@@ -1041,6 +1060,54 @@ test('management edit of released application requires manual approval without b
 
     $this->actingAs($management)->get(route('applications.edit', $app))
         ->assertForbidden();
+});
+
+test('subdivision cannot be changed on application edit', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-fixed-subdivision');
+
+    $otherSubdivision = \App\Models\Subdivision::query()->create([
+        'name' => 'Другое подразделение редактирования',
+    ]);
+    $ctx['foreman']->assignedSubdivisions()->sync([$ctx['subdivision']->id, $otherSubdivision->id]);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->firstOrFail();
+
+    $this->actingAs($ctx['foreman'])
+        ->from(route('applications.edit', $app))
+        ->put(route('applications.update', $app), [
+            'subdivision_id' => $otherSubdivision->id,
+            'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+            'items' => [
+                [
+                    'item_id' => (int) $app->items()->value('id'),
+                    'equipment_id' => $ctx['equipment']->id,
+                    'quantity' => 1,
+                    'measurement_type' => 'piece',
+                    'quantity_unit' => 'шт',
+                    'size_value' => '',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('applications.edit', $app))
+        ->assertSessionHasErrors('subdivision_id');
+
+    $app->refresh();
+    expect((int) $app->subdivision_id)->toBe((int) $ctx['subdivision']->id);
 });
 
 test('management rejection of all equipment lines marks application rejected and skips supply handoff', function (): void {
@@ -1193,6 +1260,7 @@ test('application update rejects equipment name longer than limit with russian m
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл валидация');
 
     $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
         'subdivision_id' => $ctx['subdivision']->id,
         'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
         'items' => [
@@ -1398,6 +1466,9 @@ test('application edit can replace commercial offer when attached', function ():
     $this->actingAs($ctx['foreman'])->put(route('applications.update', $application), [
         'subdivision_id' => $ctx['subdivision']->id,
         'desired_delivery_date' => now()->addDays(8)->format('Y-m-d'),
+        'field_change_reasons' => [
+            'desired_delivery_date' => 'Смещаем дату поставки.',
+        ],
         'items' => [
             [
                 'item_id' => $application->items()->first()?->id,

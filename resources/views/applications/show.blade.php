@@ -46,12 +46,23 @@
                         'archiveButtonClass' => 'ui-btn ui-btn--secondary whitespace-nowrap shrink-0',
                     ])
                 @endif
-                @if (! $application->archived_at
-                    && ! $application->managementHasSavedApproval()
-                    && Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS)
-                    && ! $application->items->contains(fn ($i) => in_array($i->resolvedDeliveryStatus(), [\App\Models\ApplicationItem::DELIVERY_IN_TRANSIT, \App\Models\ApplicationItem::DELIVERY_DELIVERED], true))
-                    && (! Auth::user()->hasRoleId(4) || $application->foremanCanEditApplication())
-                    && (! Auth::user()->hasRoleId(7) || $application->boilerChiefCanEditApplication()))
+                @php
+                    $applicationEditBlockedByDelivery = $application->items->contains(
+                        fn ($i) => in_array($i->resolvedDeliveryStatus(), [
+                            \App\Models\ApplicationItem::DELIVERY_IN_TRANSIT,
+                            \App\Models\ApplicationItem::DELIVERY_DELIVERED,
+                        ], true)
+                    );
+                    $canCreatorEditApplication = ! $application->archived_at
+                        && ! $application->managementHasSavedApproval()
+                        && ! $applicationEditBlockedByDelivery
+                        && Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_CREATOR_ROLE_IDS)
+                        && (! Auth::user()->hasRoleId(4) || $application->foremanCanEditApplication())
+                        && (! Auth::user()->hasRoleId(7) || $application->boilerChiefCanEditApplication());
+                    $canManagementEditApplication = Auth::user()->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS)
+                        && $application->managementCanEditApplication();
+                @endphp
+                @if ($canCreatorEditApplication || $canManagementEditApplication)
                     <a href="{{ route('applications.edit', $application) }}" class="ui-btn ui-btn--primary whitespace-nowrap shrink-0">
                         Изменить
                     </a>
@@ -298,6 +309,8 @@
                             @endif
                         </dl>
                     </section>
+
+                    @include('applications.partials.change-journal-section', ['application' => $application])
 
                     @php
                         $approvalLockedAfterTransit = $application->approvalLockedByShipmentProgress();
@@ -753,6 +766,7 @@
                                             {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                         </span>
                                         @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
+                                        @include('applications.partials.item-editor-change-note', ['item' => $item])
                                     </li>
                                 @endforeach
                             </ul>
@@ -771,6 +785,7 @@
                                             @if($application->itemLineRejectionReason($item->id))
                                                 <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                             @endif
+                                            @include('applications.partials.item-editor-change-note', ['item' => $item])
                                         </li>
                                     @endforeach
                                 </ul>
@@ -792,6 +807,7 @@
                                             @if($application->itemLineRejectionReason($item->id))
                                                 <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                             @endif
+                                            @include('applications.partials.item-editor-change-note', ['item' => $item])
                                         </li>
                                     @endforeach
                                 </ul>
@@ -805,6 +821,7 @@
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                             @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
+                                            @include('applications.partials.item-editor-change-note', ['item' => $item])
                                             @if($application->itemLineRejectionReason($item->id))
                                                 <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
                                             @endif
@@ -822,9 +839,43 @@
                                                 {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                             </span>
                                             @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
+                                            @include('applications.partials.item-editor-change-note', ['item' => $item])
                                         </li>
                                     @endforeach
                                 </ul>
+                            @endif
+
+                            @if($application->removedItems->isNotEmpty())
+                                <div class="mt-4 rounded-xl border border-rose-200/90 bg-rose-50/70 p-4 dark:border-rose-900/50 dark:bg-rose-950/25">
+                                    <h4 class="app-form-label !normal-case !mb-2 text-rose-950 dark:text-rose-100">Снятые с заявки позиции</h4>
+                                    <p class="mb-3 text-xs text-rose-900/90 dark:text-rose-100/85">
+                                        Строки удалены при правке заявки; причина доступна мастеру участка и остальным участникам процесса.
+                                    </p>
+                                    <ul class="divide-y divide-rose-200/80 overflow-hidden rounded-lg border border-rose-200/80 dark:divide-rose-900/40 dark:border-rose-900/40">
+                                        @foreach($application->removedItems as $rItem)
+                                            <li class="px-3 py-2 space-y-1 bg-white/80 dark:bg-stone-950/40">
+                                                <span class="text-sm font-medium text-black dark:text-white line-through decoration-rose-700/60">
+                                                    {{ $rItem->equipment_display_name }} × {{ $rItem->quantity_with_unit }}
+                                                </span>
+                                                @php
+                                                    $removalJournalEntry = $application->changeJournalEntries
+                                                        ->where('application_item_id', $rItem->id)
+                                                        ->where('field_key', \App\Models\ApplicationChangeJournal::FIELD_ITEM_REMOVED)
+                                                        ->sortByDesc('created_at')
+                                                        ->first();
+                                                @endphp
+                                                <p class="text-xs text-black dark:text-white">
+                                                    <span class="font-medium">Причина снятия:</span> {{ $removalJournalEntry?->reason ?? '—' }}
+                                                </p>
+                                                @if($rItem->removedBy)
+                                                    <p class="text-[11px] text-black/70 dark:text-white/70">
+                                                        {{ $rItem->removedBy->surname }} {{ $rItem->removedBy->name }}, {{ $rItem->removed_at?->format('d.m.Y H:i') ?? '—' }}
+                                                    </p>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
                             @endif
 
                             @if($chiefCanMarkDelivered && $chiefDeliveryCandidates->isNotEmpty())
@@ -863,8 +914,17 @@
                                                             @endforeach
                                                         </select>
                                                     </div>
-                                                    <div class="w-full shrink-0 sm:w-auto">
-                                                        <button type="submit" class="ui-btn ui-btn--secondary ui-btn--sm w-full whitespace-normal sm:w-auto sm:whitespace-nowrap">
+                                                    <div class="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0 sm:min-w-[12rem]">
+                                                        <span class="app-form-label !normal-case text-xs opacity-0 max-sm:hidden pointer-events-none select-none" aria-hidden="true">Действие</span>
+                                                        <button
+                                                            type="button"
+                                                            class="ui-btn ui-btn--secondary ui-btn--sm w-full whitespace-nowrap"
+                                                            data-apply-chief-delivery-warehouse-bulk
+                                                            data-target-subdivision-id="{{ $targetSubIdInt }}"
+                                                        >
+                                                            Применить ко всем позициям
+                                                        </button>
+                                                        <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm w-full whitespace-normal sm:whitespace-nowrap">
                                                             Доставлено для всех в блоке
                                                         </button>
                                                     </div>
@@ -878,7 +938,10 @@
                                                 $targetSubId = $deliveryItem->resolvedDeliveryTargetSubdivisionId();
                                                 $subForChief = ($boilerChiefDeliverySubdivisions ?? collect())->firstWhere('id', $targetSubId);
                                             @endphp
-                                            <li class="rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 px-3 py-2 space-y-2">
+                                            <li
+                                                class="chief-delivery-warehouse-row rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950/60 px-3 py-2 space-y-2"
+                                                @if($subForChief) data-chief-delivery-target-subdivision="{{ (int) $subForChief->id }}" @endif
+                                            >
                                                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                                     <span class="text-sm text-black dark:text-white">
                                                         {{ $deliveryItem->equipment_display_name }} × {{ $deliveryItem->quantity_with_unit }}
@@ -922,6 +985,31 @@
                                             </li>
                                         @endforeach
                                     </ul>
+                                    <script>
+                                        (function () {
+                                            document.querySelectorAll('[data-apply-chief-delivery-warehouse-bulk]').forEach(function (btn) {
+                                                btn.addEventListener('click', function () {
+                                                    var subId = btn.getAttribute('data-target-subdivision-id');
+                                                    if (! subId) {
+                                                        return;
+                                                    }
+                                                    var bulk = document.getElementById('delivery-wh-bulk-' + subId);
+                                                    if (! bulk || ! bulk.value) {
+                                                        return;
+                                                    }
+                                                    var bulkVal = bulk.value;
+                                                    document.querySelectorAll('.chief-delivery-warehouse-row[data-chief-delivery-target-subdivision="' + subId + '"] select[name="delivery_warehouse_id"]').forEach(function (sel) {
+                                                        var has = Array.prototype.some.call(sel.options, function (o) {
+                                                            return String(o.value) === String(bulkVal);
+                                                        });
+                                                        if (has) {
+                                                            sel.value = bulkVal;
+                                                        }
+                                                    });
+                                                });
+                                            });
+                                        })();
+                                    </script>
                                 </div>
                             @endif
                         @endif

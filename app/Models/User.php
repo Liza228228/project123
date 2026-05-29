@@ -14,24 +14,12 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
-    /**
-     * Директор, технический директор и начальник отдела снабжения — согласование заявок,
-     * КП, отметки поставки, списание со склада «Администрация» (без создания заявок).
-     *
-     * @var list<int>
-     */
     public const APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2];
 
     /** @var list<int> */
     public const MANAGEMENT_EDITOR_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
 
-    /**
-     * Справочник оборудования и приход/операции на складе (маршрут «Учёт оборудования», POST каталога и движений).
-     * Бухгалтер (роль 3) по-прежнему может открыть /materials для просмотра без этих прав — см. middleware {@see \App\Http\Middleware\EnsureUserIsSupplyHead}.
-     * Технический директор — только остатки и журнал, без учёта.
-     *
-     * @var list<int>
-     */
+
     public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = [1, 2];
 
     /**
@@ -116,24 +104,10 @@ class User extends Authenticatable
     /** Технический директор. */
     public const TECHNICAL_DIRECTOR_ROLE_ID = 6;
 
-    /**
-     * Назначение мастеров участка и начальников котельных по подразделениям
-     * (директор, технический директор, начальник отдела снабжения, администратор).
-     */
-    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2, 5];
 
-    /**
-     * Создание подразделений и складов (без технического директора — только просмотр каталога).
-     *
-     * @var list<int>
-     */
+    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2, 5];
     public const SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS = [1, 2, 5];
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'surname',
         'name',
@@ -144,20 +118,10 @@ class User extends Authenticatable
         'is_blocked',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [

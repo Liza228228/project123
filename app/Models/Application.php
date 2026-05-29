@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\ActiveApplicationItemScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -167,6 +168,27 @@ class Application extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
+    }
+
+    /**
+     * Позиции, снятые с заявки при редактировании (причина — для мастера участка).
+     *
+     * @return HasMany<ApplicationItem, $this>
+     */
+    public function removedItems(): HasMany
+    {
+        return $this->hasMany(ApplicationItem::class)
+            ->withoutGlobalScope(ActiveApplicationItemScope::class)
+            ->whereNotNull('removed_at')
+            ->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<ApplicationChangeJournal, $this>
+     */
+    public function changeJournalEntries(): HasMany
+    {
+        return $this->hasMany(ApplicationChangeJournal::class)->orderByDesc('created_at');
     }
 
     public function installationActPhotos(): HasMany
@@ -477,6 +499,34 @@ class Application extends Model
         }
 
         return ! $this->managementHasSavedApproval();
+    }
+
+    /**
+     * Директор, ТД или начальник снабжения могут править заявку после передачи от котельной
+     * до сохранения согласования по позициям (только подразделения с закреплённой котельной).
+     */
+    public function managementCanEditApplication(): bool
+    {
+        if ($this->archived_at !== null || $this->isAdminArchived()) {
+            return false;
+        }
+        if ($this->managementHasSavedApproval()) {
+            return false;
+        }
+        if (! Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)) {
+            return false;
+        }
+        if (! $this->managementMayReviewAfterBoilerChief()) {
+            return false;
+        }
+        $this->loadMissing('items');
+
+        return ! $this->items->contains(
+            fn (ApplicationItem $i) => in_array($i->resolvedDeliveryStatus(), [
+                ApplicationItem::DELIVERY_IN_TRANSIT,
+                ApplicationItem::DELIVERY_DELIVERED,
+            ], true)
+        );
     }
 
     /**

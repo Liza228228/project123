@@ -310,7 +310,7 @@
                                 class="block w-full text-sm text-stone-600 file:mr-4 file:rounded-xl file:border-0 file:bg-orange-100 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-stone-800 hover:file:bg-orange-200/90 dark:text-stone-300 dark:file:bg-orange-950/50 dark:file:text-orange-100 dark:hover:file:bg-orange-900/60"
                             />
                             <p class="mt-1.5 text-xs text-stone-500 dark:text-stone-400">
-                                После акта добавьте хотя бы одно фото; до 30 файлов по 10 МБ (JPG, PNG, GIF, WebP, BMP).
+                                После акта добавьте хотя бы одно фото; до 30 файлов по 10 МБ (JPG, PNG, WebP).
                             </p>
                         
                             <x-input-error :messages="$errors->get('installation_act_photos')" class="mt-1.5" />

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\ActiveApplicationItemScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -87,6 +88,8 @@ class ApplicationItem extends Model
         'delivery_warehouse_id',
         'transport_option_id',
         'expected_arrival_at',
+        'removed_at',
+        'removed_by_user_id',
     ];
 
     protected function casts(): array
@@ -97,11 +100,14 @@ class ApplicationItem extends Model
             'custom_equipment_supply_status_id' => 'integer',
             'delivery_status_id' => 'integer',
             'expected_arrival_at' => 'date',
+            'removed_at' => 'datetime',
         ];
     }
 
     protected static function booted(): void
     {
+        static::addGlobalScope(new ActiveApplicationItemScope());
+
         static::saved(function (ApplicationItem $item): void {
             $eid = $item->getAttributeFromArray('equipment_id');
             if ($eid !== null && $eid !== '') {
@@ -283,6 +289,19 @@ class ApplicationItem extends Model
     public function transportOption(): BelongsTo
     {
         return $this->belongsTo(TransportOption::class);
+    }
+
+    public function removedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'removed_by_user_id');
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<ApplicationChangeJournal, $this>
+     */
+    public function changeJournalEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ApplicationChangeJournal::class)->orderByDesc('created_at');
     }
 
     public function transportMethodOptionIdForDeliveryForm(): ?int

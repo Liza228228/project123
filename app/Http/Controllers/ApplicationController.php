@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Application;
+use App\Models\ApplicationChangeJournal;
 use App\Models\ApplicationInstallationActPhoto;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
@@ -1108,6 +1109,11 @@ class ApplicationController extends Controller
             'items.manualDetail',
             'items.transportOption',
             'items.deliveryWarehouse',
+            'changeJournalEntries.user',
+            'items.changeJournalEntries.user',
+            'removedItems.equipment',
+            'removedItems.manualDetail',
+            'removedItems.removedBy',
             'sourceApplication',
             'transportOption',
             'applicationStatus',
@@ -1524,9 +1530,7 @@ class ApplicationController extends Controller
         $measurementMeta['catalogById'] = $this->catalogEquipmentMeasurementMetaById($equipment);
 
         $managementMayEditBoilerApprovedEquipment = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
-            && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
-            && ! $application->needsBoilerChiefReviewBeforeManagement()
-            && ! $application->managementHasSavedApproval();
+            && $application->managementCanEditApplication();
 
         $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
         $isCreatorDraft = $application->isCreatorDraftApplication();
@@ -1562,7 +1566,7 @@ class ApplicationController extends Controller
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
         $wasCreatorDraftBeforeUpdate = $application->isCreatorDraftApplication();
-        $subdivisionIdForDraftRules = (int) ($request->input('subdivision_id') ?: $application->subdivision_id);
+        $subdivisionIdForDraftRules = (int) $application->subdivision_id;
 
         if ($wasCreatorDraftBeforeUpdate && $isSiteForeman && Subdivision::hasBoilerChiefAssigned($subdivisionIdForDraftRules)) {
             $submitAction = (string) $request->input('submit_action', '');
@@ -1584,7 +1588,14 @@ class ApplicationController extends Controller
         $rules = [
             'submit_action' => ['nullable', Rule::in(['save', 'submit_to_boiler_chief', 'submit_for_management'])],
             'subdivision_id' => ['required', 'exists:subdivisions,id'],
-            'management_change_reason' => ['nullable', 'string', 'max:500'],
+            'field_change_reasons' => ['nullable', 'array'],
+            'field_change_reasons.subdivision_id' => ['nullable', 'string', 'max:500'],
+            'field_change_reasons.desired_delivery_date' => ['nullable', 'string', 'max:500'],
+            'item_change_reasons' => ['nullable', 'array'],
+            'item_change_reasons.*' => ['nullable', 'string', 'max:500'],
+            'items.*.addition_reason' => ['nullable', 'string', 'max:500'],
+            'removed_item_reasons' => ['nullable', 'array'],
+            'removed_item_reasons.*' => ['nullable', 'string', 'max:500'],
             'desired_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_id' => [
@@ -1606,10 +1617,17 @@ class ApplicationController extends Controller
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ], ApplicationItem::applicationFormValidationMessages()));
 
+        $requestedSubdivisionId = (int) $validated['subdivision_id'];
+        $currentSubdivisionId = (int) $application->subdivision_id;
+        if ($requestedSubdivisionId !== $currentSubdivisionId) {
+            throw ValidationException::withMessages([
+                'subdivision_id' => 'Подразделение нельзя изменить при редактировании заявки.',
+            ]);
+        }
+        $validated['subdivision_id'] = $currentSubdivisionId;
+
         $managementMayEditCheckedEquipmentLines = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
-            && Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id)
-            && ! $application->needsBoilerChiefReviewBeforeManagement()
-            && ! $application->managementHasSavedApproval();
+            && $application->managementCanEditApplication();
         $foremanMayReviseRejectedByBoilerChiefOnly = $isSiteForeman
             && $application->foremanCanReviseAfterBoilerChiefRejection();
 
@@ -1750,6 +1768,34 @@ class ApplicationController extends Controller
 
         $submittedItemIds = $itemIdsInRequest->values()->all();
 
+        $activeIdsBefore = $application->items->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $removedActiveIds = array_values(array_diff($activeIdsBefore, $submittedItemIds));
+
+        foreach ($removedActiveIds as $removedId) {
+            $removalReason = trim((string) $request->input("removed_item_reasons.{$removedId}", ''));
+            if ($removalReason === '') {
+                throw ValidationException::withMessages([
+                    "removed_item_reasons.{$removedId}" => 'Укажите причину снятия этой позиции с заявки (она останется в истории для мастера участка).',
+                ]);
+            }
+            if (mb_strlen($removalReason) < 3) {
+                throw ValidationException::withMessages([
+                    "removed_item_reasons.{$removedId}" => 'Причина снятия позиции должна быть не короче 3 символов.',
+                ]);
+            }
+        }
+
+        $this->validateApplicationEditPerFieldChangeReasons(
+            $request,
+            $application,
+            $validated,
+            $foremanMayReviseRejectedByBoilerChiefOnly,
+            $managementMayEditCheckedEquipmentLines,
+        );
+
+        $subdivisionChanged = (int) $validated['subdivision_id'] !== (int) $application->subdivision_id;
+        $deliveryDateChanged = $application->desired_delivery_date?->toDateString() !== $validated['desired_delivery_date'];
+
         if (! $managementMayEditCheckedEquipmentLines) {
             foreach ($application->items as $item) {
                 if (! (bool) $item->is_checked) {
@@ -1776,6 +1822,8 @@ class ApplicationController extends Controller
             $managementMayEditCheckedEquipmentLines,
             $foremanMayReviseRejectedByBoilerChiefOnly,
             $wasCreatorDraftBeforeUpdate,
+            $subdivisionChanged,
+            $deliveryDateChanged,
         ) {
             $nextUserId = (int) $application->user_id;
 
@@ -1785,25 +1833,106 @@ class ApplicationController extends Controller
             }
             $existingApprovedByUserId = $application->approved_by_user_id;
 
-            $application->update([
+            $applicationCoreUpdate = [
                 'user_id' => $nextUserId,
                 'subdivision_id' => $validated['subdivision_id'],
                 'responsible_user_id' => $responsibleUserId,
                 'transport_option_id' => $application->transport_option_id,
                 'desired_delivery_date' => $validated['desired_delivery_date'],
-            ]);
+            ];
+            $journalUserId = (int) $request->user()->id;
+            $oldSubdivisionName = $subdivisionChanged
+                ? (Subdivision::query()->find($previousSubdivisionId)?->name ?? '—')
+                : null;
+            $newSubdivisionName = $subdivisionChanged
+                ? (Subdivision::query()->find((int) $validated['subdivision_id'])?->name ?? '—')
+                : null;
+            $oldDeliveryLabel = $deliveryDateChanged
+                ? ($application->desired_delivery_date?->format('d.m.Y') ?? '—')
+                : null;
+            $newDeliveryLabel = $deliveryDateChanged
+                ? Carbon::parse($validated['desired_delivery_date'])->format('d.m.Y')
+                : null;
+
+            $application->update($applicationCoreUpdate);
+
+            if ($subdivisionChanged) {
+                $this->recordApplicationChangeJournal(
+                    $application,
+                    $journalUserId,
+                    ApplicationChangeJournal::ACTION_UPDATED,
+                    ApplicationChangeJournal::FIELD_SUBDIVISION,
+                    'Подразделение',
+                    trim((string) $request->input('field_change_reasons.subdivision_id')),
+                    null,
+                    $oldSubdivisionName,
+                    $newSubdivisionName,
+                );
+            }
+            if ($deliveryDateChanged) {
+                $this->recordApplicationChangeJournal(
+                    $application,
+                    $journalUserId,
+                    ApplicationChangeJournal::ACTION_UPDATED,
+                    ApplicationChangeJournal::FIELD_DELIVERY_DATE,
+                    'Желаемая дата поставки',
+                    trim((string) $request->input('field_change_reasons.desired_delivery_date')),
+                    null,
+                    $oldDeliveryLabel,
+                    $newDeliveryLabel,
+                );
+            }
 
             if ((int) $validated['subdivision_id'] !== $previousSubdivisionId) {
                 // Boiler chief completion is derived from item-level approvals.
             }
 
             if ($managementMayEditCheckedEquipmentLines) {
-                $application->items()->whereNotIn('id', $submittedItemIds)->delete();
+                $idsToSoftRemove = $application->items()
+                    ->whereNotIn('id', $submittedItemIds)
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
             } else {
-                $application->items()
+                $idsToSoftRemove = $application->items()
                     ->where('is_checked', false)
                     ->whereNotIn('id', $submittedItemIds)
-                    ->delete();
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            }
+
+            foreach ($idsToSoftRemove as $softRemoveId) {
+                $removalReason = trim((string) $request->input("removed_item_reasons.{$softRemoveId}", ''));
+                $itemToRemove = $application->items()->where('id', $softRemoveId)->first();
+                $removedLineLabel = $itemToRemove
+                    ? $this->formatApplicationItemLineForJournal($itemToRemove)
+                    : null;
+                ApplicationItem::query()
+                    ->where('application_id', (int) $application->id)
+                    ->where('id', $softRemoveId)
+                    ->update([
+                        'removed_at' => now(),
+                        'removed_by_user_id' => $request->user()->id,
+                        'is_checked' => false,
+                        'reason_not_selected' => null,
+                        'delivery_status_id' => null,
+                        'delivery_warehouse_id' => null,
+                        'transport_option_id' => null,
+                        'expected_arrival_at' => null,
+                        'custom_equipment_supply_status_id' => null,
+                    ]);
+                $this->recordApplicationChangeJournal(
+                    $application,
+                    $journalUserId,
+                    ApplicationChangeJournal::ACTION_REMOVED,
+                    ApplicationChangeJournal::FIELD_ITEM_REMOVED,
+                    'Позиция снята с заявки',
+                    $removalReason,
+                    $softRemoveId,
+                    $removedLineLabel,
+                    null,
+                );
             }
 
             $clearedManagementSupplySavedAt = false;
@@ -1854,12 +1983,35 @@ class ApplicationController extends Controller
                     && ! $this->applicationItemRowMatchesStored($existing, $row)) {
                     $payload['reason_not_selected'] = null;
                 }
+                $changedAspectKeys = $this->itemRowChangedAspectKeys($existing, $row);
+                $changeReason = null;
+                $oldItemLineLabel = null;
+                if ($changedAspectKeys !== []) {
+                    $changeReason = trim((string) $request->input("item_change_reasons.{$itemId}", ''));
+                    $oldItemLineLabel = $this->formatApplicationItemLineForJournal($existing);
+                }
                 $existing->update($payload);
                 $this->syncCatalogItemManualDetail($existing, $normalized);
+                if ($changeReason !== null && $changeReason !== '') {
+                    $existing->refresh();
+                    $existing->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
+                    $this->recordApplicationChangeJournal(
+                        $application,
+                        $journalUserId,
+                        ApplicationChangeJournal::ACTION_UPDATED,
+                        ApplicationChangeJournal::FIELD_ITEM_UPDATED,
+                        'Изменение позиции',
+                        $changeReason,
+                        (int) $existing->id,
+                        $oldItemLineLabel,
+                        $this->formatApplicationItemLineForJournal($existing),
+                    );
+                }
             }
 
             foreach ($toCreateExpanded as $payload) {
                 $normalized = $this->normalizeItemPayload($payload, $payload['equipment_id'] ? Equipment::query()->find((int) $payload['equipment_id'])?->name : null);
+                $additionReason = trim((string) ($payload['addition_reason'] ?? ''));
                 $createdItem = $application->items()->create([
                     'equipment_id' => $payload['equipment_id'] ?: null,
                     'equipment_name' => $payload['equipment_id'] ? null : $normalized['equipment_name'],
@@ -1876,6 +2028,20 @@ class ApplicationController extends Controller
                     'delivery_warehouse_id' => null,
                 ]);
                 $this->syncCatalogItemManualDetail($createdItem, $normalized);
+                if ($additionReason !== '') {
+                    $createdItem->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
+                    $this->recordApplicationChangeJournal(
+                        $application,
+                        $journalUserId,
+                        ApplicationChangeJournal::ACTION_ADDED,
+                        ApplicationChangeJournal::FIELD_ITEM_ADDED,
+                        'Добавление позиции',
+                        $additionReason,
+                        (int) $createdItem->id,
+                        null,
+                        $this->formatApplicationItemLineForJournal($createdItem),
+                    );
+                }
             }
 
             if ($clearedManagementSupplySavedAt) {
@@ -3047,6 +3213,154 @@ class ApplicationController extends Controller
         return $normStored == $normRequest;
     }
 
+    /**
+     * @return list<string>
+     */
+    private function itemRowChangedAspectKeys(ApplicationItem $existing, array $row): array
+    {
+        $typeIdReq = isset($row['equipment_id']) && $row['equipment_id'] !== '' ? (int) $row['equipment_id'] : null;
+        $catalog = $typeIdReq ? Equipment::query()->find($typeIdReq)?->name : null;
+        $normReq = $this->normalizeItemPayload($row, $catalog !== null && trim((string) $catalog) !== '' ? (string) $catalog : null);
+        $normSt = $this->normalizedEquipmentRowFromApplicationItem($existing);
+
+        if ($normSt == $normReq) {
+            return [];
+        }
+
+        $keys = [];
+        if (($normSt['base_name'] ?? '') !== ($normReq['base_name'] ?? '')
+            || ($normSt['equipment_name'] ?? null) !== ($normReq['equipment_name'] ?? null)) {
+            $keys[] = 'equipment';
+        }
+        if ((int) ($normSt['quantity'] ?? 0) !== (int) ($normReq['quantity'] ?? 0)) {
+            $keys[] = 'quantity';
+        }
+        if (($normSt['measurement_type'] ?? '') !== ($normReq['measurement_type'] ?? '')
+            || ($normSt['quantity_unit'] ?? '') !== ($normReq['quantity_unit'] ?? '')
+            || ($normSt['size_value'] ?? null) !== ($normReq['size_value'] ?? null)) {
+            $keys[] = 'measurement';
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isNewEquipmentRowInEditRequest(array $row, bool $foremanMayReviseRejectedByBoilerChiefOnly): bool
+    {
+        if ($foremanMayReviseRejectedByBoilerChiefOnly) {
+            $rawId = $row['item_id'] ?? null;
+            if ($rawId === null || $rawId === '' || (int) $rawId === 0) {
+                return false;
+            }
+        }
+        $rawId = $row['item_id'] ?? null;
+        if ($rawId !== null && $rawId !== '' && (int) $rawId > 0) {
+            return false;
+        }
+        $typeIdRaw = $row['equipment_id'] ?? null;
+        $typeId = $typeIdRaw !== null && $typeIdRaw !== '' ? (int) $typeIdRaw : null;
+        $name = trim((string) ($row['equipment_name'] ?? ''));
+
+        return ! ($typeId === null && $name === '');
+    }
+
+    private function recordApplicationChangeJournal(
+        Application $application,
+        int $userId,
+        string $action,
+        string $fieldKey,
+        string $fieldLabel,
+        string $reason,
+        ?int $applicationItemId = null,
+        ?string $oldValue = null,
+        ?string $newValue = null,
+    ): void {
+        ApplicationChangeJournal::query()->create([
+            'application_id' => $application->id,
+            'application_item_id' => $applicationItemId,
+            'user_id' => $userId,
+            'action' => $action,
+            'field_key' => $fieldKey,
+            'field_label' => $fieldLabel,
+            'old_value' => $oldValue !== null && trim($oldValue) !== '' ? $oldValue : null,
+            'new_value' => $newValue !== null && trim($newValue) !== '' ? $newValue : null,
+            'reason' => $reason,
+            'created_at' => now(),
+        ]);
+    }
+
+    private function formatApplicationItemLineForJournal(ApplicationItem $item): string
+    {
+        $item->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
+
+        return $item->equipment_display_name.' × '.$item->quantity_with_unit;
+    }
+
+    private function validateApplicationEditPerFieldChangeReasons(
+        Request $request,
+        Application $application,
+        array $validated,
+        bool $foremanMayReviseRejectedByBoilerChiefOnly,
+        bool $managementMayEditCheckedEquipmentLines,
+    ): void {
+        $messages = [];
+        $min = 3;
+
+        if ((int) $validated['subdivision_id'] !== (int) $application->subdivision_id) {
+            $v = trim((string) $request->input('field_change_reasons.subdivision_id', ''));
+            if (mb_strlen($v) < $min) {
+                $messages['field_change_reasons.subdivision_id'] = 'Укажите причину смены подразделения (не короче 3 символов).';
+            }
+        }
+
+        $prevDate = $application->desired_delivery_date?->toDateString() ?? '';
+        if ($prevDate !== $validated['desired_delivery_date']) {
+            $v = trim((string) $request->input('field_change_reasons.desired_delivery_date', ''));
+            if (mb_strlen($v) < $min) {
+                $messages['field_change_reasons.desired_delivery_date'] = 'Укажите причину изменения желаемой даты поставки (не короче 3 символов).';
+            }
+        }
+
+        foreach ($validated['items'] as $idx => $row) {
+            if (! $this->isNewEquipmentRowInEditRequest($row, $foremanMayReviseRejectedByBoilerChiefOnly)) {
+                continue;
+            }
+            $v = trim((string) ($row['addition_reason'] ?? ''));
+            if (mb_strlen($v) < $min) {
+                $messages["items.{$idx}.addition_reason"] = 'Укажите комментарий: почему добавляете эту позицию (не короче 3 символов).';
+            }
+        }
+
+        foreach ($validated['items'] as $row) {
+            $itemId = isset($row['item_id']) ? (int) $row['item_id'] : null;
+            if (! $itemId) {
+                continue;
+            }
+            $existing = $application->items->firstWhere('id', $itemId);
+            if (! $existing) {
+                continue;
+            }
+            if ($foremanMayReviseRejectedByBoilerChiefOnly && $existing->is_checked) {
+                continue;
+            }
+            if ($existing->is_checked && ! $managementMayEditCheckedEquipmentLines) {
+                continue;
+            }
+            if ($this->itemRowChangedAspectKeys($existing, $row) !== []) {
+                $v = trim((string) $request->input("item_change_reasons.{$itemId}", ''));
+                if (mb_strlen($v) < $min) {
+                    $messages["item_change_reasons.{$itemId}"] = 'Укажите комментарий: почему изменили эту позицию (не короче 3 символов).';
+                }
+            }
+        }
+
+        if ($messages !== []) {
+            throw ValidationException::withMessages($messages);
+        }
+    }
+
     private function authorizeForemanCanModifyApplication(Request $request, Application $application): void
     {
         $user = $request->user();
@@ -4082,7 +4396,7 @@ class ApplicationController extends Controller
                 $out[] = $catalogRow;
             }
             if ($over > 0) {
-                $out[] = [
+                $overflowRow = [
                     'item_id' => null,
                     'equipment_id' => null,
                     'equipment_name' => $this->catalogOverflowPendingOrderLabel($equipmentName !== '' ? $equipmentName : 'Оборудование', $over, $normalized),
@@ -4091,6 +4405,10 @@ class ApplicationController extends Controller
                     'quantity_unit' => $normalized['quantity_unit'],
                     'size_value' => $normalized['size_value'] ?? '',
                 ];
+                if (isset($row['addition_reason']) && trim((string) $row['addition_reason']) !== '') {
+                    $overflowRow['addition_reason'] = $row['addition_reason'];
+                }
+                $out[] = $overflowRow;
             }
         }
 

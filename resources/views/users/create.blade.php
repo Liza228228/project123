@@ -14,7 +14,7 @@
                 <div class="border-b border-orange-200/75 dark:border-stone-800 bg-gradient-to-r from-orange-50/80 via-orange-50/35 to-amber-50/25 dark:from-stone-900/40 dark:via-stone-950 dark:to-stone-950 px-4 py-4 sm:px-8 sm:py-5">
                     <h3 class="text-lg font-semibold text-black dark:text-white">Создание учётной записи</h3>
                     <p class="mt-1.5 text-sm text-black/70 dark:text-white/70 max-w-2xl">
-                        Заполните ФИО, укажите почту и роль. Пароль нужен для первого входа в систему.
+                        Заполните ФИО, укажите почту и роль.
                     </p>
                 </div>
 
