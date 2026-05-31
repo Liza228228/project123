@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
@@ -7,18 +8,8 @@ use App\Models\User;
 use App\Support\AdministrationWarehouse;
 use Illuminate\Database\Seeder;
 use RuntimeException;
-
-/**
- * Мастера участка (role_id = 4): у подразделения может быть несколько мастеров;
- * у каждого подразделения из {@see SubdivisionSeeder::definitionNames()} (кроме «Администрация») — хотя бы один.
- */
 class ForemanSubdivisionSeeder extends Seeder
 {
-    /**
-     * Подразделения, на которые можно назначать мастеров участка.
-     *
-     * @return list<string>
-     */
     public static function assignableSubdivisionNames(): array
     {
         return array_values(array_filter(

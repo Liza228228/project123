@@ -1,3 +1,4 @@
+// скрипт на странице
 function normalizeMeasurementMeta(raw) {
     const m = raw && typeof raw === 'object' ? raw : {};
     const typeOptions =
@@ -10,10 +11,6 @@ function normalizeMeasurementMeta(raw) {
 
     return { typeOptions, unitsByType, unitToType, defaultType, defaultUnit };
 }
-
-/**
- * Форма «Новая заявка по макету»: выбор макета, поля с contenteditable и PDF.
- */
 export function registerLayoutApplicationCreate(Alpine) {
     Alpine.data('requestLayoutCommercialEstimateFill', (config) => ({
         columns: Array.isArray(config?.columns) ? config.columns : [],
@@ -228,9 +225,7 @@ export function registerLayoutApplicationCreate(Alpine) {
         users: cfg.users || [],
         allApplications: cfg.applications || [],
         installationActApplications: cfg.installationActApplications || cfg.applications || [],
-        /** Серверные схемы по id макета — без отдельного fetch (надёжно для бухгалтера и без пересборки Vite). */
         layoutSchemasById: cfg.layoutSchemasById && typeof cfg.layoutSchemasById === 'object' ? cfg.layoutSchemasById : {},
-        /** Базовый URL без id: …/applications/installation-act/layout-schema */
         schemaJsonBase: cfg.schemaJsonBase || cfg.schemaBase || '',
         storeUrl: cfg.storeUrl,
         submitRedirectsOnSuccess: Boolean(cfg.submitRedirectsOnSuccess),
@@ -240,9 +235,7 @@ export function registerLayoutApplicationCreate(Alpine) {
         signatureSlotsCount: 1,
         signatureRoles: {},
         signatureRoleNames: {},
-        /** @type {number[]} */
         selectedApplicationIds: [],
-        /** Для селектов подписантов (значения — строки id или ''). */
         signerSelections: { 1: '', 2: '', 3: '' },
         layoutViewerContext: (() => {
             const c = cfg.layoutViewerContext && typeof cfg.layoutViewerContext === 'object' ? cfg.layoutViewerContext : {};
@@ -274,7 +267,6 @@ export function registerLayoutApplicationCreate(Alpine) {
         commercialEstimateUnitTypes: {},
         commercialEstimateGrandTotalFormatted: '0',
         fields: [],
-        /** Число строк таблицы при заполнении отчёта (ключ поля → 1…30). */
         tableFillRowCounts: {},
         loading: false,
         slugify(k) {
@@ -284,7 +276,6 @@ export function registerLayoutApplicationCreate(Alpine) {
             try {
                 document.execCommand('styleWithCSS', false, true);
             } catch (e) {
-                /* ignore */
             }
             if (cfg.preselectLayoutId > 0) {
                 this.layoutId = cfg.preselectLayoutId;
@@ -296,7 +287,10 @@ export function registerLayoutApplicationCreate(Alpine) {
                 }
                 this.selectedApplicationEquipment = '';
                 this.pruneSignerSelectionsToAllowed();
-                this.$nextTick(() => this.applyDefaultForemanForSelectedApplications());
+                this.$nextTick(() => {
+                    this.applyDefaultForemanForSelectedApplications();
+                    this.applyInstallationActObjectNameFromSelectedApplication();
+                });
             });
             window.addEventListener('commercial-estimate-totals-changed', (e) => {
                 const total = e?.detail?.total != null ? String(e.detail.total) : '0';
@@ -305,18 +299,79 @@ export function registerLayoutApplicationCreate(Alpine) {
             });
         },
         get reportApplications() {
-            if (this.layoutCategory === 'installation-act') {
+            if (this.isInstallationActLayout) {
                 return this.installationActApplications || [];
             }
 
             return this.allApplications || [];
         },
         get isSingleApplicationSelection() {
-            return this.layoutCategory === 'installation-act';
+            return this.isInstallationActLayout;
+        },
+        get selectedLayoutOption() {
+            const id = Number(this.layoutId || 0);
+            if (id <= 0) {
+                return null;
+            }
+
+            return (this.layouts || []).find((l) => Number(l.id) === id) || null;
+        },
+        get selectedLayoutLabel() {
+            const opt = this.selectedLayoutOption;
+
+            return opt ? String(opt.title || '').trim() : '';
+        },
+        get isInstallationActLayout() {
+            if (this.layoutCategory === 'installation-act') {
+                return true;
+            }
+            const opt = this.selectedLayoutOption;
+
+            return String(opt?.category || '') === 'installation-act';
         },
         selectSingleApplication(appId) {
             const id = Number(appId);
             this.selectedApplicationIds = id > 0 ? [id] : [];
+        },
+        selectedApplicationSubdivisionName() {
+            const ids = Array.isArray(this.selectedApplicationIds)
+                ? this.selectedApplicationIds.map((x) => Number(x)).filter((id) => id > 0)
+                : [];
+            if (ids.length !== 1) {
+                return '';
+            }
+            const app = (this.reportApplications || []).find((a) => Number(a.id || 0) === ids[0]);
+            if (!app) {
+                return '';
+            }
+            const subdivisionName = String(app.subdivision_name || '').trim();
+            if (subdivisionName !== '') {
+                return subdivisionName;
+            }
+            const label = String(app.label || '').trim();
+            const match = label.match(/^#\d+\s*-\s*(.+)$/);
+
+            return match ? match[1].trim() : '';
+        },
+        installationActObjectNameFieldKey() {
+            const exact = this.fields.find((f) => String(f.key) === 'наименование_объекта');
+            if (exact?.key) {
+                return String(exact.key);
+            }
+            const byLabel = this.fields.find((f) =>
+                /наименование\s*объекта/i.test(String(f.label || ''))
+            );
+
+            return byLabel?.key ? String(byLabel.key) : 'наименование_объекта';
+        },
+        applyInstallationActObjectNameFromSelectedApplication() {
+            if (!this.isInstallationActLayout) {
+                return;
+            }
+            this.setFieldPlainText(
+                this.installationActObjectNameFieldKey(),
+                this.selectedApplicationSubdivisionName()
+            );
         },
         isApplicationSelected(appId) {
             return Number(this.selectedApplicationIds?.[0] || 0) === Number(appId);
@@ -454,6 +509,7 @@ export function registerLayoutApplicationCreate(Alpine) {
                     type,
                     slug: `f${idx}_${this.slugify(String(f.key))}`,
                     readonly: Boolean(f.readonly),
+                    simple_input: Boolean(f.simple_input),
                     table_mode: String(f.table_mode || ''),
                 };
                 if (type === 'table') {
@@ -514,6 +570,24 @@ export function registerLayoutApplicationCreate(Alpine) {
             if (h) {
                 h.value = html;
             }
+        },
+        setFieldPlainText(fieldKey, text) {
+            const key = String(fieldKey || '');
+            const f = this.fields.find((x) => String(x.key) === key);
+            if (!f) {
+                return;
+            }
+            const plain = String(text || '').trim();
+            if (f.simple_input) {
+                const root = this.$root && typeof this.$root.querySelector === 'function' ? this.$root : document;
+                const input = root.querySelector(`[name="values[${key}]"]`);
+                if (input) {
+                    input.value = plain;
+                }
+
+                return;
+            }
+            this.setRichFieldPlainText(key, plain);
         },
         applySubdivisionWarehouseSelection() {
             const opt = this.findSubdivisionWarehouseOption(this.subdivisionWarehouseRef);
@@ -835,6 +909,9 @@ export function registerLayoutApplicationCreate(Alpine) {
                     });
                 this.applyDefaultForemanForSelectedApplications();
                 this.hydrateSubmissionIfNeeded();
+                if (!this.layoutLocked) {
+                    this.applyInstallationActObjectNameFromSelectedApplication();
+                }
             } catch (e) {
                 this.resetLayoutSchemaState();
                 this.submissionHydrated = false;
@@ -1352,7 +1429,6 @@ export function registerLayoutApplicationCreate(Alpine) {
             try {
                 document.execCommand(cmd, false, null);
             } catch (err) {
-                /* ignore */
             }
             const h = document.getElementById(`hidden-${f.slug}`);
             if (h) {
@@ -1379,7 +1455,6 @@ export function registerLayoutApplicationCreate(Alpine) {
                 try {
                     message = this.formatValidationErrors(await res.json());
                 } catch (e) {
-                    /* ignore */
                 }
                 window.alert(message);
                 return;

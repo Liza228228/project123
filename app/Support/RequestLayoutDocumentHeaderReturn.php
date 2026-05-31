@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use Illuminate\Http\Request;

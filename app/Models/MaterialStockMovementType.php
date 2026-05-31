@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -16,10 +17,6 @@ class MaterialStockMovementType extends Model
     protected $fillable = [
         'name',
     ];
-
-    /**
-     * @var array<string, int>|null
-     */
     protected static ?array $idByNameCache = null;
 
     public static function idFor(string $name): int

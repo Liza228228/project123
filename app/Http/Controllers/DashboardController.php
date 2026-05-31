@@ -1,5 +1,6 @@
 <?php
 
+// главная страница после входа
 namespace App\Http\Controllers;
 
 use App\Models\Application;
@@ -13,7 +14,6 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    /** Те же роли, что в {@see \App\Http\Middleware\EnsureUserCanAccessApplications}. */
     private const APPLICATION_ACCESS_ROLE_IDS = [1, 6, 4, 2, 3, 7];
 
     private const BOILER_CHIEF_ROLE_ID = 7;
@@ -30,10 +30,6 @@ class DashboardController extends Controller
             'userDirectoryStats' => $userDirectoryStats,
         ]);
     }
-
-    /**
-     * @return array{total_users: int, blocked_users: int}|null
-     */
     private function buildUserDirectoryStats(?Authenticatable $user): ?array
     {
         if (! $user instanceof User || ! $user->hasRoleId(User::ADMINISTRATOR_ROLE_ID)) {
@@ -45,18 +41,6 @@ class DashboardController extends Controller
             'blocked_users' => User::query()->where('is_blocked', true)->count(),
         ];
     }
-
-    /**
-     * @return array{
-     *   total_active: int,
-     *   pending: int,
-     *   approved: int,
-     *   partial: int,
-     *   rejected: int,
-     *   archived: int,
-     *   custom_equipment_pending: int,
-     * }|null
-     */
     private function buildApplicationAnalytics(?Authenticatable $user): ?array
     {
         if (! $user instanceof User || ! $user->hasAnyRoleId(self::APPLICATION_ACCESS_ROLE_IDS)) {
@@ -98,8 +82,6 @@ class DashboardController extends Controller
 
         return $applicationsQuery;
     }
-
-    /** Область видимости как в {@see ApplicationController::index}. */
     private function applyApplicationIndexScope(Builder $applicationsQuery, User $user): void
     {
         if ($user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {

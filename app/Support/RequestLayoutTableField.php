@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 final class RequestLayoutTableField
@@ -7,11 +8,6 @@ final class RequestLayoutTableField
     public const MAX_COLUMNS = 12;
 
     public const MAX_ROWS = 30;
-
-    /**
-     * @param  array<string, mixed>  $field
-     * @return array{key: string, label: string, columns: list<string>}
-     */
     public static function definitionFromField(array $field): array
     {
         $key = trim((string) ($field['key'] ?? ''));
@@ -33,10 +29,6 @@ final class RequestLayoutTableField
             'columns' => $columns,
         ];
     }
-
-    /**
-     * Число строк берётся из сохранённых значений при заполнении отчёта (не из макета).
-     */
     public static function rowCountFromRaw(mixed $raw): int
     {
         if (is_string($raw) && $raw !== '') {
@@ -52,11 +44,6 @@ final class RequestLayoutTableField
 
         return max(1, min(self::MAX_ROWS, count($raw)));
     }
-
-    /**
-     * @param  list<string>  $columns
-     * @return list<string>
-     */
     public static function sanitizeColumns(array $columns): array
     {
         $out = [];
@@ -73,10 +60,6 @@ final class RequestLayoutTableField
 
         return $out !== [] ? $out : ['Столбец 1'];
     }
-
-    /**
-     * @return array<int, array<int, string>>
-     */
     public static function decodeValues(mixed $raw, int $rowCount, int $colCount): array
     {
         $rows = [];
@@ -104,10 +87,6 @@ final class RequestLayoutTableField
 
         return $rows;
     }
-
-    /**
-     * @param  array<int, array<int, string>>|array<int, string>|mixed  $raw
-     */
     public static function encodeValues(mixed $raw): string
     {
         if (is_string($raw) && $raw !== '') {
@@ -131,11 +110,6 @@ final class RequestLayoutTableField
 
         return json_encode($normalized, JSON_UNESCAPED_UNICODE) ?: '[]';
     }
-
-    /**
-     * @param  array<string, mixed>  $field
-     * @param  array<int, array<int, string>>  $rows
-     */
     public static function toPdfHtml(array $field, array $rows): string
     {
         $def = self::definitionFromField($field);
@@ -164,10 +138,6 @@ final class RequestLayoutTableField
 
         return $html;
     }
-
-    /**
-     * @param  array<string, mixed>  $field
-     */
     public static function normalizeFieldValueFromRequest(array $field, mixed $raw): string
     {
         $def = self::definitionFromField($field);

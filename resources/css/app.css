@@ -17,7 +17,6 @@
         @apply font-sans text-stone-900 dark:text-stone-100;
     }
 
-    /* Крупнее зона нажатия на мобильных, без задержки 300 ms */
     button,
     [type='button'],
     [type='submit'],
@@ -29,11 +28,50 @@
 }
 
 @layer components {
-    /**
-     * Блок навигации «назад» в шапке: кнопка {@see .ui-btn}, под ней тонкая оранжевая линия.
-     */
+
     .page-header-nav {
         @apply w-full max-w-full pb-3 border-b border-orange-500/45 dark:border-orange-600/50;
+    }
+
+    .app-shell {
+        @apply mx-auto w-full max-w-[min(100%,1920px)] px-4 sm:px-6 lg:px-8;
+    }
+
+    .top-nav-shell {
+        @apply app-shell;
+    }
+
+    .app-page-header {
+        @apply app-shell py-3 sm:py-6;
+    }
+
+    .app-main-inset {
+        @apply app-shell mb-4 sm:mb-6 empty:hidden;
+    }
+
+    .top-nav-row {
+        @apply flex items-center justify-between gap-4 py-2 min-h-16;
+    }
+
+    .top-nav-brand {
+        @apply flex shrink-0 items-center;
+    }
+
+    .top-nav-menu {
+        @apply hidden min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1.5 sm:flex;
+    }
+
+    .top-nav-menu > a,
+    .top-nav-menu > .relative {
+        @apply shrink-0;
+    }
+
+    .top-nav-utilities {
+        @apply relative z-10 hidden shrink-0 items-center gap-3 border-l border-orange-400/50 bg-orange-200/95 ps-4 sm:flex dark:border-orange-700/50 dark:bg-orange-950/75;
+    }
+
+    .top-nav-utilities-guest {
+        @apply relative z-10 flex shrink-0 items-center gap-3 ms-auto;
     }
 
     .ambient-grid {
@@ -49,9 +87,6 @@
             linear-gradient(to bottom, rgb(234 88 12 / 0.04) 1px, transparent 1px);
     }
 
-    /**
-     * Оформление таблиц: белый блок, тёплая рамка, шапка и зебра на светлом фоне.
-     */
     .app-table-shell {
         @apply max-w-full overflow-x-auto rounded-xl border border-orange-200/85 bg-orange-50/55 shadow-md shadow-orange-950/[0.07] ring-1 ring-orange-100/90 [-webkit-overflow-scrolling:touch] dark:border-orange-900/50 dark:bg-stone-950 dark:shadow-black/35 dark:ring-orange-950/35;
     }
@@ -60,7 +95,6 @@
         @apply min-w-full border-collapse text-sm;
     }
 
-    /* Список заявок: без горизонтальной прокрутки, колонки вписываются в ширину экрана */
     .applications-index-table-shell {
         @apply overflow-x-hidden;
     }
@@ -89,10 +123,6 @@
         @apply px-2.5 py-0.5 text-xs leading-normal;
     }
 
-    /*
-     * Статусы заявок: одна тёплая гамма (крем → оранж → янтарь), как таблица и кнопки.
-     * Отличия — глубина фона и насыщенность обводки, без холодных и кислотных оттенков.
-     */
     .applications-index-status-badge--draft {
         @apply bg-stone-100/95 text-stone-600 ring-stone-200/90 dark:bg-stone-800/40 dark:text-stone-300 dark:ring-stone-600/40;
     }
@@ -123,6 +153,18 @@
 
     .applications-index-status-badge--transit {
         @apply bg-orange-200/50 text-orange-950 ring-orange-400/50 dark:bg-orange-900/50 dark:text-orange-50 dark:ring-orange-600/40;
+    }
+
+    .applications-index-status-badge--needs-transit {
+        @apply bg-sky-100/95 text-sky-950 ring-sky-400/60 dark:bg-sky-950/45 dark:text-sky-100 dark:ring-sky-600/50;
+    }
+
+    .applications-index-row--needs-transit {
+        @apply bg-sky-50/55 dark:bg-sky-950/25 border-l-4 border-l-sky-400 dark:border-l-sky-500;
+    }
+
+    .applications-index-card--needs-transit {
+        @apply border-sky-300/90 bg-sky-50/40 dark:border-sky-800/60 dark:bg-sky-950/25;
     }
 
     .applications-index-status-badge--completed {
@@ -164,7 +206,6 @@
         @apply px-2.5 py-2 text-sm;
     }
 
-    /* Список заявок: свёрнутый блок «Оборудование» (<details>) */
     .application-index-equipment-details > summary .application-index-equipment-expand-label--expanded {
         display: none;
     }
@@ -210,9 +251,6 @@
         @apply bg-orange-100/55 dark:bg-orange-950/30;
     }
 
-    /**
-     * Единые кнопки: «пастельная» заливка, тонкая рамка, сильное скругление (как референс), оранжевая палитра.
-     */
     .ui-btn {
         @apply inline-flex min-h-[2.75rem] items-center justify-center gap-1.5 rounded-2xl border px-5 py-2.5 text-center text-sm font-medium leading-5 transition-[background-color,border-color,color,box-shadow,transform] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[0.99] dark:focus-visible:ring-offset-stone-900 disabled:pointer-events-none disabled:opacity-50 sm:min-h-0 sm:py-2;
     }
@@ -237,9 +275,6 @@
         @apply min-h-[3.25rem] px-6 py-3.5 text-base font-semibold sm:min-h-0 sm:py-3;
     }
 
-    /**
-     * Уведомления: успех, ошибка, предупреждение, информация (палитра системы).
-     */
     .app-alert {
         @apply flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm ring-1;
     }
@@ -308,9 +343,6 @@
         @apply focus-visible:ring-orange-500/40 dark:focus-visible:ring-orange-400/35;
     }
 
-    /**
-     * Единые поля ввода / выбора (заявки, фильтры, материалы).
-     */
     .app-form-label {
         @apply block text-xs font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400 mb-1.5;
     }
@@ -333,7 +365,6 @@
         @apply pl-10;
     }
 
-    /** Поиск + выпадающий список (подразделения в форме склада и т.п.). */
     .filterable-select-combo .filterable-select-target:not(.filterable-select--expanded) {
         @apply pointer-events-none absolute h-px w-px overflow-hidden opacity-0;
     }
@@ -372,7 +403,6 @@
         @apply rounded-xl border border-stone-200/90 bg-stone-50/80 p-4 shadow-sm dark:border-stone-600 dark:bg-stone-800/35 sm:p-5;
     }
 
-    /** Карточки метрик «Заявки» на дашборде: общий фон, цвет задаётся классами border-l-*. */
     .dash-stat-card {
         @apply flex min-h-[11.5rem] flex-col rounded-xl border border-stone-200/80 border-l-4 border-l-orange-500 bg-gradient-to-b from-white to-stone-50/80 p-3 shadow-sm transition-[box-shadow,border-color] duration-200 sm:min-h-[10.5rem] sm:p-4 dark:border-stone-600 dark:border-l-orange-500 dark:from-stone-900/95 dark:to-stone-950/90 dark:shadow-black/20;
     }
@@ -389,16 +419,10 @@
         @apply block min-h-[2.75rem] w-full border-0 bg-transparent px-3 py-3 text-left text-base text-stone-800 transition-colors hover:bg-orange-50 active:bg-orange-100/80 dark:text-stone-100 dark:hover:bg-orange-950/40 dark:active:bg-orange-950/60 sm:min-h-0 sm:py-2.5 sm:text-sm;
     }
 
-    /**
-     * Нижние кнопки формы: на телефоне — закреплённая панель с safe-area.
-     */
     .app-form-actions-mobile {
         @apply mt-8 flex flex-col-reverse gap-3 border-t border-stone-100 pt-6 dark:border-stone-800 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-40 max-sm:mt-0 max-sm:border-stone-200 max-sm:bg-white/95 max-sm:px-4 max-sm:pt-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom,0px))] max-sm:shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.12)] max-sm:backdrop-blur-md dark:max-sm:border-stone-700 dark:max-sm:bg-stone-900/95 sm:flex-row sm:items-center sm:justify-between sm:shadow-none sm:backdrop-blur-none;
     }
 
-    /**
-     * Универсальный ряд действий: на ≤sm растягиваем по ширине стеком, на sm+ - в строку.
-     */
     .app-actions-row {
         @apply flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center;
     }
@@ -409,9 +433,6 @@
         @apply w-full justify-center sm:w-auto;
     }
 
-    /**
-     * Список карточек: единый вид мобильных карточек на местах табличных списков.
-     */
     .app-card-list {
         @apply space-y-3;
     }
@@ -420,29 +441,19 @@
         @apply rounded-xl border border-stone-200/90 bg-white/85 p-4 shadow-sm space-y-3 dark:border-stone-700 dark:bg-stone-900/55;
     }
 
-    /**
-     * Группа алертов: единый вертикальный отступ, без дублирующихся полей.
-     */
     .app-alerts > * + * {
         @apply mt-3;
     }
 
-    /**
-     * Перенос длинного текста "название × кол-во ед" на узких экранах.
-     */
     .app-equipment-line {
         @apply break-words;
         word-break: break-word;
     }
 
-    /**
-     * Тулбар форматирования (генератор отчётов): на ≤sm — крупнее тап-цели.
-     */
     .layout-field-toolbar > button {
         @apply min-h-9;
     }
 
-    /* Госномер на форме «В пути»: одно поле с пробелами между группами */
     .delivery-plate-input {
         @apply tracking-[0.35em];
     }

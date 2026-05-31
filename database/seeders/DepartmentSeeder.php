@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Department;
@@ -9,10 +10,6 @@ use Illuminate\Support\Facades\Schema;
 
 class DepartmentSeeder extends Seeder
 {
-    /**
-     * Справочник подразделений для связи layout_structures.division_assigner_id.
-     * По умолчанию копирует названия из subdivisions, если они уже есть в БД.
-     */
     public function run(): void
     {
         if (! Schema::hasTable('subdivisions')) {

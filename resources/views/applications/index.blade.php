@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $isAccountant = Auth::user()?->hasRoleId(\App\Models\User::ACCOUNTANT_ROLE_ID) ?? false;
     $isAdministratorViewer = $isAdministratorViewer ?? (Auth::user()?->hasRoleId(\App\Models\User::ADMINISTRATOR_ROLE_ID) ?? false);
     $canForceArchiveApplications = $canForceArchiveApplications ?? false;
@@ -63,7 +64,7 @@
         </div>
     </x-slot>
 
-    <div class="w-full max-w-[min(100%,1920px)] mx-auto px-0 py-2 max-sm:-mx-4 sm:px-4 lg:px-6 xl:px-8">
+    <div class="app-shell py-2 max-sm:-mx-4 sm:py-2">
             <div class="app-form-card">
                 <div class="px-4 py-5 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('applications.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
@@ -82,11 +83,15 @@
                                 </div>
                             </div>
                             <div class="min-w-0">
-                                <label for="applications-approval-filter" class="app-form-label">Согласование</label>
+                                <label for="applications-approval-filter" class="app-form-label">Статус заявки</label>
                                 <select name="approval_filter" id="applications-approval-filter"
                                     class="app-select">
-                                    @foreach($approvalFilterOptions as $value => $label)
-                                        <option value="{{ $value }}" @selected($approvalFilter === $value)>{{ $label }}</option>
+                                    @foreach($approvalFilterOptionGroups as $groupLabel => $groupOptions)
+                                        <optgroup label="{{ $groupLabel }}">
+                                            @foreach($groupOptions as $value => $label)
+                                                <option value="{{ $value }}" @selected($approvalFilter === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </optgroup>
                                     @endforeach
                                 </select>
                             </div>
@@ -192,17 +197,18 @@
                         </div>
                         <div class="md:hidden space-y-4">
                             @foreach($applications as $application)
-                                @php
-                                    $needsIndexSubmit = (bool) ($application->index_needs_submit ?? (Auth::check() && $application->needsSubmitToApprovalBy(Auth::user())));
-                                    $needsCustomOrder = (bool) ($application->index_needs_custom_order ?? $application->needsCustomEquipmentOrder());
-                                @endphp
-                                <article class="rounded-xl border p-5 space-y-4 shadow-sm {{ $needsCustomOrder ? 'border-amber-300/90 bg-amber-50/40 dark:border-amber-800/60 dark:bg-amber-950/25' : ($needsIndexSubmit ? 'border-orange-300/90 bg-orange-50/40 dark:border-orange-800/60 dark:bg-orange-950/25' : 'border-orange-100/90 dark:border-orange-900/40 bg-orange-50/20 dark:bg-stone-900/20') }}">
+                                <article class="rounded-xl border p-5 space-y-4 shadow-sm {{ $application->index_row_card_class }}">
                                     <p class="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">Заявка № {{ $application->id }}</p>
                                     <div class="flex justify-between gap-3 items-start">
                                         <div class="min-w-0 flex-1">
                                             <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Подразделение</p>
                                             <p class="text-sm font-medium text-black dark:text-white break-words">{{ $application->subdivision->name }}</p>
-                                            @if($needsCustomOrder)
+                                            @if($application->index_needs_delivery_in_transit)
+                                                <span class="mt-1 inline-flex w-fit items-center rounded-full border border-sky-400/80 bg-sky-100/90 px-2 py-0.5 text-[11px] font-medium text-sky-950 dark:border-sky-700 dark:bg-sky-950/50 dark:text-sky-100">
+                                                    Отправить в путь
+                                                </span>
+                                            @endif
+                                            @if($application->index_needs_custom_order)
                                                 <span class="mt-1 inline-flex w-fit items-center rounded-full border border-amber-400/80 bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                                                     Нужно заказать своё оборудование
                                                 </span>
@@ -240,8 +246,8 @@
                                             </div>
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[10px] font-semibold uppercase tracking-wide text-black/55 dark:text-white/50">Транспорт</p>
-                                                <p class="break-words">{{ $application->transportAndVehicleLine() ?? '—' }}</p>
-                                                @if($expectedArrivalLine = $application->expectedArrivalSummaryLine())
+                                                <p class="break-words">{{ $application->index_transport_line ?? '—' }}</p>
+                                                @if($expectedArrivalLine = $application->index_expected_arrival_line)
                                                     <p class="mt-1 text-xs text-black/70 dark:text-white/70 break-words">
                                                         Прибытие: {{ $expectedArrivalLine }}
                                                     </p>
@@ -358,22 +364,28 @@
                                     </th>
                                     <th class="text-left text-black dark:text-white uppercase">Транспорт</th>
                                     <th class="text-left text-black dark:text-white uppercase">Дата</th>
-                                    <th class="text-left text-black dark:text-white uppercase">Статус</th>
+                                    <th class="text-left text-black dark:text-white uppercase align-bottom">
+                                        <div class="flex flex-col gap-0.5 min-w-0">
+                                            <span>Статус</span>
+                                            <span class="text-[10px] font-normal normal-case tracking-normal text-black/50 dark:text-white/45">этап · согласование · исполнение</span>
+                                        </div>
+                                    </th>
                                     <th class="text-right text-black dark:text-white uppercase">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($applications as $application)
-                                    @php
-                                        $needsIndexSubmit = (bool) ($application->index_needs_submit ?? (Auth::check() && $application->needsSubmitToApprovalBy(Auth::user())));
-                                        $needsCustomOrder = (bool) ($application->index_needs_custom_order ?? $application->needsCustomEquipmentOrder());
-                                    @endphp
-                                    <tr class="align-top {{ $needsCustomOrder ? 'bg-amber-50/50 dark:bg-amber-950/20 border-l-4 border-l-amber-400 dark:border-l-amber-600' : ($needsIndexSubmit ? 'bg-orange-50/45 dark:bg-orange-950/25 border-l-4 border-l-orange-400 dark:border-l-orange-600' : '') }}">
+                                    <tr class="align-top {{ $application->index_row_table_class }}">
                                         <td class="font-semibold tabular-nums text-black dark:text-white" title="Номер заявки">№ {{ $application->id }}</td>
                                         <td class="text-black dark:text-white">
                                             <div class="flex flex-col gap-1 min-w-0">
                                                 <span class="break-words">{{ $application->subdivision->name }}</span>
-                                                @if($needsCustomOrder)
+                                                @if($application->index_needs_delivery_in_transit)
+                                                    <span class="inline-flex w-fit items-center rounded-full border border-sky-400/80 bg-sky-100/90 px-2 py-0.5 text-[11px] font-medium text-sky-950 dark:border-sky-700 dark:bg-sky-950/50 dark:text-sky-100">
+                                                        Отправить в путь
+                                                    </span>
+                                                @endif
+                                                @if($application->index_needs_custom_order)
                                                     <span class="inline-flex w-fit items-center rounded-full border border-amber-400/80 bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
                                                         К заказу
                                                     </span>
@@ -421,12 +433,12 @@
                                             @include('applications.partials.index-equipment-collapsible', ['application' => $application])
                                         </td>
                                         <td class="text-black dark:text-white min-w-0">
-                                            @if($line = $application->transportAndVehicleLine())
+                                            @if($line = $application->index_transport_line)
                                                 <span class="line-clamp-2 break-words" title="{{ $line }}">{{ $line }}</span>
                                             @else
                                                 —
                                             @endif
-                                            @if($expectedArrivalLine = $application->expectedArrivalSummaryLine())
+                                            @if($expectedArrivalLine = $application->index_expected_arrival_line)
                                                 <span class="block text-xs opacity-75 mt-0.5 line-clamp-2 break-words" title="Прибытие: {{ $expectedArrivalLine }}">
                                                     Прибытие: {{ $expectedArrivalLine }}
                                                 </span>

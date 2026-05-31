@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\MeasurementUnit;
@@ -8,19 +9,8 @@ use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Collection;
-
-/** Общие опции для форм заполнения макетов (единицы измерения, склады). */
 final class LayoutFormOptions
 {
-    /**
-     * @return array{
-     *     typeOptions: array<string, string>,
-     *     unitsByType: array<string, list<string>>,
-     *     unitToType: array<string, string>,
-     *     defaultType: string,
-     *     defaultUnit: string
-     * }
-     */
     public static function measurementMetaForUi(): array
     {
         $unitsByType = [];
@@ -92,10 +82,6 @@ final class LayoutFormOptions
             'defaultUnit' => $defaultUnit,
         ];
     }
-
-    /**
-     * @return Collection<int, Subdivision>
-     */
     public static function subdivisionsForUser(?User $user): Collection
     {
         if (! $user) {
@@ -123,17 +109,6 @@ final class LayoutFormOptions
             ->orderBy('name')
             ->get(['id', 'name']);
     }
-
-    /**
-     * @return list<array{
-     *     value: string,
-     *     kind: string,
-     *     label: string,
-     *     display_name: string,
-     *     address: string,
-     *     subdivision_name: string
-     * }>
-     */
     public static function subdivisionWarehouseOptionsForUser(?User $user): array
     {
         $subdivisions = static::subdivisionsForUser($user);
@@ -145,18 +120,6 @@ final class LayoutFormOptions
 
         return static::buildSubdivisionWarehouseOptions($subdivisions);
     }
-
-    /**
-     * @param  Collection<int, Subdivision>  $subdivisions
-     * @return list<array{
-     *     value: string,
-     *     kind: string,
-     *     label: string,
-     *     display_name: string,
-     *     address: string,
-     *     subdivision_name: string
-     * }>
-     */
     private static function buildSubdivisionWarehouseOptions(Collection $subdivisions): array
     {
         $options = [];

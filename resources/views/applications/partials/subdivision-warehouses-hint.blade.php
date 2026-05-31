@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $warehousesBySubdivision = $warehousesBySubdivision ?? [];
 @endphp
 @if(count($warehousesBySubdivision) > 0)

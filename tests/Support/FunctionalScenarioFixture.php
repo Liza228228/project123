@@ -1,5 +1,6 @@
 <?php
 
+// общие данные для функциональных тестов
 namespace Tests\Support;
 
 use App\Models\ApplicationStatus;
@@ -20,16 +21,11 @@ final class FunctionalScenarioFixture
     {
         ApplicationStatus::forgetIdCache();
         MaterialStockMovementType::forgetIdCache();
+        Subdivision::resetBoilerChiefCache();
 
         (new RoleSeeder)->run();
         (new MeasurementUnitSeeder)->run();
     }
-
-    /**
-     * Основной склад «Администрация» и остаток каталожного оборудования для мастера участка.
-     *
-     * @return array{foreman: User, subdivision: Subdivision, equipment: Equipment, warehouse: Warehouse}
-     */
     public static function foremanCatalogStockContext(string $equipmentName = 'Котёл КВ-100'): array
     {
         $subdivision = Subdivision::query()->create(['name' => 'Киренск левый берег']);

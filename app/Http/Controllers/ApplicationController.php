@@ -1,5 +1,6 @@
 <?php
 
+// основная логика заявок
 namespace App\Http\Controllers;
 
 use App\Models\Application;
@@ -21,7 +22,7 @@ use App\Support\ApplicationCatalogStockAvailability;
 use App\Support\ListingPerPage;
 use App\Support\PieceQuantity;
 use App\Support\ReportLayoutEquipmentApplications;
-use App\Support\RussianVehiclePlate;
+use App\Support\WarehouseStockBucket;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -53,16 +54,20 @@ class ApplicationController extends Controller
         $pagination = ListingPerPage::fromRequest($request);
         $perPage = $pagination['perPage'];
         $allowedPerPage = $pagination['allowedPerPage'];
-        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalize(
-            $request->input('approval_filter', $request->input('equipment_filter', 'all'))
+        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalizeForUser(
+            $request->input('approval_filter', $request->input('equipment_filter', 'all')),
+            $user
         );
-        $approvalFilterOptions = \App\Support\ApplicationApprovalListingFilter::options();
+        $approvalFilterOptionGroups = \App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($user);
 
-        $foremen = User::query()
-            ->where('role_id', 4)
-            ->orderBy('surname')
-            ->orderBy('name')
-            ->get(['id', 'surname', 'name', 'patronymic', 'is_blocked']);
+        $foremen = collect();
+        if (! $isSiteForeman && ! $isBoilerChief) {
+            $foremen = User::query()
+                ->where('role_id', 4)
+                ->orderBy('surname')
+                ->orderBy('name')
+                ->get(['id', 'surname', 'name', 'patronymic', 'is_blocked']);
+        }
         $selectedForemanId = null;
         if (! $isSiteForeman && ! $isBoilerChief) {
             $candidateForemanId = (int) $request->integer('foreman_user_id');
@@ -110,10 +115,23 @@ class ApplicationController extends Controller
                 'archive',
                 'subdivision:id,name',
                 'responsibleUser:id,surname,name,patronymic',
-                'items' => fn ($query) => $query->orderBy('id')->with([
-                    'equipment:id,name',
-                    'manualDetail',
-                ]),
+                'items' => fn ($query) => $query
+                    ->select([
+                        'id',
+                        'application_id',
+                        'equipment_id',
+                        'quantity',
+                        'is_checked',
+                        'reason_not_selected',
+                        'custom_equipment_supply_status_id',
+                        'delivery_status_id',
+                        'expected_arrival_at',
+                    ])
+                    ->orderBy('id')
+                    ->with([
+                        'equipment:id,name',
+                        'manualDetail:id,application_item_id,equipment_name,base_name,size_value,measurement_type,quantity_unit',
+                    ]),
                 'user:id,surname,name,patronymic,role_id',
                 'approvedBy:id,surname,name,patronymic,role_id',
                 'approvedBy.role:id,name',
@@ -139,7 +157,7 @@ class ApplicationController extends Controller
             'applications',
             'search',
             'approvalFilter',
-            'approvalFilterOptions',
+            'approvalFilterOptionGroups',
             'isSiteForeman',
             'isBoilerChief',
             'foremen',
@@ -153,10 +171,6 @@ class ApplicationController extends Controller
             'canForceArchiveApplications',
         ));
     }
-
-    /**
-     * Снабжение / руководство: заявки, по которым есть своё оборудование (ещё не оприходовано на основной склад).
-     */
     public function customEquipmentToOrder(Request $request): View
     {
         if (! $request->user()?->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
@@ -205,10 +219,6 @@ class ApplicationController extends Controller
             'defaultPerPage' => $pagination['defaultPerPage'],
         ]);
     }
-
-    /**
-     * Форма по заявке: что заказать (часть или всё) и отметки «Заказано» / «На складе».
-     */
     public function customEquipmentOrderForm(Request $request, Application $application): View
     {
         if (! $request->user()?->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
@@ -339,12 +349,6 @@ class ApplicationController extends Controller
         return redirect()->to($this->customEquipmentBulkReturnUrl($request, $application))
             ->with('status', 'Оприходовано на основной склад «'.$mainWarehouse->name.'», позиций: '.$processed.'.');
     }
-
-    /**
-     * Способы доставки без привязки к конкретному госномеру (категории в справочнике транспорта).
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
-     */
     private function transportMethodOptionsForForms(): Collection
     {
         $q = TransportOption::query()->orderBy('name');
@@ -354,12 +358,6 @@ class ApplicationController extends Controller
 
         return $q->get();
     }
-
-    /**
-     * Записи транспорта с номером — подсказки для поля «Номер машины».
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
-     */
     private function transportOptionsWithPlateForDatalist(): Collection
     {
         if (! Schema::hasColumn('transport_options', 'plate')) {
@@ -372,12 +370,6 @@ class ApplicationController extends Controller
             ->orderBy('plate')
             ->get(['id', 'plate', 'label']);
     }
-
-    /**
-     * Служебные машины 777 / 888 для выбора при способе «Служебная машина».
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, TransportOption>
-     */
     private function serviceVehiclePlateOptionsForForms(): Collection
     {
         if (! Schema::hasColumn('transport_options', 'plate')) {
@@ -390,10 +382,6 @@ class ApplicationController extends Controller
             ->orderBy('plate')
             ->get(['id', 'plate']);
     }
-
-    /**
-     * @return list<object|string>
-     */
     private function transportOptionIdRuleForCreateUpdateForms(): array
     {
         if (Schema::hasColumn('transport_options', 'plate')) {
@@ -402,10 +390,6 @@ class ApplicationController extends Controller
 
         return ['nullable', 'exists:transport_options,id'];
     }
-
-    /**
-     * @return list<object|string>
-     */
     private function transportOptionIdRuleForDeliveryInTransit(): array
     {
         if (Schema::hasColumn('transport_options', 'plate')) {
@@ -414,12 +398,6 @@ class ApplicationController extends Controller
 
         return ['required', 'exists:transport_options,id'];
     }
-
-    /**
-     * Приход на основной склад по позиции со своим названием (общая логика для одной позиции).
-     *
-     * @throws ValidationException
-     */
     private function processCustomEquipmentOnWarehouseItem(Request $request, Application $application, ApplicationItem $item, Warehouse $mainWarehouse): void
     {
         $item->refresh();
@@ -446,6 +424,7 @@ class ApplicationController extends Controller
                 'warehouse_id' => (int) $mainWarehouse->id,
                 'material_stock_movement_type_id' => $receiptTypeId,
                 'quantity' => (float) $item->quantity,
+                'stock_bucket' => WarehouseStockBucket::GOOD,
                 'unit_price' => null,
                 'counterparty' => null,
                 'comment' => MaterialStockMovement::packCommentWithCorrelation(
@@ -526,6 +505,7 @@ class ApplicationController extends Controller
             ? $applications->firstWhere('id', $preselectedApplicationId)
             : null;
         $deliveredWarehouseIssueCandidates = collect();
+        $installationIssueMaxQuantitiesByItemId = [];
         if ($selectedApplication instanceof Application) {
             $selectedApplication->loadMissing([
                 'items.equipment.measurementUnit.unitType',
@@ -533,19 +513,17 @@ class ApplicationController extends Controller
                 'items.deliveryWarehouse.subdivision',
             ]);
             $deliveredWarehouseIssueCandidates = $this->deliveredWarehouseIssueCandidates($selectedApplication);
+            $installationIssueMaxQuantitiesByItemId = $this->installationIssueMaxQuantitiesByItemId($selectedApplication);
         }
 
         return view('applications.installation-act-upload', compact(
             'applications',
             'preselectedApplicationId',
             'selectedApplication',
-            'deliveredWarehouseIssueCandidates'
+            'deliveredWarehouseIssueCandidates',
+            'installationIssueMaxQuantitiesByItemId',
         ));
     }
-
-    /**
-     * Бухгалтер: выбор заявки и просмотр акта установки и фото (без полной карточки заявки).
-     */
     public function browseInstallationActs(Request $request): View
     {
         $user = $request->user();
@@ -742,10 +720,6 @@ class ApplicationController extends Controller
             ->route('applications.show', $application)
             ->with('status', $status);
     }
-
-    /**
-     * Форма новой заявки с копией позиций. Исходная заявка может быть в архиве выполненных.
-     */
     public function repeat(Request $request, Application $application): View
     {
         $this->authorizeCanRepeatApplications($request);
@@ -911,7 +885,6 @@ class ApplicationController extends Controller
                     'source_application_id' => 'Исходная заявка не найдена.',
                 ]);
             }
-            // В т.ч. архивные заявки: повторная создаётся как новая запись, права — как на просмотр исходной.
             $this->authorizeViewApplication($request, $sourceApplication);
         }
 
@@ -1377,6 +1350,7 @@ class ApplicationController extends Controller
                     'warehouse_id' => (int) $mainWarehouse->id,
                     'material_stock_movement_type_id' => MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE),
                     'quantity' => $row['quantity'],
+                    'stock_bucket' => WarehouseStockBucket::GOOD,
                     'unit_price' => null,
                     'counterparty' => 'Заявка №'.$application->id.' / '.$application->subdivision?->name,
                     'comment' => MaterialStockMovement::packCommentWithCorrelation(
@@ -1884,7 +1858,6 @@ class ApplicationController extends Controller
             }
 
             if ((int) $validated['subdivision_id'] !== $previousSubdivisionId) {
-                // Boiler chief completion is derived from item-level approvals.
             }
 
             if ($managementMayEditCheckedEquipmentLines) {
@@ -2473,10 +2446,6 @@ class ApplicationController extends Controller
         return redirect()->route('applications.show', $application)
             ->with('status', $status);
     }
-
-    /**
-     * @throws ValidationException
-     */
     private function parseDeliveryExpectedArrivalAt(?string $raw, string $errorKeyPrefix): Carbon
     {
         $value = trim((string) ($raw ?? ''));
@@ -2504,10 +2473,6 @@ class ApplicationController extends Controller
 
         return $parsed;
     }
-
-    /**
-     * @throws ValidationException
-     */
     private function resolveDeliveryTransportOptionId(int $methodId, ?string $vehiclePlateRaw, string $errorKeyPrefix): int
     {
         $method = TransportOption::query()->find($methodId);
@@ -2717,6 +2682,151 @@ class ApplicationController extends Controller
             ->with('status', $status);
     }
 
+    public function markItemDeliveryDefective(Request $request, Application $application, ApplicationItem $item): RedirectResponse
+    {
+        if (! $request->user()->hasAnyRoleId([self::BOILER_CHIEF_ROLE_ID, 4])) {
+            abort(403, 'Отметка брака доступна только начальнику котельной и мастеру участка.');
+        }
+
+        $this->authorizeViewApplication($request, $application);
+
+        if ((int) $item->application_id !== (int) $application->id) {
+            abort(404);
+        }
+
+        if (! $this->itemEligibleForDeliveryDefectManagement($item)) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['defect' => 'Отметить брак можно только для принятой на склад каталожной позиции.']);
+        }
+
+        $validated = $request->validate([
+            'defect_quantity' => ['required', 'numeric'],
+            'defect_reason' => ['required', 'string', 'min:3', 'max:1000'],
+        ], [
+            'defect_quantity.required' => 'Укажите количество бракованного оборудования.',
+            'defect_quantity.numeric' => 'Количество должно быть числом.',
+            'defect_reason.required' => 'Укажите причину брака (не менее 3 символов).',
+        ]);
+
+        $quantity = (float) $validated['defect_quantity'];
+        $deliveredQuantity = (float) $item->quantity;
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages([
+                'defect_quantity' => 'Количество должно быть больше нуля.',
+            ]);
+        }
+        if ($quantity > $deliveredQuantity + 0.0005) {
+            throw ValidationException::withMessages([
+                'defect_quantity' => 'Нельзя отметить браком больше, чем доставлено по позиции ('.$this->formatIssueQuantityForMessage($deliveredQuantity).' '.$item->quantityUnitLabelForDisplay().').',
+            ]);
+        }
+
+        $warehouseId = (int) ($item->delivery_warehouse_id ?? 0);
+        $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
+        if ($targetSubdivisionId === null) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['defect' => 'Не задано подразделение получения по заявке.']);
+        }
+
+        $allowedSubdivisionIds = $this->allowedDeliverySubdivisionIdsForUser($request->user());
+        if (! $allowedSubdivisionIds->contains((int) $targetSubdivisionId)) {
+            abort(403, 'Вы не можете отмечать брак по этому подразделению.');
+        }
+
+        $quantity = (float) $validated['defect_quantity'];
+        $maxQuantity = $this->maxDefectMarkQuantityForItem($application, $item);
+        if ($quantity > $maxQuantity + 0.0005) {
+            throw ValidationException::withMessages([
+                'defect_quantity' => 'Нельзя отметить браком больше '.$this->formatIssueQuantityForMessage($maxQuantity).' '.$item->quantityUnitLabelForDisplay().' (с учётом уже отмеченного брака и списаний).',
+            ]);
+        }
+
+        WarehouseStockBucket::transferToDefective(
+            (int) $item->equipment_id,
+            $warehouseId,
+            $quantity,
+            (int) $application->id,
+            (int) $item->id,
+            (string) $validated['defect_reason'],
+            (int) $request->user()->id,
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('status', 'Позиция «'.$item->equipment_display_name.'»: '.$this->formatIssueQuantityForMessage($quantity).' '.$item->quantityUnitLabelForDisplay().' переведено в брак на складе получателя.');
+    }
+
+    public function disposeItemDeliveryDefective(Request $request, Application $application, ApplicationItem $item): RedirectResponse
+    {
+        if (! $request->user()->hasAnyRoleId([self::BOILER_CHIEF_ROLE_ID, 4])) {
+            abort(403, 'Утилизация брака доступна только начальнику котельной и мастеру участка.');
+        }
+
+        $this->authorizeViewApplication($request, $application);
+
+        if ((int) $item->application_id !== (int) $application->id) {
+            abort(404);
+        }
+
+        if (! $this->itemEligibleForDeliveryDefectManagement($item)) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['defect' => 'Утилизировать брак можно только по принятой на склад каталожной позиции.']);
+        }
+
+        $remainingDefective = WarehouseStockBucket::remainingDefectiveQuantityForApplicationItem(
+            (int) $application->id,
+            (int) $item->id
+        );
+        if ($remainingDefective < 0.0005) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['defect' => 'По этой позиции нет бракованного остатка для утилизации.']);
+        }
+
+        $validated = $request->validate([
+            'dispose_quantity' => ['required', 'numeric'],
+            'dispose_comment' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'dispose_quantity.required' => 'Укажите количество к утилизации.',
+            'dispose_quantity.numeric' => 'Количество должно быть числом.',
+        ]);
+
+        $quantity = (float) $validated['dispose_quantity'];
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages([
+                'dispose_quantity' => 'Количество должно быть больше нуля.',
+            ]);
+        }
+        if ($quantity > $remainingDefective + 0.0005) {
+            throw ValidationException::withMessages([
+                'dispose_quantity' => 'Нельзя утилизировать больше '.$this->formatIssueQuantityForMessage($remainingDefective).' '.$item->quantityUnitLabelForDisplay().'.',
+            ]);
+        }
+
+        $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
+        if ($targetSubdivisionId === null) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['defect' => 'Не задано подразделение получения по заявке.']);
+        }
+
+        $allowedSubdivisionIds = $this->allowedDeliverySubdivisionIdsForUser($request->user());
+        if (! $allowedSubdivisionIds->contains((int) $targetSubdivisionId)) {
+            abort(403, 'Вы не можете утилизировать брак по этому подразделению.');
+        }
+
+        $warehouseId = (int) ($item->delivery_warehouse_id ?? 0);
+        WarehouseStockBucket::disposeDefective(
+            (int) $item->equipment_id,
+            $warehouseId,
+            $quantity,
+            (int) $application->id,
+            (int) $item->id,
+            isset($validated['dispose_comment']) ? (string) $validated['dispose_comment'] : null,
+            (int) $request->user()->id,
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('status', 'Бракованное оборудование «'.$item->equipment_display_name.'» утилизировано: '.$this->formatIssueQuantityForMessage($quantity).' '.$item->quantityUnitLabelForDisplay().'.');
+    }
+
     public function markCustomEquipmentOrdered(Request $request, Application $application, ApplicationItem $item): RedirectResponse
     {
         if (! $request->user()->hasAnyRoleId($this->customEquipmentOrderingRoleIds())) {
@@ -2820,20 +2930,10 @@ class ApplicationController extends Controller
         return redirect()->route('applications.show', $application)
             ->with('status', $statusMessage);
     }
-
-    /**
-     * Заявки, к которым пользователь может прикрепить акт установки (совпадает с правами просмотра в списке).
-     *
-     * @return Collection<int, Application>
-     */
     private function applicationsSelectableForInstallationActUpload(Request $request): Collection
     {
         return ReportLayoutEquipmentApplications::collectionForInstallationActUser($request->user());
     }
-
-    /**
-     * @return Collection<int, UploadedFile>
-     */
     private function normalizeUploadedFilesArray(mixed $files): Collection
     {
         if ($files === null) {
@@ -2938,12 +3038,6 @@ class ApplicationController extends Controller
 
         $this->authorizeViewApplication($request, $application);
     }
-
-    /**
-     * Заявки с приложенным актом и/или фото — для страницы просмотра бухгалтером.
-     *
-     * @return Collection<int, Application>
-     */
     private function applicationsWithInstallationActForAccountant(): Collection
     {
         return Application::query()
@@ -3119,12 +3213,7 @@ class ApplicationController extends Controller
 
     private function applyBoilerChiefAutoGate(Application $application): void
     {
-        // Completion of boiler chief stage is derived from item-level approvals.
     }
-
-    /**
-     * Заявка руководства с назначенным мастером участка: автосогласование позиций и передача в снабжение.
-     */
     private function applyManagementDelegationSupplyRelease(Application $application, ?User $creator): void
     {
         if ($creator === null) {
@@ -3159,7 +3248,6 @@ class ApplicationController extends Controller
 
     private function refreshBoilerChiefGateAfterItemChanges(Application $application): void
     {
-        // Completion of boiler chief stage is derived from item-level flags.
     }
 
     private function authorizeCanCreateApplications(Request $request): void
@@ -3179,10 +3267,6 @@ class ApplicationController extends Controller
             abort(403, 'Редактирование заявок разрешено директору, техническому директору, начальнику отдела снабжения, мастеру участка и начальнику котельной.');
         }
     }
-
-    /**
-     * @param  array<string, mixed>  $requestRow
-     */
     private function normalizedEquipmentRowFromApplicationItem(ApplicationItem $item): array
     {
         $row = [
@@ -3198,10 +3282,6 @@ class ApplicationController extends Controller
 
         return $this->normalizeItemPayload($row, $catalog !== null && trim((string) $catalog) !== '' ? (string) $catalog : null);
     }
-
-    /**
-     * @param  array<string, mixed>  $requestRow
-     */
     private function applicationItemRowMatchesStored(ApplicationItem $existing, array $requestRow): bool
     {
         $typeId = $requestRow['equipment_id'] ?? null;
@@ -3212,10 +3292,6 @@ class ApplicationController extends Controller
 
         return $normStored == $normRequest;
     }
-
-    /**
-     * @return list<string>
-     */
     private function itemRowChangedAspectKeys(ApplicationItem $existing, array $row): array
     {
         $typeIdReq = isset($row['equipment_id']) && $row['equipment_id'] !== '' ? (int) $row['equipment_id'] : null;
@@ -3243,10 +3319,6 @@ class ApplicationController extends Controller
 
         return array_values(array_unique($keys));
     }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
     private function isNewEquipmentRowInEditRequest(array $row, bool $foremanMayReviseRejectedByBoilerChiefOnly): bool
     {
         if ($foremanMayReviseRejectedByBoilerChiefOnly) {
@@ -3524,12 +3596,6 @@ class ApplicationController extends Controller
             Storage::delete($relativePath);
         }
     }
-
-    /**
-     * Склады по подразделению (для подсказки в формах): строки «Нет» из справочника привязаны к «Да» через warehouses.subdivision_id.
-     *
-     * @return array<string, list<array{name: string}>>
-     */
     private function warehousesBySubdivisionForUi(): array
     {
         return Warehouse::query()
@@ -3542,12 +3608,6 @@ class ApplicationController extends Controller
             ])->values()->all())
             ->all();
     }
-
-    /**
-     * Привязки «мастер участка -> подразделения» для UI-фильтра подразделений.
-     *
-     * @return array<string, list<string>>
-     */
     private function subdivisionIdsByForemanForUi(): array
     {
         $map = [];
@@ -3566,18 +3626,10 @@ class ApplicationController extends Controller
 
         return $map;
     }
-
-    /**
-     * @return list<int>
-     */
     private function managementEditorRoleIds(): array
     {
         return User::MANAGEMENT_EDITOR_ROLE_IDS;
     }
-
-    /**
-     * @return list<int>
-     */
     private function customEquipmentOrderingRoleIds(): array
     {
         return User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS;
@@ -3614,10 +3666,6 @@ class ApplicationController extends Controller
 
         return ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID;
     }
-
-    /**
-     * @return list<int>
-     */
     private function editApplicationRoleIds(): array
     {
         return [...User::MANAGEMENT_EDITOR_ROLE_IDS, 4, self::BOILER_CHIEF_ROLE_ID];
@@ -3640,10 +3688,6 @@ class ApplicationController extends Controller
             ]);
         }
     }
-
-    /**
-     * Фильтр «сначала подразделение → мастера участка» для начальника котельной и руководства при создании заявки.
-     */
     private function usesSubdivisionFirstResponsibleFilter(Request $request): bool
     {
         $user = $request->user();
@@ -3651,12 +3695,6 @@ class ApplicationController extends Controller
         return $user !== null
             && ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS));
     }
-
-    /**
-     * Мастера участка по подразделениям для фильтра «ответственный».
-     *
-     * @return array<string, list<string>>
-     */
     private function foremanIdsBySubdivisionForUi(): array
     {
         $map = [];
@@ -3680,13 +3718,6 @@ class ApplicationController extends Controller
 
         return $map;
     }
-
-    /**
-     * Активные мастера участка, закреплённые за указанным подразделением (в т.ч. переназначение с заблокированного мастера
-     * на другого в том же подразделении, что и заявка).
-     *
-     * @return Builder<User>
-     */
     private function activeForemenForSubdivisionQuery(int $subdivisionId): Builder
     {
         return User::query()
@@ -3701,10 +3732,6 @@ class ApplicationController extends Controller
     {
         return \App\Support\AdministrationWarehouse::resolvePrimaryWarehouse();
     }
-
-    /**
-     * Перенос в архив, если выполнены акт, фото, полное согласование и списания по каталожным позициям.
-     */
     private function archiveCompletedApplicationIfReady(Application $application): ?string
     {
         $application->refresh();
@@ -3714,9 +3741,6 @@ class ApplicationController extends Controller
             return 'Заявка перенесена в архив выполненных.';
         }
 
-        // Резервный сценарий для "зависших" кейсов: если по факту акт/фото есть,
-        // все строки заявки завершены (согласовано или есть причина отказа),
-        // и каталожные согласованные позиции списаны — архивируем принудительно.
         if (! $this->forceArchiveIfBusinessComplete($application)) {
             return null;
         }
@@ -3788,10 +3812,6 @@ class ApplicationController extends Controller
             $this->archiveCompletedApplicationIfReady($candidate);
         }
     }
-
-    /**
-     * Повторная проверка условий и перенос в архив (если последнее действие не вызвало автоархивацию).
-     */
     public function tryArchiveCompletion(Request $request, Application $application): RedirectResponse
     {
         if (! $request->user()?->hasAnyRoleId([1, 2, 6, 3])) {
@@ -3871,6 +3891,7 @@ class ApplicationController extends Controller
                 'warehouse_id' => $deliveryWarehouseId,
                 'material_stock_movement_type_id' => $receiptTypeId,
                 'quantity' => (float) $item->quantity,
+                'stock_bucket' => WarehouseStockBucket::GOOD,
                 'unit_price' => null,
                 'counterparty' => 'Доставка по заявке №'.$application->id,
                 'comment' => MaterialStockMovement::packCommentWithCorrelation(
@@ -3890,18 +3911,10 @@ class ApplicationController extends Controller
     {
         return 'APP:'.$applicationId.':ITEM:'.$itemId.':DELIVERY-RCPT:WH:'.$warehouseId;
     }
-
-    /**
-     * Списание со склада подразделения после монтажа (отдельно от списания с основного склада по {@see issueDocumentRef}).
-     */
     private function installationIssueDocumentRef(int $applicationId, int $itemId): string
     {
         return 'APP:'.$applicationId.':ITEM:'.$itemId.':INSTALL';
     }
-
-    /**
-     * @return Collection<int, ApplicationItem>
-     */
     private function deliveredWarehouseIssueCandidates(Application $application): Collection
     {
         $application->loadMissing([
@@ -3936,27 +3949,37 @@ class ApplicationController extends Controller
 
     private function installationIssuedQuantityForItem(Application $application, ApplicationItem $item): float
     {
-        $docRef = $this->installationIssueDocumentRef((int) $application->id, (int) $item->id);
-
-        return (float) MaterialStockMovement::query()
-            ->where('material_stock_movement_type_id', MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE))
-            ->whereCorrelationKey($docRef)
-            ->sum('quantity');
+        return WarehouseStockBucket::installationIssuedQuantityForApplicationItem(
+            (int) $application->id,
+            (int) $item->id,
+        );
     }
 
     private function remainingInstallationIssueQuantity(Application $application, ApplicationItem $item): float
     {
-        $ordered = (float) $item->quantity;
-
-        return max(0.0, $ordered - $this->installationIssuedQuantityForItem($application, $item));
+        return WarehouseStockBucket::remainingInstallationIssueQuantity(
+            (float) $item->quantity,
+            (int) $application->id,
+            (int) $item->id,
+            (int) $item->equipment_id,
+            (int) ($item->delivery_warehouse_id ?? 0),
+        );
     }
 
-    /**
-     * @param  Collection<int, ApplicationItem>  $candidates
-     * @param  Collection<int, int>  $selectedItemIds
-     * @param  array<int|string, mixed>  $rawQuantities
-     * @return array<int, float>
-     */
+    private function installationIssueMaxQuantitiesByItemId(Application $application): array
+    {
+        $quantities = [];
+
+        foreach ($this->deliveredWarehouseIssueCandidates($application) as $item) {
+            if (! $item instanceof ApplicationItem) {
+                continue;
+            }
+
+            $quantities[(int) $item->id] = $this->remainingInstallationIssueQuantity($application, $item);
+        }
+
+        return $quantities;
+    }
     private function resolveInstallationActIssueQuantities(
         Application $application,
         Collection $candidates,
@@ -4026,13 +4049,6 @@ class ApplicationController extends Controller
 
         return $resolved;
     }
-
-    /**
-     * Для доставленных на склад получателя позиций: списание на указанное или оставшееся количество (идемпотентно по ключу в comment).
-     *
-     * @param  array<int, float>|null  $quantitiesByItemId
-     * @return array{issued_lines: int, warnings: list<string>}
-     */
     private function writeOffDeliveredItemsOnRecipientWarehouses(
         Application $application,
         ?User $actor,
@@ -4083,8 +4099,6 @@ class ApplicationController extends Controller
 
             $deliveredQuantity = (float) $item->quantity;
 
-            // Для старых заявок/данных: если по доставленной позиции не записан приход на склад получателя,
-            // дописываем его идемпотентно, чтобы автосписание и автоархивация могли отработать.
             $deliveryReceiptRef = $this->deliveryReceiptDocumentRef((int) $application->id, (int) $item->id, $warehouseId);
             $receiptTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT);
             $hasDeliveryReceipt = MaterialStockMovement::query()
@@ -4097,6 +4111,7 @@ class ApplicationController extends Controller
                     'warehouse_id' => $warehouseId,
                     'material_stock_movement_type_id' => $receiptTypeId,
                     'quantity' => $deliveredQuantity,
+                    'stock_bucket' => WarehouseStockBucket::GOOD,
                     'unit_price' => null,
                     'counterparty' => 'Восстановление прихода по доставке заявки №'.$application->id,
                     'comment' => MaterialStockMovement::packCommentWithCorrelation(
@@ -4119,6 +4134,7 @@ class ApplicationController extends Controller
                 'warehouse_id' => $warehouseId,
                 'material_stock_movement_type_id' => MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE),
                 'quantity' => $issueQuantity,
+                'stock_bucket' => WarehouseStockBucket::GOOD,
                 'unit_price' => null,
                 'counterparty' => 'Заявка №'.$application->id.' / '.$application->subdivision?->name,
                 'comment' => MaterialStockMovement::packCommentWithCorrelation($docRef, $movementComment),
@@ -4228,10 +4244,6 @@ class ApplicationController extends Controller
     {
         return Equipment::query()->where('is_catalog', true);
     }
-
-    /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, Equipment>
-     */
     private function catalogEquipmentForForms()
     {
         return $this->catalogEquipmentQuery()
@@ -4239,11 +4251,6 @@ class ApplicationController extends Controller
             ->orderBy('name')
             ->get();
     }
-
-    /**
-     * @param  \Illuminate\Database\Eloquent\Collection<int, Equipment>  $equipment
-     * @return array<string, array{unitType: string, unitCode: string}>
-     */
     private function catalogEquipmentMeasurementMetaById($equipment): array
     {
         $out = [];
@@ -4256,10 +4263,6 @@ class ApplicationController extends Controller
 
         return $out;
     }
-
-    /**
-     * @return list<string>
-     */
     private function clothingCatalogSizeOptionsForApplications(): array
     {
         return ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL'];
@@ -4277,21 +4280,27 @@ class ApplicationController extends Controller
 
     private function warehouseEquipmentBalance(int $equipmentId, int $warehouseId): float
     {
-        $issueId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
-        $sum = MaterialStockMovement::query()
-            ->where('equipment_id', $equipmentId)
-            ->where('warehouse_id', $warehouseId)
-            ->selectRaw('COALESCE(SUM(CASE WHEN material_stock_movement_type_id = ? THEN -quantity ELSE quantity END), 0) as balance', [$issueId])
-            ->value('balance');
-
-        return (float) $sum;
+        return WarehouseStockBucket::balance($equipmentId, $warehouseId, WarehouseStockBucket::GOOD);
     }
 
-    /**
-     * Подпись для «своей» позиции: превышение над остатком на основном складе, на согласование.
-     *
-     * @param  array{measurement_type: string, quantity_unit: string, size_value?: ?string}  $normalized
-     */
+    private function itemEligibleForDeliveryDefectManagement(ApplicationItem $item): bool
+    {
+        return $item->is_checked
+            && $item->equipment_id !== null
+            && $item->resolvedDeliveryStatus() === ApplicationItem::DELIVERY_DELIVERED
+            && (int) ($item->delivery_warehouse_id ?? 0) > 0;
+    }
+
+    private function maxDefectMarkQuantityForItem(Application $application, ApplicationItem $item): float
+    {
+        return WarehouseStockBucket::maxMarkableDefectQuantity(
+            (float) $item->quantity,
+            (int) $application->id,
+            (int) $item->id,
+            (int) $item->equipment_id,
+            (int) ($item->delivery_warehouse_id ?? 0),
+        );
+    }
     private function catalogOverflowPendingOrderLabel(string $catalogName, int $overflowQty, array $normalized): string
     {
         $unit = trim((string) ($normalized['quantity_unit'] ?? 'шт'));
@@ -4305,14 +4314,6 @@ class ApplicationController extends Controller
 
         return mb_substr($label, 0, 255);
     }
-
-    /**
-     * Для строк из каталога: часть до остатка на основном складе остаётся каталожной позицией,
-     * остаток запроса — отдельной строкой «своё» на согласовании (редактируется как своё оборудование).
-     *
-     * @param  array<int, array<string, mixed>>  $items
-     * @return array<int, array<string, mixed>>
-     */
     private function expandCatalogRowsAgainstMainWarehouseVirtualStock(array $items): array
     {
         $mainWarehouse = $this->resolveMainWarehouseForAccounting();
@@ -4414,11 +4415,6 @@ class ApplicationController extends Controller
 
         return $out;
     }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array{equipment_name:?string,base_name:string,size_value:?string,quantity:int,measurement_type:string,quantity_unit:string,raw_input:?string}
-     */
     private function normalizeItemPayload(array $row, ?string $equipmentName = null): array
     {
         $rawName = trim((string) ($row['equipment_name'] ?? ''));
@@ -4491,10 +4487,6 @@ class ApplicationController extends Controller
             'raw_input' => $rawInput,
         ];
     }
-
-    /**
-     * @return array{0:string,1:string,2:?float,3:?string}
-     */
     private function parseFreeEquipmentText(string $text): array
     {
         $clean = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
@@ -4530,10 +4522,6 @@ class ApplicationController extends Controller
 
         return [$baseName, $size, $qty, $unit];
     }
-
-    /**
-     * @return array<string, int> normalized label => catalog equipment id
-     */
     private function catalogEquipmentNameLookup(): array
     {
         $map = [];
@@ -4556,13 +4544,6 @@ class ApplicationController extends Controller
 
         return $map;
     }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    /**
-     * @param  array{measurement_type: string, quantity_unit: string, size_value?: ?string}  $normalized
-     */
     private function syncCatalogItemManualDetail(ApplicationItem $item, array $normalized): void
     {
         if ($item->equipment_id === null) {
@@ -4669,13 +4650,6 @@ class ApplicationController extends Controller
 
         return $baseKey.':mt:'.$measurementType;
     }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function requestHasSubstantiveEquipmentItems(array $items): bool
     {
         return collect($items)->contains(function (array $item): bool {
@@ -4685,10 +4659,6 @@ class ApplicationController extends Controller
                 || trim((string) ($item['equipment_name'] ?? '')) !== '';
         });
     }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function willHaveEquipmentForSubmission(Application $application, array $items): bool
     {
         if ($this->requestHasSubstantiveEquipmentItems($items)) {
@@ -4731,10 +4701,6 @@ class ApplicationController extends Controller
             $seenKeys[$key] = $idx;
         }
     }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function validateSubstantiveEquipmentItemQuantities(array $items): void
     {
         foreach ($items as $idx => $row) {
@@ -4767,10 +4733,6 @@ class ApplicationController extends Controller
             }
         }
     }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function validateCustomEquipmentRowsHaveMeasurementType(array $items): void
     {
         foreach ($items as $idx => $row) {
@@ -4791,10 +4753,6 @@ class ApplicationController extends Controller
             }
         }
     }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function validateMeasurementPairs(array $items): void
     {
         $map = $this->measurementUnitsMap();
@@ -4852,10 +4810,6 @@ class ApplicationController extends Controller
             }
         }
     }
-
-    /**
-     * @return array<string, array<int, string>>
-     */
     private function measurementUnitsMap(): array
     {
         $rows = MeasurementUnit::query()
@@ -4889,10 +4843,6 @@ class ApplicationController extends Controller
 
         return $map;
     }
-
-    /**
-     * @return array{typeOptions: array<string, string>, unitsByType: array<string, array<int, string>>}
-     */
     private function measurementMetaForUi(): array
     {
         $typeOptions = [];
@@ -4931,10 +4881,6 @@ class ApplicationController extends Controller
 
         return $map[$type][0] ?? 'шт';
     }
-
-    /**
-     * @return array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string}
-     */
     private function resolveIndexSortState(Request $request): array
     {
         $allowedFields = $this->indexAllowedSortFields();
@@ -4970,10 +4916,6 @@ class ApplicationController extends Controller
             'secondary_direction' => $secondaryDirection,
         ];
     }
-
-    /**
-     * @param  array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string}  $sortState
-     */
     private function applyIndexSorting($applicationsQuery, array $sortState): void
     {
         $allowedFields = $this->indexAllowedSortFields();
@@ -4999,10 +4941,6 @@ class ApplicationController extends Controller
 
         $applicationsQuery->orderBy('id', 'desc');
     }
-
-    /**
-     * @return array<string, string>
-     */
     private function indexAllowedSortFields(): array
     {
         return [
@@ -5014,10 +4952,6 @@ class ApplicationController extends Controller
             'approved_by' => 'approved_by_user_id',
         ];
     }
-
-    /**
-     * @param  array<string, string>  $errors
-     */
     private function redirectAfterApplicationSubmitAction(
         Request $request,
         Application $application,

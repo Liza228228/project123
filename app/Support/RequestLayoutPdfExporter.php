@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\RequestLayout;
@@ -23,11 +24,6 @@ final class RequestLayoutPdfExporter
     {
         return 'zajavka-'.($submissionId ?? now()->format('YmdHis')).'.pdf';
     }
-
-    /**
-     * @param  array<string, mixed>  $values
-     * @return array<string, mixed>
-     */
     public function viewData(RequestLayout $layout, array $values): array
     {
         $layout->load(['approver', 'divisionAssigner', 'documentHeaderLayout']);

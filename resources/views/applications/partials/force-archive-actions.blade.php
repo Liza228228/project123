@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $stacked = (bool) ($stacked ?? false);
     $defaultBtnClass = $stacked
         ? 'ui-btn ui-btn--secondary w-full min-h-[44px] py-3 sm:min-h-0 sm:py-2 [touch-action:manipulation]'

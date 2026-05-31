@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Application;
@@ -47,10 +48,6 @@ class TransportOptionSeeder extends Seeder
             }
         }
     }
-
-    /**
-     * @return list<array{name: string, plate: string, label?: string|null}>
-     */
     private function companyPlatedVehicles(): array
     {
         return [
@@ -58,10 +55,6 @@ class TransportOptionSeeder extends Seeder
             ['name' => 'Служебная машина', 'plate' => '888', 'label' => null],
         ];
     }
-
-    /**
-     * @return list<string>
-     */
     private function transportTypeNames(): array
     {
         return [

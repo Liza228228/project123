@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-black dark:text-white leading-tight">
@@ -24,7 +26,7 @@
         <div class="app-form-card">
             <div class="px-4 py-5 sm:p-8 space-y-5 sm:space-y-6">
                 <div class="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-12 lg:gap-8 lg:items-start">
-                    {{-- Слева на lg: просмотр склада (узкая колонка). --}}
+                    
                     <div class="min-w-0 w-full max-w-xl space-y-4 lg:col-span-4 lg:max-w-none">
                         <p class="text-sm text-black/75 dark:text-white/75">
                             @if($selectedWarehouse)
@@ -58,21 +60,25 @@
                                     method="get"
                                     action="{{ route('materials.overview') }}"
                                     class="grid grid-cols-1 gap-4"
-                                    data-auto-submit="filter"
                                 >
                                     <div class="min-w-0">
                                         <label for="overview_subdivision_id" class="app-form-label">Подразделение</label>
-                                        <input
-                                            id="overview_subdivision_search"
-                                            type="search"
-                                            class="app-input mb-2 min-h-0 mt-1.5 w-full"
-                                            placeholder="Поиск по названию подразделения"
-                                            autocomplete="off"
-                                        />
+                                        <div class="mt-1.5 flex gap-2">
+                                            <input
+                                                id="overview_subdivision_search"
+                                                type="search"
+                                                class="app-input min-h-0 w-full min-w-0 flex-1"
+                                                placeholder="Поиск по названию подразделения"
+                                                autocomplete="off"
+                                            />
+                                            <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm shrink-0 whitespace-nowrap">
+                                                Применить
+                                            </button>
+                                        </div>
                                         <select
                                             id="overview_subdivision_id"
                                             name="subdivision_id"
-                                            class="app-select w-full"
+                                            class="app-select mt-2 w-full"
                                             autocomplete="organization"
                                         >
                                             <option value="">Выберите подразделение…</option>
@@ -118,38 +124,63 @@
                                             @endforeach
                                         </select>
                                     </div>
-                                    @if($selectedWarehouse)
-                                        <div class="min-w-0">
-                                            <label for="overview_equipment_search" class="app-form-label">Оборудование</label>
-                                            <input
-                                                id="overview_equipment_search"
-                                                type="search"
-                                                name="equipment"
-                                                class="app-input mt-1.5 w-full"
-                                                placeholder="Поиск по названию"
-                                                value="{{ $equipmentSearch ?? '' }}"
-                                                autocomplete="off"
-                                            />
-                                        </div>
-                                    @endif
                                 </form>
                             </div>
                             @endif
                         </div>
                     </div>
 
-                    {{-- Справа на lg: остатки или подсказка (шире). --}}
+                    
                     <div class="min-w-0 space-y-4 lg:col-span-8">
                         @if($selectedWarehouse)
                         <div class="rounded-xl border border-stone-200/80 bg-stone-50/40 p-4 shadow-sm ring-1 ring-stone-200/40 dark:border-stone-600 dark:bg-stone-900/35 dark:ring-stone-700/60 sm:p-5 space-y-4">
-                            <div class="flex flex-col gap-1 border-b border-stone-200/80 pb-4 dark:border-stone-600/80">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">Остатки</p>
-                                <h3 class="text-lg font-semibold text-black dark:text-white leading-snug">
-                                    {{ $selectedSubdivision?->name }}
-                                    <span class="font-normal text-black/45 dark:text-white/45">·</span>
-                                    {{ $selectedWarehouse->name }}
-                                </h3>
+                            <div class="flex flex-col gap-3 border-b border-stone-200/80 pb-4 dark:border-stone-600/80 sm:flex-row sm:items-end sm:justify-between">
+                                <div class="min-w-0 space-y-1">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">Остатки</p>
+                                    <h3 class="text-lg font-semibold text-black dark:text-white leading-snug">
+                                        {{ $selectedSubdivision?->name }}
+                                        <span class="font-normal text-black/45 dark:text-white/45">·</span>
+                                        {{ $selectedWarehouse->name }}
+                                    </h3>
+                                </div>
+                                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end sm:justify-end">
+                                    <div class="w-full sm:w-44 shrink-0">
+                                        <label for="overview_stock_filter" class="app-form-label">Наличие</label>
+                                        <select
+                                            id="overview_stock_filter"
+                                            name="stock_filter"
+                                            form="materials-overview-filters"
+                                            class="app-select mt-1.5 w-full"
+                                        >
+                                            <option value="" @selected(($stockFilter ?? '') === '')>Все позиции</option>
+                                            <option value="on_stock" @selected(($stockFilter ?? '') === 'on_stock')>На складе</option>
+                                            <option value="written_off" @selected(($stockFilter ?? '') === 'written_off')>Списанное</option>
+                                        </select>
+                                    </div>
+                                    <div class="w-full sm:max-w-xs shrink-0">
+                                        <label for="overview_equipment_search" class="app-form-label">Поиск по оборудованию</label>
+                                        <input
+                                            id="overview_equipment_search"
+                                            type="search"
+                                            name="equipment"
+                                            form="materials-overview-filters"
+                                            class="app-input mt-1.5 w-full"
+                                            placeholder="Поиск по названию"
+                                            value="{{ $equipmentSearch ?? '' }}"
+                                            autocomplete="off"
+                                        />
+                                    </div>
+                                </div>
                             </div>
+
+                            @if($canManageWarehouseStock ?? false)
+                                @include('materials.partials.main-warehouse-stock-management', [
+                                    'canManageWarehouseStock' => $canManageWarehouseStock,
+                                    'warehouseStockOptions' => $warehouseStockOptions ?? [],
+                                    'selectedWarehouse' => $selectedWarehouse,
+                                    'overviewTabQuery' => $overviewTabQuery ?? [],
+                                ])
+                            @endif
 
                             <div class="mt-4">
                                 @include('materials.partials.overview-balance-section', [
@@ -158,6 +189,7 @@
                                     'intro' => null,
                                     'emptyText' => 'По этому складу ещё не было движений оборудования.',
                                     'equipmentSearch' => $equipmentSearch ?? '',
+                                    'stockFilter' => $stockFilter ?? '',
                                 ])
                             </div>
                         </div>
@@ -188,14 +220,62 @@
                 }
                 sub.addEventListener('change', function () {
                     wh.value = '';
-                    form.submit();
                 });
                 wh.addEventListener('change', function () {
                     if (wh.disabled) {
                         return;
                     }
-                    form.submit();
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
                 });
+
+                var equipmentSearch = document.getElementById('overview_equipment_search');
+                if (equipmentSearch) {
+                    var equipmentSearchTimer = null;
+
+                    function submitOverviewFilters() {
+                        if (equipmentSearchTimer !== null) {
+                            clearTimeout(equipmentSearchTimer);
+                            equipmentSearchTimer = null;
+                        }
+                        if (typeof form.requestSubmit === 'function') {
+                            form.requestSubmit();
+                        } else {
+                            form.submit();
+                        }
+                    }
+
+                    equipmentSearch.addEventListener('input', function () {
+                        if (equipmentSearchTimer !== null) {
+                            clearTimeout(equipmentSearchTimer);
+                        }
+                        equipmentSearchTimer = window.setTimeout(submitOverviewFilters, 450);
+                    });
+
+                    equipmentSearch.addEventListener('search', submitOverviewFilters);
+
+                    equipmentSearch.addEventListener('keydown', function (event) {
+                        if (event.key !== 'Enter') {
+                            return;
+                        }
+                        event.preventDefault();
+                        submitOverviewFilters();
+                    });
+                }
+
+                var stockFilter = document.getElementById('overview_stock_filter');
+                if (stockFilter) {
+                    stockFilter.addEventListener('change', function () {
+                        if (typeof form.requestSubmit === 'function') {
+                            form.requestSubmit();
+                        } else {
+                            form.submit();
+                        }
+                    });
+                }
             })();
         </script>
         @include('partials.js-filterable-select', [

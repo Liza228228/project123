@@ -1,5 +1,6 @@
 <?php
 
+// модель заявки и все проверки по этапам
 namespace App\Models;
 
 use App\Models\Scopes\ActiveApplicationItemScope;
@@ -60,11 +61,6 @@ class Application extends Model
     {
         return Schema::hasTable('application_archives');
     }
-
-    /**
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     public function scopeNotArchived(Builder $query): Builder
     {
         if (! static::usesArchiveTable()) {
@@ -73,11 +69,6 @@ class Application extends Model
 
         return $query->whereDoesntHave('archive');
     }
-
-    /**
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     public function scopeArchived(Builder $query): Builder
     {
         if (! static::usesArchiveTable()) {
@@ -111,19 +102,12 @@ class Application extends Model
 
         return (int) ($this->user?->role_id ?? 0) === 7;
     }
-
-    /** Заявку создали директор, технический директор или начальник отдела снабжения. */
     public function isManagementCreatedApplication(): bool
     {
         $this->loadMissing('user:id,role_id');
 
         return in_array((int) ($this->user?->role_id ?? 0), User::MANAGEMENT_EDITOR_ROLE_IDS, true);
     }
-
-    /**
-     * Руководство создало заявку и назначило ответственным мастера участка:
-     * мастер только просматривает, согласование котельной и руководства не требуется.
-     */
     public function isManagementDelegatedToSiteForeman(): bool
     {
         if (! $this->isManagementCreatedApplication()) {
@@ -169,12 +153,6 @@ class Application extends Model
     {
         return $this->hasMany(ApplicationItem::class)->orderBy('id');
     }
-
-    /**
-     * Позиции, снятые с заявки при редактировании (причина — для мастера участка).
-     *
-     * @return HasMany<ApplicationItem, $this>
-     */
     public function removedItems(): HasMany
     {
         return $this->hasMany(ApplicationItem::class)
@@ -182,10 +160,6 @@ class Application extends Model
             ->whereNotNull('removed_at')
             ->orderBy('id');
     }
-
-    /**
-     * @return HasMany<ApplicationChangeJournal, $this>
-     */
     public function changeJournalEntries(): HasMany
     {
         return $this->hasMany(ApplicationChangeJournal::class)->orderByDesc('created_at');
@@ -195,8 +169,6 @@ class Application extends Model
     {
         return $this->hasMany(ApplicationInstallationActPhoto::class)->orderBy('id');
     }
-
-    /** Есть сохранённый файл акта и/или фото к акту. */
     public function hasInstallationActEvidence(): bool
     {
         if (filled(trim((string) ($this->act_of_installation ?? '')))) {
@@ -219,10 +191,6 @@ class Application extends Model
     {
         return $this->belongsTo(TransportOption::class);
     }
-
-    /**
-     * Для формы «В пути»: id способа (строка без госномера), если на заявке выбран вариант с заполненным plate.
-     */
     public function transportMethodOptionIdForDeliveryForm(): ?int
     {
         if (! Schema::hasColumn('transport_options', 'plate')) {
@@ -245,10 +213,6 @@ class Application extends Model
             ->orderBy('id')
             ->value('id');
     }
-
-    /**
-     * Строка для списка заявок: способ и госномер из справочника transport_options.
-     */
     public function transportAndVehicleLine(): ?string
     {
         $this->loadMissing('transportOption');
@@ -272,10 +236,6 @@ class Application extends Model
 
         return $name !== '' ? $name : $plate;
     }
-
-    /**
-     * Сводка по ожидаемому прибытию для позиций каталога в статусе «В пути».
-     */
     public function expectedArrivalSummaryLine(): ?string
     {
         $this->loadMissing('items');
@@ -297,10 +257,6 @@ class Application extends Model
 
         return $times->first()->format('d.m.Y').' — '.$times->last()->format('d.m.Y');
     }
-
-    /**
-     * Все согласованные позиции находятся в «В пути» (поставка своего оборудования или доставка на объект).
-     */
     public function isApprovedDeliveryFullyInTransit(): bool
     {
         if ($this->isArchived()) {
@@ -330,6 +286,32 @@ class Application extends Model
         }
 
         return true;
+    }
+
+    /**
+     * После сохранения согласования снабжения остались согласованные каталожные позиции без отметки «В пути».
+     */
+    public function needsCatalogDeliveryInTransit(): bool
+    {
+        if ($this->archived_at !== null || $this->isAdminArchived()) {
+            return false;
+        }
+
+        if (! $this->managementHasSavedApproval()) {
+            return false;
+        }
+
+        $this->loadMissing('items');
+
+        $checkedCatalog = $this->items->filter(
+            fn (ApplicationItem $item) => (bool) $item->is_checked && $item->equipment_id !== null
+        );
+
+        if ($checkedCatalog->isEmpty()) {
+            return false;
+        }
+
+        return $checkedCatalog->contains(fn (ApplicationItem $item) => $item->canMarkDeliveryInTransit());
     }
 
     public function isStatusApproved(): bool
@@ -409,10 +391,6 @@ class Application extends Model
 
         return ApplicationStatus::NAME_PARTIAL;
     }
-
-    /**
-     * Заявка мастера участка по подразделению с начальником котельной, ещё не отправлена на согласование.
-     */
     public function isForemanDraftBeforeBoilerChief(): bool
     {
         $this->loadMissing('user:id,role_id');
@@ -428,10 +406,6 @@ class Application extends Model
 
         return ! $this->boilerChiefSubdivisionReviewCycleStarted();
     }
-
-    /**
-     * Черновик заявки мастера после согласования котельной, до отправки руководству.
-     */
     public function isForemanDraftAfterBoilerChiefBeforeManagement(): bool
     {
         $this->loadMissing('user:id,role_id');
@@ -453,10 +427,6 @@ class Application extends Model
 
         return $this->boilerChiefSubdivisionReviewCycleStarted();
     }
-
-    /**
-     * Заявка начальника котельной, ещё не отправлена на согласование руководству / снабжению.
-     */
     public function isBoilerChiefDraftBeforeManagement(): bool
     {
         $this->loadMissing('user:id,role_id');
@@ -469,20 +439,12 @@ class Application extends Model
     {
         return $this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement();
     }
-
-    /**
-     * Черновик на любом этапе до следующей отправки на согласование (для отображения в списке).
-     */
     public function isWorkflowDraftForDisplay(): bool
     {
         return $this->isForemanDraftBeforeBoilerChief()
             || $this->isBoilerChiefDraftBeforeManagement()
             || $this->isForemanDraftAfterBoilerChiefBeforeManagement();
     }
-
-    /**
-     * Заявка у руководства / снабжения: котельная отправила, согласование руководства ещё не сохранено.
-     */
     public function isPendingManagementReview(): bool
     {
         if ($this->isWorkflowDraftForDisplay()) {
@@ -500,11 +462,6 @@ class Application extends Model
 
         return ! $this->managementHasSavedApproval();
     }
-
-    /**
-     * Директор, ТД или начальник снабжения могут править заявку после передачи от котельной
-     * до сохранения согласования по позициям (только подразделения с закреплённой котельной).
-     */
     public function managementCanEditApplication(): bool
     {
         if ($this->archived_at !== null || $this->isAdminArchived()) {
@@ -528,10 +485,6 @@ class Application extends Model
             ], true)
         );
     }
-
-    /**
-     * Директор, ТД или начальник снабжения сохранили согласование по позициям.
-     */
     public function managementHasSavedApproval(): bool
     {
         if ($this->approved_by_user_id === null) {
@@ -547,15 +500,19 @@ class Application extends Model
         }
 
         if ($this->usesBoilerChiefSubdivisionWorkflow()) {
-            return $this->management_supply_items_saved_at !== null;
+            if ($this->management_supply_items_saved_at !== null) {
+                return true;
+            }
+
+            return in_array((int) $this->application_status_id, [
+                ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+                ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+                ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
+            ], true);
         }
 
         return true;
     }
-
-    /**
-     * Итоговый статус заявки, когда по каждой позиции уже есть решение (согласована или отклонена с причиной).
-     */
     public static function resolvedEquipmentLinesStatusWhenAllResolved(int $checkedCount, int $totalCount): string
     {
         if ($checkedCount === 0) {
@@ -575,11 +532,6 @@ class Application extends Model
 
         return $this->items->contains(fn (ApplicationItem $i) => (bool) $i->is_checked);
     }
-
-    /**
-     * Мастер участка может редактировать заявку: свой черновик или подразделение без котельной.
-     * Заявки, созданные начальником котельной, мастеру только для просмотра.
-     */
     public function foremanCanEditApplication(): bool
     {
         if ($this->isAdminArchived()) {
@@ -613,11 +565,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * Мастер участка может править позиции, которые начальник котельной не согласовал
-     * (после сохранения согласования котельной, до отправки заявки руководству).
-     */
     public function foremanCanReviseAfterBoilerChiefRejection(): bool
     {
         if ($this->isAdminArchived() || $this->managementHasSavedApproval()) {
@@ -654,10 +601,6 @@ class Application extends Model
 
         return $this->hasItemsRejectedByBoilerChief();
     }
-
-    /**
-     * Мастер участка отправил изменённые позиции на повторное согласование — ждём решения начальника котельной.
-     */
     public function foremanSubmittedAwaitingItemsForBoilerChiefReview(): bool
     {
         if (! $this->boilerChiefSubdivisionReviewCycleStarted()) {
@@ -681,10 +624,6 @@ class Application extends Model
         return ! (bool) $item->is_checked
             && trim((string) ($item->reason_not_selected ?? '')) !== '';
     }
-
-    /**
-     * Позиция снова ожидает решения начальника котельной (мастер изменил и отправил на повторное согласование).
-     */
     public function itemAwaitingBoilerChiefReview(ApplicationItem $item): bool
     {
         return ! (bool) $item->is_checked
@@ -697,10 +636,6 @@ class Application extends Model
 
         return $this->items->contains(fn (ApplicationItem $i) => $this->itemAwaitingBoilerChiefReview($i));
     }
-
-    /**
-     * @return \Illuminate\Support\Collection<int, ApplicationItem>
-     */
     public function itemsAwaitingBoilerChiefReview()
     {
         $this->loadMissing('items');
@@ -718,10 +653,6 @@ class Application extends Model
 
         return false;
     }
-
-    /**
-     * Мастер участка может повторно отправить заявку начальнику котельной после правок.
-     */
     public function foremanCanResubmitAwaitingItemsToBoilerChief(): bool
     {
         if ($this->isAdminArchived() || $this->isForemanDraftBeforeBoilerChief()) {
@@ -743,10 +674,6 @@ class Application extends Model
         return $this->hasItemsAwaitingBoilerChiefReview()
             && $this->boilerChiefSubdivisionReviewCycleStarted();
     }
-
-    /**
-     * Начальник котельной может редактировать свою заявку, пока она не отправлена на согласование руководству.
-     */
     public function boilerChiefCanEditApplication(): bool
     {
         if ($this->isAdminArchived()) {
@@ -777,10 +704,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * По подразделению назначен начальник котельной, но этап его согласования ещё не завершён.
-     */
     public function needsBoilerChiefReviewBeforeManagement(): bool
     {
         if ($this->isForemanDraftBeforeBoilerChief() || $this->isBoilerChiefDraftBeforeManagement()) {
@@ -814,10 +737,6 @@ class Application extends Model
     {
         return Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id);
     }
-
-    /**
-     * Заявка мастера передана руководству и снабжению (после «Отправить на согласование» начальником котельной).
-     */
     public function boilerChiefReleasedToManagement(): bool
     {
         if (! $this->usesBoilerChiefSubdivisionWorkflow()) {
@@ -829,11 +748,6 @@ class Application extends Model
 
         return $this->approved_by_user_id !== null;
     }
-
-    /**
-     * Заявка попадает в список у директора, ТД и начальника снабжения
-     * (согласовано с {@see scopeVisibleToManagementEditors}).
-     */
     public function isVisibleToManagementEditors(): bool
     {
         if (! $this->isForemanCreatedApplication()) {
@@ -845,14 +759,6 @@ class Application extends Model
 
         return $this->approved_by_user_id !== null;
     }
-
-    /**
-     * Список заявок для директора, ТД и начальника снабжения: без черновиков мастера «у котельной»
-     * и без заявок мастера, которые котельная ещё не передала руководству.
-     *
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     public function scopeVisibleToManagementEditors(Builder $query): Builder
     {
         if (! Schema::hasTable('boiler_chief_subdivision_user')) {
@@ -886,10 +792,6 @@ class Application extends Model
             });
         });
     }
-
-    /**
-     * Начальник котельной может отправить заявку директору / ТД / снабжению (свой черновик или после согласования заявки мастера).
-     */
     public function boilerChiefCanSubmitToManagement(): bool
     {
         if ($this->isArchived() || $this->isStatusRejected()) {
@@ -913,10 +815,6 @@ class Application extends Model
 
         return $this->items()->exists();
     }
-
-    /**
-     * Мастер участка или начальник котельной должен отправить заявку на следующий этап согласования.
-     */
     public function needsSubmitToApprovalBy(?User $user): bool
     {
         if ($user === null || $this->isArchived() || $this->isStatusRejected()) {
@@ -932,10 +830,6 @@ class Application extends Model
 
         return false;
     }
-
-    /**
-     * Руководство и снабжение могут согласовывать позиции после этапа котельной.
-     */
     public function managementMayReviewAfterBoilerChief(): bool
     {
         if ($this->isManagementDelegatedToSiteForeman()) {
@@ -950,10 +844,6 @@ class Application extends Model
 
         return $this->boilerChiefReleasedToManagement();
     }
-
-    /**
-     * Этап котельной пройден, ожидается согласование позиций директором / ТД / снабжением (ещё ни одной позиции не отмечено).
-     */
     public function awaitsManagementEquipmentApproval(): bool
     {
         if ($this->isManagementDelegatedToSiteForeman()) {
@@ -984,11 +874,6 @@ class Application extends Model
 
         return ! $hasMgmtReason;
     }
-
-    /**
-     * Снабжение (директор / ТД / нач. снабжения) сохранило согласование по позициям настолько,
-     * что можно открывать «Своё оборудование к заказу» и вести заказ (в т.ч. после этапа котельной).
-     */
     public function isSupplyApprovedForCustomEquipmentWorkflow(): bool
     {
         if ($this->approved_by_user_id === null) {
@@ -1004,32 +889,46 @@ class Application extends Model
             return false;
         }
 
-        return $this->management_supply_items_saved_at !== null;
-    }
+        if ($this->management_supply_items_saved_at !== null) {
+            return true;
+        }
 
-    /**
-     * @param  Builder<Application>  $query
-     */
+        return in_array((int) $this->application_status_id, [
+            ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+            ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+            ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
+        ], true);
+    }
     public function scopeWhereSupplyApprovedForCustomEquipmentWorkflow(Builder $query): void
     {
         $query->whereNotNull('approved_by_user_id');
+
         if (! Schema::hasTable('boiler_chief_subdivision_user')) {
             return;
         }
-        $query->where(function (Builder $w): void {
-            $w->whereNotExists(function ($e): void {
-                $e->from('boiler_chief_subdivision_user')
+
+        $decisionStatusIds = [
+            ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+            ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+            ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED),
+        ];
+
+        $query->where(function (Builder $w) use ($decisionStatusIds): void {
+            $w->whereNotExists(function ($sub): void {
+                $sub->selectRaw('1')
+                    ->from('boiler_chief_subdivision_user')
                     ->whereColumn('boiler_chief_subdivision_user.subdivision_id', 'applications.subdivision_id');
+            })->orWhere(function (Builder $passedGate) use ($decisionStatusIds): void {
+                if (Schema::hasColumn('applications', 'management_supply_items_saved_at')) {
+                    $passedGate
+                        ->whereNotNull('management_supply_items_saved_at')
+                        ->orWhereIn('application_status_id', $decisionStatusIds);
+                } else {
+                    $passedGate->whereIn('application_status_id', $decisionStatusIds);
+                }
             });
-            if (Schema::hasColumn('applications', 'management_supply_items_saved_at')) {
-                $w->orWhereNotNull('management_supply_items_saved_at');
-            }
         });
     }
-
-    /**
-     * Согласование блокируется, если по заявке уже есть оборудование в доставке или на складе получателя.
-     */
     public function approvalLockedByShipmentProgress(): bool
     {
         $this->loadMissing('items');
@@ -1137,15 +1036,6 @@ class Application extends Model
             'reason_for_refusal' => null,
         ];
     }
-
-    /**
-     * Заявки в списке / в селекторах для мастера участка: только в назначенных ему подразделениях и
-     * закреплённые за ним как ответственный (в том числе после переназначения с другого мастера).
-     * Если ответственный не задан (старые данные), видна заявка только если её автор — этот мастер.
-     *
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     public function scopeForSiteForemanAccess(Builder $query, User $foreman): Builder
     {
         $assignedSubdivisionIds = $foreman->assignedSubdivisions()
@@ -1162,13 +1052,6 @@ class Application extends Model
                     });
             });
     }
-
-    /**
-     * Заявки с хотя бы одной согласованной позицией, по которой оборудование уже на складе.
-     *
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     public function scopeEligibleForReportEquipmentInsertion(Builder $query): Builder
     {
         return $query->whereHas('items', function (Builder $items): void {
@@ -1188,8 +1071,6 @@ class Application extends Model
                 });
         });
     }
-
-    /** Может ли мастер участка открыть заявку (согласовано с {@see scopeForSiteForemanAccess}). */
     public function isVisibleToSiteForeman(User $foreman): bool
     {
         $ids = $foreman->assignedSubdivisions()->pluck('subdivisions.id');
@@ -1203,17 +1084,12 @@ class Application extends Model
 
         return $this->responsible_user_id === null && (int) $this->user_id === (int) $foreman->id;
     }
-
-    /**
-     * Та же выборка, что и в списке заявок: поиск и фильтр по статусу согласования.
-     *
-     * @return Builder<Application>
-     */
     public static function listingQuery(Request $request): Builder
     {
         $search = trim((string) $request->input('q', ''));
-        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalize(
-            $request->input('approval_filter', $request->input('equipment_filter', 'all'))
+        $approvalFilter = \App\Support\ApplicationApprovalListingFilter::normalizeForUser(
+            $request->input('approval_filter', $request->input('equipment_filter', 'all')),
+            $request->user()
         );
 
         $applications = static::query();
@@ -1252,22 +1128,16 @@ class Application extends Model
             });
         }
 
-        \App\Support\ApplicationApprovalListingFilter::apply($applications, $approvalFilter);
+        \App\Support\ApplicationApprovalListingFilter::apply($applications, $approvalFilter, $request->user());
 
         return $applications;
     }
-
-    /** Краткое отображение позиций: «Позиция 1, Позиция 2» или одна строка */
     public function getEquipmentSummaryAttribute(): string
     {
         $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);
 
         return $names->isEmpty() ? '—' : $names->implode('; ');
     }
-
-    /**
-     * @return Collection<int, string>
-     */
     public function approvedEquipmentLineItems(): Collection
     {
         return $this->items
@@ -1276,10 +1146,6 @@ class Application extends Model
             ->values()
             ->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);
     }
-
-    /**
-     * @return Collection<int, string>
-     */
     public function notApprovedEquipmentLineItems(): Collection
     {
         return $this->items
@@ -1297,10 +1163,6 @@ class Application extends Model
 
         return $this->items->every(fn (ApplicationItem $i) => $i->is_checked);
     }
-
-    /**
-     * Согласованные позиции со своим названием, по которым ещё не отмечен заказ у поставщика («Принято по заявке»).
-     */
     public function needsCustomEquipmentOrder(): bool
     {
         $this->loadMissing('items');
@@ -1320,27 +1182,14 @@ class Application extends Model
 
         return ($this->attributes['archived_at'] ?? null) !== null;
     }
-
-    /**
-     * Списание с основного склада по заявке (как в {@see \App\Http\Controllers\ApplicationController::issueDocumentRef}).
-     */
     public function stockIssueDocumentRefForItem(int $itemId): string
     {
         return 'APP:'.$this->id.':ITEM:'.$itemId;
     }
-
-    /**
-     * Списание со склада получателя по акту установки.
-     */
     public function installationStockIssueDocumentRefForItem(int $itemId): string
     {
         return 'APP:'.$this->id.':ITEM:'.$itemId.':INSTALL';
     }
-
-    /**
-     * Сумма списаний по каталожной позиции: все расходы с привязкой к строке заявки
-     * (основной склад, склад получателя по акту, любые суффиксы вроде :INSTALL — как в учёте).
-     */
     public function totalIssuedQuantityForCatalogItem(ApplicationItem $item): float
     {
         if (! $item->equipment_id) {
@@ -1357,10 +1206,6 @@ class Application extends Model
             ->whereCorrelationKey($base)
             ->sum('quantity');
     }
-
-    /**
-     * Все согласованные позиции из справочника полностью списаны со складов (по движениям учёта).
-     */
     public function catalogApprovedItemsFullyIssued(): bool
     {
         $this->loadMissing('items');
@@ -1379,12 +1224,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * Согласованные позиции, по которым перед актом установки оборудование должно быть на складе получателя.
-     *
-     * @return \Illuminate\Support\Collection<int, ApplicationItem>
-     */
     public function checkedItemsRequiringDeliveryForInstallationAct(): \Illuminate\Support\Collection
     {
         $this->loadMissing('items');
@@ -1401,10 +1240,6 @@ class Application extends Model
             return $item->usesFreeTextEquipment();
         })->values();
     }
-
-    /**
-     * Каталожная позиция доставлена на склад подразделения-получателя (отметка «Доставлено»).
-     */
     public function catalogItemDeliveredToRecipientWarehouse(ApplicationItem $item): bool
     {
         if ($item->equipment_id === null) {
@@ -1432,11 +1267,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * Можно прикрепить или заменить акт установки и фото: заявка полностью согласована, есть согласованные позиции
-     * и по каждой из них оборудование уже на складе подразделения-получателя (каталог — «Доставлено», своё — «На складе»).
-     */
     public function canUploadInstallationActAndPhotos(): bool
     {
         if (! $this->isStatusApproved()) {
@@ -1464,10 +1294,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * Условия для архива: акт и фото есть, списания оборудования завершены.
-     */
     public function qualifiesForCompletionArchive(): bool
     {
         if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
@@ -1494,10 +1320,6 @@ class Application extends Model
 
         return $this->catalogApprovedItemsFullyIssued();
     }
-
-    /**
-     * Перенос в архив выполненных заявок (идемпотентно).
-     */
     public function archiveIfEligible(): bool
     {
         if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
@@ -1520,10 +1342,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * Заявка закрыта и перенесена в архив выполненных (или помечена статусом «Выполнена»).
-     */
     public function isLifecycleCompleted(): bool
     {
         if ($this->isAdminArchived()) {
@@ -1555,10 +1373,6 @@ class Application extends Model
 
         return 'active';
     }
-
-    /**
-     * Принудительный перенос в архив (администратор, без проверки акта/списаний).
-     */
     public function adminForceArchive(?int $archivedByUserId = null): void
     {
         if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {
@@ -1576,10 +1390,6 @@ class Application extends Model
             'archived_by_user_id' => $archivedByUserId,
         ]);
     }
-
-    /**
-     * Возврат заявки из архива администратора (только помеченные admin_archived_at).
-     */
     public function adminRestoreFromArchive(): bool
     {
         if (! static::usesArchiveTable()) {
@@ -1595,10 +1405,6 @@ class Application extends Model
 
         return true;
     }
-
-    /**
-     * @param  array<string, mixed>  $archiveAttributes
-     */
     public function moveToArchive(array $archiveAttributes = [], ?int $applicationStatusId = null): void
     {
         if ($this->isArchived()) {
@@ -1620,10 +1426,6 @@ class Application extends Model
             $this->forceFill(['application_status_id' => $applicationStatusId])->save();
         }
     }
-
-    /**
-     * @param  Builder<Application>  $applications
-     */
     public static function applyArchiveFilterToListingQuery(Builder $applications, string $archiveFilter): void
     {
         if (! static::usesArchiveTable() && ! Schema::hasColumn('applications', 'archived_at')) {

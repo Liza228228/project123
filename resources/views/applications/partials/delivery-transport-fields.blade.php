@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $uid = (string) ($fieldUid ?? 'delivery');
     $nameTransport = $nameTransport ?? null;
     $namePlate = $namePlate ?? null;

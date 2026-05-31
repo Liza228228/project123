@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\RequestLayout;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;

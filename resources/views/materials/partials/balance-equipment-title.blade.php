@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $unitCode = trim((string) ($unitCode ?? '')) ?: 'шт';
     $measurementTypeCode = trim((string) ($measurementTypeCode ?? ''));
     $isClothing = $measurementTypeCode === \App\Support\PieceQuantity::CLOTHING_MEASUREMENT_TYPE;

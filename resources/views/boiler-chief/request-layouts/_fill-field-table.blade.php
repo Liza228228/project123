@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     use App\Support\RequestLayoutTableField;
 
     $field = is_array($field ?? null) ? $field : [];

@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @props([
     'itemId' => null,
     'dbItem' => null,

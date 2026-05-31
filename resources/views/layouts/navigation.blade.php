@@ -1,7 +1,10 @@
+@php // шаблон страницы
+@endphp
 ﻿<nav x-data="{ open: false }" class="sticky top-0 z-50 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md border-b border-orange-400/70 dark:border-orange-800/60 shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100 pt-[max(0px,env(safe-area-inset-top))]">
     @php
         $user = Auth::user();
-        $topNavBtnClass = 'ui-btn ui-btn--secondary px-3 py-2 whitespace-nowrap';
+        $topNavBtnClass = 'ui-btn ui-btn--secondary px-3 py-2 whitespace-nowrap text-[13px] sm:text-sm';
+        $topNavUserBtnClass = 'ui-btn ui-btn--secondary px-3 py-2 gap-2 max-w-[12rem] lg:max-w-[14rem] text-[13px] sm:text-sm';
         $canManageBoilerChiefAssignments = $user->hasAnyRoleId(\App\Models\User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS);
         $canManageForemanAssignments = $canManageBoilerChiefAssignments;
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS);
@@ -11,11 +14,8 @@
             || $user->hasRoleId(\App\Models\User::ADMINISTRATOR_ROLE_ID);
         $canLayoutApplicationReports = $user->hasAnyRoleId(\App\Models\User::LAYOUT_APPLICATION_REPORT_ROLE_IDS);
         $canLayoutApplicationsOnly = $user->hasRoleId(3);
-        // Бухгалтер: без «Отчет» — макеты в «Отчеты по макетам».
         $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6]);
-        // Директор, ТД, начальник снабжения и мастер участка — без отдельной кнопки «Отчет».
         $showStandaloneLayoutFillReport = $canFillReport && ! $user->hasAnyRoleId([1, 2, 4, 6]);
-        // Мастер участка, начальник котельной и начальник снабжения: в меню только «Отчеты по макетам».
         $foremanLayoutReportsGeneratorOnly = $user->hasRoleId(4) && $canLayoutApplicationReports;
         $boilerChiefLayoutReportsGeneratorOnly = $user->hasRoleId(7) && $canLayoutApplicationReports;
         $supplyHeadLayoutReportsGeneratorOnly = $user->hasRoleId(2)
@@ -24,23 +24,23 @@
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-            <div class="flex">
+    <div class="top-nav-shell">
+        <div class="top-nav-row">
+            <div class="flex min-w-0 flex-1 items-center gap-3">
                 <!-- Logo -->
-                <div class="shrink-0 flex items-center gap-3">
+                <div class="top-nav-brand">
                     <a href="{{ route('dashboard') }}" class="group flex items-center gap-2 rounded-xl px-1 py-1 -ms-1 ring-1 ring-transparent hover:ring-orange-300/45 dark:hover:ring-orange-800/35 transition-shadow">
                         <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-600 to-orange-800 text-white shadow-sm shadow-orange-700/20 group-hover:shadow-md group-hover:shadow-orange-700/25 transition-shadow">
                             <svg class="h-5 w-5 opacity-95" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                             </svg>
                         </span>
-                        <x-application-logo class="hidden sm:block h-8 w-auto fill-current text-black dark:text-white opacity-90" />
+                        <x-application-logo class="hidden lg:block h-8 w-auto fill-current text-black dark:text-white opacity-90" />
                     </a>
                 </div>
 
                 <!-- Navigation Links -->
-                <div class="hidden sm:-my-px sm:ms-6 sm:flex sm:items-center gap-2">
+                <div class="top-nav-menu">
                     @if ((int) Auth::user()->role_id === 5)
                         <a href="{{ route('users.index') }}"
                            class="{{ $topNavBtnClass }}"
@@ -198,17 +198,17 @@
             </div>
 
             <!-- Theme + user -->
-            <div class="hidden sm:flex sm:items-center sm:ms-6 gap-3">
-                <div class="flex flex-col items-end gap-1">
+            <div class="top-nav-utilities">
+                <div class="flex flex-col items-center gap-1">
                     <span class="text-[10px] font-semibold uppercase tracking-wider text-black/40 dark:text-white/40 leading-none">Тема</span>
                     <x-theme-toggle />
                 </div>
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
-                        <button type="button" class="ui-btn ui-btn--secondary px-3 py-2 gap-2">
-                            <div class="text-end">
-                                <div>{{ Auth::user()->name }}</div>
-                                <div class="text-xs font-normal text-black/60 dark:text-white/60 max-w-[14rem] truncate" title="{{ Auth::user()->role?->name ?? '' }}">
+                        <button type="button" class="{{ $topNavUserBtnClass }}">
+                            <div class="min-w-0 text-end">
+                                <div class="truncate">{{ Auth::user()->name }}</div>
+                                <div class="text-xs font-normal text-black/60 dark:text-white/60 truncate" title="{{ Auth::user()->role?->name ?? '' }}">
                                     {{ Auth::user()->role?->name ?? 'Роль не назначена' }}
                                 </div>
                             </div>
@@ -253,8 +253,8 @@
     </div>
 
     <!-- Responsive Navigation Menu -->
-    <div id="mobile-nav-panel" :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
-        <div class="max-h-[min(72dvh,calc(100dvh-4.5rem))] space-y-1 overflow-y-auto overscroll-y-contain px-1 pt-2 pb-3 [-webkit-overflow-scrolling:touch]">
+    <div id="mobile-nav-panel" :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden border-t border-orange-400/50 dark:border-orange-800/50">
+        <div class="max-h-[min(72dvh,calc(100dvh-4.5rem))] space-y-2 overflow-y-auto overscroll-y-contain px-3 pt-3 pb-3 [-webkit-overflow-scrolling:touch]">
             @if ((int) Auth::user()->role_id === 5)
                 <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')">
                     Пользователи

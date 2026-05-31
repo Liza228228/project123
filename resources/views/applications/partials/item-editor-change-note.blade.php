@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $entries = $item->relationLoaded('changeJournalEntries')
         ? $item->changeJournalEntries->where('field_key', '!=', \App\Models\ApplicationChangeJournal::FIELD_ITEM_REMOVED)
         : collect();

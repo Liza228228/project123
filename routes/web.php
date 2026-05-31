@@ -85,6 +85,8 @@ Route::middleware(['auth', 'applications'])->prefix('applications')->name('appli
     Route::post('/{application}/delivery-in-transit', [ApplicationController::class, 'markApplicationDeliveryInTransit'])->name('delivery-in-transit');
     Route::post('/{application}/items/delivery-delivered/bulk', [ApplicationController::class, 'markItemsDeliveryDeliveredBulk'])->name('delivery-delivered.bulk');
     Route::post('/{application}/items/{item}/delivery-delivered', [ApplicationController::class, 'markItemDeliveryDelivered'])->name('delivery-delivered');
+    Route::post('/{application}/items/{item}/delivery-defective', [ApplicationController::class, 'markItemDeliveryDefective'])->name('delivery-defective');
+    Route::post('/{application}/items/{item}/delivery-defective-dispose', [ApplicationController::class, 'disposeItemDeliveryDefective'])->name('delivery-defective-dispose');
     Route::post('/{application}/items/{item}/custom-supply-ordered', [ApplicationController::class, 'markCustomEquipmentOrdered'])->name('custom-supply-ordered');
     Route::post('/{application}/items/{item}/custom-supply-in-transit', [ApplicationController::class, 'markCustomEquipmentSupplyInTransit'])->name('custom-supply-in-transit');
     Route::post('/{application}/items/{item}/custom-supply-on-warehouse', [ApplicationController::class, 'markCustomEquipmentOnWarehouse'])->name('custom-supply-on-warehouse');
@@ -165,6 +167,8 @@ Route::middleware(['auth', 'supply_head'])->prefix('materials')->name('materials
 Route::middleware(['auth', 'applications'])->prefix('materials')->name('materials.')->group(function () {
     Route::get('/overview', [MaterialAccountingController::class, 'overview'])->name('overview');
     Route::get('/movements', [MaterialAccountingController::class, 'movementsJournal'])->name('movements');
+    Route::post('/overview/transfer-defective', [MaterialAccountingController::class, 'transferMainWarehouseToDefective'])->name('overview-transfer-defective');
+    Route::post('/overview/dispose-defective', [MaterialAccountingController::class, 'disposeMainWarehouseDefective'])->name('overview-dispose-defective');
 });
 
 require __DIR__.'/auth.php';

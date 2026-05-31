@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\Subdivision;
@@ -30,26 +31,6 @@ final class SubdivisionInfrastructureDeactivation
 
         return null;
     }
-
-    /**
-     * @return array{
-     *     hard_block: ?string,
-     *     subdivision_name: string,
-     *     requires_staff_actions: bool,
-     *     boiler_chiefs: list<array{
-     *         user_id: int,
-     *         label: string,
-     *         has_other_subdivisions: bool,
-     *         subdivision_options: list<array{id: int, name: string}>
-     *     }>,
-     *     foremen: list<array{
-     *         user_id: int,
-     *         label: string,
-     *         has_other_subdivisions: bool,
-     *         subdivision_options: list<array{id: int, name: string}>
-     *     }>
-     * }
-     */
     public function subdivisionDeactivatePreview(Subdivision $subdivision): array
     {
         $hardBlock = $this->subdivisionHardBlockReason($subdivision);
@@ -64,12 +45,6 @@ final class SubdivisionInfrastructureDeactivation
             'foremen' => $foremen,
         ];
     }
-
-    /**
-     * @param  array<int|string, mixed>  $chiefSubdivisionAssignments
-     * @param  array<int|string, mixed>  $foremanSubdivisionAssignments
-     * @param  int|null  $archivedByUserId
-     */
     public function deactivateSubdivision(
         Subdivision $subdivision,
         array $chiefSubdivisionAssignments = [],
@@ -124,15 +99,6 @@ final class SubdivisionInfrastructureDeactivation
             ]);
         });
     }
-
-    /**
-     * @return list<array{
-     *     user_id: int,
-     *     label: string,
-     *     has_other_subdivisions: bool,
-     *     subdivision_options: list<array{id: int, name: string}>
-     * }>
-     */
     private function assignedBoilerChiefsForPreview(Subdivision $subdivision): array
     {
         if (! Schema::hasTable('boiler_chief_subdivision_user')) {
@@ -150,15 +116,6 @@ final class SubdivisionInfrastructureDeactivation
             'boilerChiefSubdivisions'
         );
     }
-
-    /**
-     * @return list<array{
-     *     user_id: int,
-     *     label: string,
-     *     has_other_subdivisions: bool,
-     *     subdivision_options: list<array{id: int, name: string}>
-     * }>
-     */
     private function assignedForemenForPreview(Subdivision $subdivision): array
     {
         return $this->assignedUsersForPreview(
@@ -172,16 +129,6 @@ final class SubdivisionInfrastructureDeactivation
             'assignedSubdivisions'
         );
     }
-
-    /**
-     * @param  \Illuminate\Support\Collection<int, User>  $users
-     * @return list<array{
-     *     user_id: int,
-     *     label: string,
-     *     has_other_subdivisions: bool,
-     *     subdivision_options: list<array{id: int, name: string}>
-     * }>
-     */
     private function assignedUsersForPreview(
         Subdivision $subdivision,
         $users,
@@ -211,10 +158,6 @@ final class SubdivisionInfrastructureDeactivation
 
         return $rows;
     }
-
-    /**
-     * @return list<array{id: int, name: string}>
-     */
     private function otherActiveSubdivisionOptions(int $excludeSubdivisionId): array
     {
         return Subdivision::query()
@@ -233,11 +176,6 @@ final class SubdivisionInfrastructureDeactivation
             ->values()
             ->all();
     }
-
-    /**
-     * @param  list<array{user_id: int, label: string, has_other_subdivisions: bool, subdivision_options: list<array{id: int, name: string}>}>  $expectedUsers
-     * @param  array<int|string, mixed>  $rawAssignments
-     */
     private function applyStaffSubdivisionAssignments(
         Subdivision $subdivision,
         array $rawAssignments,

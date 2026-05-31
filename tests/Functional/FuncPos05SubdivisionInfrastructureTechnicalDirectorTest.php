@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;

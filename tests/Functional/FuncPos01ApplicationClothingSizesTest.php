@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\Equipment;

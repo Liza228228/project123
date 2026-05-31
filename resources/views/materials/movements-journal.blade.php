@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $quantityColumnHeader = 'Количество / маркировка';
     $journalSubdivisionScoped = (bool) ($materialsJournalSubdivisionScoped ?? false);
     $mainWhName = $mainWarehouseForJournalContext?->name;
@@ -22,7 +23,7 @@
         </div>
     </x-slot>
 
-    <div class="py-2 sm:py-8 md:py-10 max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+    <div class="app-shell space-y-6 py-2 sm:py-8 md:py-10">
         <div class="rounded-2xl border border-orange-200/80 bg-orange-50/35 shadow-sm ring-1 ring-orange-100/70 dark:border-stone-700 dark:bg-stone-800/90 p-5 sm:p-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                 <h3 class="text-lg font-semibold text-black dark:text-white">Фильтры</h3>
@@ -34,14 +35,19 @@
                 >
                     <div class="min-w-0 sm:w-80">
                         <label for="warehouse_filter_journal" class="app-form-label">Склад</label>
-                        <input
-                            id="warehouse_filter_journal_search"
-                            type="search"
-                            class="app-input mb-2 min-h-0 w-full min-w-0 sm:max-w-xs"
-                            placeholder="Поиск по подразделению или складу"
-                            autocomplete="off"
-                        />
-                        <select id="warehouse_filter_journal" name="warehouse_id" class="app-select w-full min-w-0 sm:max-w-xs">
+                        <div class="mb-2 flex gap-2">
+                            <input
+                                id="warehouse_filter_journal_search"
+                                type="search"
+                                class="app-input min-h-0 w-full min-w-0 flex-1 sm:max-w-xs"
+                                placeholder="Поиск по подразделению или складу"
+                                autocomplete="off"
+                            />
+                            <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm shrink-0 whitespace-nowrap">
+                                Применить
+                            </button>
+                        </div>
+                        <select id="warehouse_filter_journal" name="warehouse_id" class="app-select w-full min-w-0 sm:max-w-xs" data-manual-submit="1">
                             <option value="">Все склады</option>
                             @foreach($warehouses as $warehouse)
                                 <option value="{{ $warehouse->id }}" @selected($selectedWarehouseId === $warehouse->id)>

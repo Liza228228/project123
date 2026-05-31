@@ -1,5 +1,6 @@
 <?php
 
+// свой код проекта
 use App\Support\RussianVehiclePlate;
 
 test('normalizes latin lookalikes and validates standard plate', function (): void {

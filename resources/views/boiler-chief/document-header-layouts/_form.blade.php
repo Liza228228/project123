@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     use Illuminate\Support\Js;
 
     $defaultBlock = [

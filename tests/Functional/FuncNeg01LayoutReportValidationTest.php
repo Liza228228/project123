@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;

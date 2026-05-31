@@ -1,16 +1,11 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-
-/**
- * Назначает подразделения начальникам котельной: учётные записи задаются в {@see UserSeeder}.
- * Первые 27 почт из {@see UserSeeder::BOILER_CHIEF_SEED_EMAILS} — по одному на каждое подразделение по порядку;
- * 28-я и 29-я — вторые начальники для первых двух подразделений (Северный, Южный).
- */
 class BoilerChiefSubdivisionSeeder extends Seeder
 {
     public function run(): void

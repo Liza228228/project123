@@ -1,10 +1,10 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 final class RussianVehiclePlate
 {
-    /** Буквы, допустимые на российских госномерах (кириллица). */
     public const CYRILLIC_LETTERS = 'АВЕКМНОРСТУХ';
 
     private const LATIN_TO_CYRILLIC = [
@@ -21,10 +21,6 @@ final class RussianVehiclePlate
         'Y' => 'У',
         'X' => 'Х',
     ];
-
-    /**
-     * Стандартный госномер: буква + 3 цифры + 2 буквы + код региона (2–3 цифры), напр. А123ВС77.
-     */
     public static function isValid(string $plate): bool
     {
         $plate = self::normalize($plate);
@@ -60,10 +56,6 @@ final class RussianVehiclePlate
 
         return mb_substr($out, 0, 9);
     }
-
-    /**
-     * @return list<string|object>
-     */
     public static function validationRules(): array
     {
         $letters = self::CYRILLIC_LETTERS;
@@ -80,8 +72,6 @@ final class RussianVehiclePlate
     {
         return 'Укажите госномер в формате А123ВС77 (буквы А, В, Е, К, М, Н, О, Р, С, Т, У, Х).';
     }
-
-    /** Для поля ввода: «А 123 ВС 77». */
     public static function formatWithSpaces(string $raw): string
     {
         $plate = self::normalize($raw);

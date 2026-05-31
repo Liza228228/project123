@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -14,10 +15,6 @@ class DocumentHeaderLayout extends Model
         'title',
         'schema',
     ];
-
-    /**
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [

@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\DocumentHeaderLayout;
@@ -13,48 +14,21 @@ use Throwable;
 
 final class RequestLayoutDocumentBuilder
 {
-    /** @var array<string, array<string, mixed>> */
     private array $cleanNameCache = [];
 
     public function __construct(
         private readonly DadataAddressService $dadataAddressService
     ) {}
-
-    /**
-     * @param  array{fields?: list<array{key: string, label: string, type: string}>, body_template?: string, header_template?: string, footer_left_template?: string, signature_template?: string, document_title?: string, executor_mode?: string, executor_user_id?: int|null}  $schema
-     * @param  array<string, mixed>  $values
-     */
     public function mergeBodyTemplate(array $schema, array $values, ?RequestLayout $layout = null): string
     {
         $template = (string) ($schema['body_template'] ?? '');
 
         return $this->mergeTemplateString($template, $schema, $values, $layout);
     }
-
-    /**
-     * @param  array<string, mixed>  $values
-     */
     public function mergedBodyForHtml(array $schema, array $values, ?RequestLayout $layout = null): string
     {
         return e($this->mergeBodyTemplate($schema, $values, $layout));
     }
-
-    /**
-     * @param  array<string, mixed>  $values
-     * @return array{
-     *     documentTitle: string,
-     *     headingText: string,
-     *     headerText: string,
-     *     structuredHeaderHtml: string|null,
-     *     bodyText: string,
-     *     footerLeftText: string,
-     *     signatureText: string,
-     *     pdfHeaderAlign: string,
-     *     pdfBodyAlign: string,
-     *     pdfFooterLeftAlign: string,
-     *     pdfFooterRightAlign: string
-     * }
-     */
     public function pdfParts(RequestLayout $layout, array $values): array
     {
         $layout->loadMissing(['documentHeaderLayout', 'approver', 'divisionAssigner']);
@@ -73,19 +47,19 @@ final class RequestLayoutDocumentBuilder
             $structuredHeaderHtml = $this->renderStructuredDocumentHeaderHtml($headerLayoutModel, $layout, $values);
         } else {
             $header = (string) ($schema['header_template'] ?? '');
-            $headerPlain = $this->mergeTemplateString($header, $schema, $values, $layout);
+            $headerPlain = $this->mergeTemplateString($header, $schema, $values, $layout, plainSubstitutionValues: true);
         }
 
         $mergedFooterLeft = $this->removeSignerArtifactsFromText(
             $this->normalizeInlineSignerGroups(
                 $this->cleanupSignerLabelPrefixes(
-                    $this->mergeTemplateString($footerLeft, $schema, $values, $layout)
+                    $this->mergeTemplateString($footerLeft, $schema, $values, $layout, plainSubstitutionValues: true)
                 )
             )
         );
         $mergedSignature = $this->normalizeSignerLines(
             $this->cleanupSignerLabelPrefixes(
-                $this->mergeTemplateString($signature, $schema, $values, $layout)
+                $this->mergeTemplateString($signature, $schema, $values, $layout, plainSubstitutionValues: true)
             )
         );
 
@@ -96,7 +70,7 @@ final class RequestLayoutDocumentBuilder
 
         return [
             'documentTitle' => $title,
-            'headingText' => $this->mergeTemplateString($heading, $schema, $values, $layout),
+            'headingText' => $this->mergeTemplateString($heading, $schema, $values, $layout, plainSubstitutionValues: true),
             'headerText' => $headerPlain,
             'structuredHeaderHtml' => $structuredHeaderHtml,
             'bodyText' => $this->mergeTemplateString($body, $schema, $values, $layout),
@@ -110,12 +84,6 @@ final class RequestLayoutDocumentBuilder
             'presentationSubtitleSizePt' => max(8, min(28, (int) ($schema['presentation_subtitle_size_pt'] ?? 12))),
         ];
     }
-
-    /**
-     * Плоский текст шапки из конструктора блоков (для предпросмотра).
-     *
-     * @param  array<string, mixed>  $values
-     */
     public function structuredDocumentHeaderPlain(DocumentHeaderLayout $headerLayout, RequestLayout $layout, array $values): string
     {
         $schema = is_array($layout->schema) ? $layout->schema : [];
@@ -156,12 +124,6 @@ final class RequestLayoutDocumentBuilder
 
         return implode("\n\n", $blockChunks);
     }
-
-    /**
-     * HTML шапки из блоков (шрифт, выравнивание, жирность по блоку).
-     *
-     * @param  array<string, mixed>  $values
-     */
     public function renderStructuredDocumentHeaderHtml(DocumentHeaderLayout $headerLayout, RequestLayout $layout, array $values): string
     {
         $schema = is_array($layout->schema) ? $layout->schema : [];
@@ -233,10 +195,6 @@ final class RequestLayoutDocumentBuilder
             default => 'DejaVu Serif, serif',
         };
     }
-
-    /**
-     * Значение поля формы (plain или HTML из contenteditable) → текст для подстановок в PDF.
-     */
     private function formatDateFieldForSubstitution(mixed $raw): string
     {
         $text = is_scalar($raw) || $raw === null ? trim((string) $raw) : '';
@@ -268,10 +226,6 @@ final class RequestLayoutDocumentBuilder
 
         return trim($text);
     }
-
-    /**
-     * Значение поля для подстановки в PDF: таблицы и разметка из contenteditable сохраняются.
-     */
     private function storedFieldValueForSubstitution(mixed $raw, string $fieldType): string
     {
         if ($fieldType === 'date') {
@@ -289,10 +243,6 @@ final class RequestLayoutDocumentBuilder
 
         return $this->storedFieldValueToPlain($raw);
     }
-
-    /**
-     * Переносы → &lt;br&gt;, как в PDF-шаблоне (без pre-wrap).
-     */
     private function plainToPdfInnerHtml(string $plain): string
     {
         $plain = (string) $plain;
@@ -303,25 +253,23 @@ final class RequestLayoutDocumentBuilder
 
         return str_replace(["\r\n", "\r", "\n"], '', $withBr);
     }
-
-    /**
-     * @param  array<string, mixed>  $schema
-     * @param  list<string>  $allowed
-     */
     private function pdfAlign(array $schema, string $key, string $default, array $allowed): string
     {
         $v = strtolower(trim((string) ($schema[$key] ?? '')));
 
         return in_array($v, $allowed, true) ? $v : $default;
     }
-
-    /**
-     * @param  array{fields?: list<array{key?: string}>, body_template?: string}  $schema
-     * @param  array<string, mixed>  $values
-     */
-    private function mergeTemplateString(string $template, array $schema, array $values, ?RequestLayout $layout = null): string
-    {
+    private function mergeTemplateString(
+        string $template,
+        array $schema,
+        array $values,
+        ?RequestLayout $layout = null,
+        bool $plainSubstitutionValues = false
+    ): string {
         $map = $this->buildSubstitutionMap($schema, $values, $layout);
+        if ($plainSubstitutionValues) {
+            $map = $this->plainSubstitutionMapValues($map);
+        }
 
         return preg_replace_callback('/\{\{\s*([^}]+?)\s*\}\}/u', function (array $m) use ($map): string {
             $resolved = $this->resolvePlaceholder(trim($m[1]), $map);
@@ -331,10 +279,19 @@ final class RequestLayoutDocumentBuilder
     }
 
     /**
-     * Подставить значение по ключу поля: точное совпадение, затем без учёта регистра (для кириллицы/латиницы).
-     *
-     * @param  array<string, string>  $map
+     * @param  array<string|int, mixed>  $map
+     * @return array<string|int, mixed>
      */
+    private function plainSubstitutionMapValues(array $map): array
+    {
+        foreach ($map as $key => $value) {
+            if (is_string($value) && preg_match('/<[a-z][\s\S]*?>/i', $value)) {
+                $map[$key] = $this->storedFieldValueToPlain($value);
+            }
+        }
+
+        return $map;
+    }
     private function resolvePlaceholder(string $rawKey, array $map): ?string
     {
         $key = trim($rawKey);
@@ -368,17 +325,12 @@ final class RequestLayoutDocumentBuilder
             }
         }
 
-        // Старые макеты с плейсхолдером {{фио}} без поля в схеме/форме — не выводим сырой токен в PDF.
         if (mb_strtolower($key, 'UTF-8') === 'фио') {
             return '';
         }
 
         return null;
     }
-
-    /**
-     * Совпадение ключей при опечатках в шаблоне: пробелы вокруг «_» (например «введите_ оборудование» vs «введите_оборудование»).
-     */
     private function normalizePlaceholderKey(string $key): string
     {
         $normalized = str_replace('&nbsp;', '', $key);
@@ -386,19 +338,6 @@ final class RequestLayoutDocumentBuilder
 
         return preg_replace('/[\h\p{Z}\x{00A0}\x{202F}]+/u', '', $normalized) ?? $normalized;
     }
-
-    /**
-     * Системные плейсхолдеры (основные имена + устаревшие синонимы для старых макетов).
-     *
-     * Основные: coordinator_name, representative_prefix, representative_name,
-     * signatory_print_name, subdivision_name, document_date, report_date,
-     * document_number, report_number.
-     * Синонимы: approver_fio, executor_line1, executor_line2, signatory_fio, department_name.
-     *
-     * @param  array{fields?: list<array{key?: string}>, executor_mode?: string, executor_user_id?: int|null}  $schema
-     * @param  array<string, mixed>  $values
-     * @return array<string, string>
-     */
     private function buildSubstitutionMap(array $schema, array $values, ?RequestLayout $layout): array
     {
         $map = [];
@@ -424,7 +363,6 @@ final class RequestLayoutDocumentBuilder
             $map[$k] = $this->storedFieldValueForSubstitution($raw, (string) ($field['type'] ?? 'text'));
         }
 
-        // Раньше ключи, начинающиеся с цифры, сохранялись как «поле N» — даём подстановку и для {{N}}.
         foreach (array_keys($map) as $mk) {
             if (! is_string($mk)) {
                 continue;
@@ -469,6 +407,10 @@ final class RequestLayoutDocumentBuilder
         $map['report_date'] = $docDate;
         $map['contract_date'] = $docDate;
 
+        if (($schema['category'] ?? '') === 'installation-act' && trim((string) ($map['дата_акта'] ?? '')) === '' && $docDate !== '') {
+            $map['дата_акта'] = $docDate;
+        }
+
         $docNumber = trim((string) ($values['_document_number'] ?? $values['document_number'] ?? ''));
         $map['document_number'] = $docNumber;
         $map['report_number'] = $docNumber;
@@ -512,11 +454,6 @@ final class RequestLayoutDocumentBuilder
             'subdivision_name' => $deptName,
         ]);
     }
-
-    /**
-     * @param  array<string, string>  $reserved  canonical keys only
-     * @return array<string, string>
-     */
     private function withReservedPlaceholderAliases(array $map, array $reserved): array
     {
         $map['coordinator_name'] = $reserved['coordinator_name'] ?? '';
@@ -533,11 +470,6 @@ final class RequestLayoutDocumentBuilder
 
         return $map;
     }
-
-    /**
-     * Удаляет префиксы "ФИО N:" перед строкой подписи, если в шаблоне они были добавлены вручную.
-     * Пример: "ФИО 1: ____________ / Иванов И.И." -> "____________ / Иванов И.И."
-     */
     private function cleanupSignerLabelPrefixes(string $text): string
     {
         return preg_replace(
@@ -546,11 +478,6 @@ final class RequestLayoutDocumentBuilder
             $text
         ) ?? $text;
     }
-
-    /**
-     * Принудительно переносит каждую подпись на отдельную строку,
-     * даже если в шаблоне плейсхолдеры подписей были поставлены подряд.
-     */
     private function normalizeSignerLines(string $text): string
     {
         $normalized = str_replace(["\r\n", "\r"], "\n", $text);
@@ -582,10 +509,6 @@ final class RequestLayoutDocumentBuilder
 
         return str_replace("\n", PHP_EOL, trim($normalized));
     }
-
-    /**
-     * Собирает подписи в стабильную колонку из signer_1..3.
-     */
     private function buildSignerColumnFromValues(array $values, string $fallbackText): string
     {
         $lines = [];
@@ -613,13 +536,6 @@ final class RequestLayoutDocumentBuilder
 
         return $column;
     }
-
-    /**
-     * Жестко формирует колонку подписей как на эталоне:
-     * "__________ Фамилия И.О." по одной на строку.
-     *
-     * @param  array<string, mixed>  $values
-     */
     private function buildStrictSignerColumn(array $values): string
     {
         $lines = [];
@@ -667,10 +583,6 @@ final class RequestLayoutDocumentBuilder
 
         return $lines === [] ? '' : implode(PHP_EOL, $lines);
     }
-
-    /**
-     * Убирает подписи из произвольного блока, чтобы не дублировались рядом с колонкой.
-     */
     private function removeSignerArtifactsFromText(string $text): string
     {
         $normalized = str_replace(["\r\n", "\r"], "\n", $text);
@@ -681,11 +593,6 @@ final class RequestLayoutDocumentBuilder
 
         return trim(str_replace("\n", PHP_EOL, $normalized));
     }
-
-    /**
-     * Разделяет подряд идущие подписи в одной строке на отдельные строки,
-     * не затрагивая прочий текст (например, дату).
-     */
     private function normalizeInlineSignerGroups(string $text): string
     {
         $normalized = str_replace(["\r\n", "\r"], "\n", $text);
@@ -776,13 +683,6 @@ final class RequestLayoutDocumentBuilder
 
         return $surname.' '.implode('', $initials);
     }
-
-    /**
-     * Подстановка значения ФИО из данных заявки в выбранном падеже для строки шапки.
-     *
-     * @param  array<string, mixed>  $schema
-     * @param  array<string, mixed>  $values
-     */
     private function resolveHeaderApplicationLineText(
         string $sourceKey,
         string $fioCase,
@@ -840,10 +740,6 @@ final class RequestLayoutDocumentBuilder
 
         return $fallback !== '' ? $fallback : $fullName;
     }
-
-    /**
-     * Текст тела документа после подстановок: plain → nl2br+e, иначе безопасный HTML для DomPDF.
-     */
     public function bodyHtmlForPdf(string $mergedBody): string
     {
         $mergedBody = (string) $mergedBody;
@@ -860,10 +756,6 @@ final class RequestLayoutDocumentBuilder
 
         return str_replace(["\r\n", "\r", "\n"], '', $withBr);
     }
-
-    /**
-     * В смешанном теле (таблица HTML + текст) переносы строк вне тегов → &lt;br&gt; для DomPDF.
-     */
     private function plainNewlinesToBrOutsideHtmlTags(string $body): string
     {
         $parts = preg_split('/(<[^>]+>)/u', $body, -1, PREG_SPLIT_DELIM_CAPTURE);
@@ -886,11 +778,6 @@ final class RequestLayoutDocumentBuilder
 
         return $out;
     }
-
-    /**
-     * Убирает инлайн-выравнивание из текста тела PDF, чтобы работало выравнивание,
-     * выбранное в настройках макета (left/center/justify).
-     */
     private function stripInlineTextAlign(string $html): string
     {
         if ($html === '') {
@@ -904,19 +791,12 @@ final class RequestLayoutDocumentBuilder
 
         return $cleanupStyleSeparators;
     }
-
-    /**
-     * Безопасный HTML для DomPDF. strip_tags удаляет атрибуты style — выравнивание терялось;
-     * здесь сохраняются только безопасные inline-стили и нужные теги.
-     */
     private function sanitizePdfHtml(string $html): string
     {
         $html = trim($html);
         if ($html === '') {
             return '';
         }
-
-        /** @var array<string, true> */
         $allowed = [
             'p' => true, 'br' => true, 'hr' => true, 'b' => true, 'strong' => true,
             'i' => true, 'em' => true, 'u' => true, 'div' => true, 'span' => true,
@@ -946,10 +826,6 @@ final class RequestLayoutDocumentBuilder
 
         return $out;
     }
-
-    /**
-     * @param  array<string, true>  $allowed
-     */
     private function sanitizePdfDomRecursive(DOMNode $node, array $allowed): void
     {
         if ($node->nodeType === XML_TEXT_NODE || $node->nodeType === XML_CDATA_SECTION_NODE) {
@@ -958,8 +834,6 @@ final class RequestLayoutDocumentBuilder
         if ($node->nodeType !== XML_ELEMENT_NODE) {
             return;
         }
-
-        /** @var DOMElement $el */
         $el = $node;
 
         $tag = strtolower($el->tagName);

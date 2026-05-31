@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 min-w-0 w-full">

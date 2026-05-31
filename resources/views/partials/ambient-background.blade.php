@@ -1,4 +1,5 @@
-{{-- Светлый: основной фон — белый; тёмный — тёплый orange --}}
+@php // шаблон страницы
+@endphp
 <div class="fixed inset-0 z-0 bg-white dark:bg-orange-950/85" aria-hidden="true"></div>
 <div class="fixed inset-0 z-0 pointer-events-none hidden dark:block overflow-hidden" aria-hidden="true">
     <div class="absolute -top-28 -right-28 h-[28rem] w-[28rem] rounded-full bg-orange-500/10 blur-3xl"></div>

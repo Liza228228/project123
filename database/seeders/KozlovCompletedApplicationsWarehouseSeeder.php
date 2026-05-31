@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Application;
@@ -9,13 +10,9 @@ use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Support\WarehouseStockBucket;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-
-/**
- * Для выполненных заявок Козлова с актом установки и фото: поступление оборудования
- * на склад подразделения-получателя (как «Доставлено») и полное списание по акту.
- */
 class KozlovCompletedApplicationsWarehouseSeeder extends Seeder
 {
     private const KOZLOV_EMAIL = 'Kozlov@mail.ru';
@@ -130,7 +127,7 @@ class KozlovCompletedApplicationsWarehouseSeeder extends Seeder
             'counterparty' => 'Доставка по заявке №'.$application->id,
             'comment' => MaterialStockMovement::packCommentWithCorrelation(
                 $docRef,
-                'Поступление на склад получателя по отметке «Доставлено» (сидер).'
+                'Поступление на склад получателя по отметке «Доставлено».'
             ),
             'created_by_user_id' => $actorId,
         ]);
@@ -192,7 +189,13 @@ class KozlovCompletedApplicationsWarehouseSeeder extends Seeder
 
     private function remainingInstallationIssueQuantity(Application $application, ApplicationItem $item): float
     {
-        return max(0.0, (float) $item->quantity - $this->installationIssuedQuantityForItem($application, $item));
+        return WarehouseStockBucket::remainingInstallationIssueQuantity(
+            (float) $item->quantity,
+            (int) $application->id,
+            (int) $item->id,
+            (int) $item->equipment_id,
+            (int) ($item->delivery_warehouse_id ?? 0),
+        );
     }
 
     private function warehouseEquipmentBalance(int $equipmentId, int $warehouseId): float

@@ -1,10 +1,7 @@
 <?php
 
-
-
+// модель
 namespace App\Models;
-
-
 
 use Illuminate\Database\Eloquent\Builder;
 
@@ -22,8 +19,6 @@ use Illuminate\Support\Facades\DB;
 
 use Illuminate\Support\Facades\Schema;
 
-
-
 class Subdivision extends Model
 
 {
@@ -34,8 +29,6 @@ class Subdivision extends Model
 
     ];
 
-
-
     public function archive(): HasOne
 
     {
@@ -43,8 +36,6 @@ class Subdivision extends Model
         return $this->hasOne(SubdivisionArchive::class);
 
     }
-
-
 
     public function applications(): HasMany
 
@@ -54,8 +45,6 @@ class Subdivision extends Model
 
     }
 
-
-
     public function warehouses(): HasMany
 
     {
@@ -63,8 +52,6 @@ class Subdivision extends Model
         return $this->hasMany(Warehouse::class)->orderBy('name');
 
     }
-
-
 
     public function siteForemen(): BelongsToMany
 
@@ -76,8 +63,6 @@ class Subdivision extends Model
 
     }
 
-
-
     public function boilerChiefUsers(): BelongsToMany
 
     {
@@ -87,8 +72,6 @@ class Subdivision extends Model
             ->withTimestamps();
 
     }
-
-
 
     public function isArchived(): bool
 
@@ -100,21 +83,15 @@ class Subdivision extends Model
 
         }
 
-
-
         if ($this->relationLoaded('archive')) {
 
             return $this->archive !== null;
 
         }
 
-
-
         return $this->archive()->exists();
 
     }
-
-
 
     public function isActive(): bool
 
@@ -123,17 +100,6 @@ class Subdivision extends Model
         return ! $this->isArchived();
 
     }
-
-
-
-    /**
-
-     * @param  Builder<Subdivision>  $query
-
-     * @return Builder<Subdivision>
-
-     */
-
     public function scopeActive(Builder $query): Builder
 
     {
@@ -144,22 +110,9 @@ class Subdivision extends Model
 
         }
 
-
-
         return $query->whereDoesntHave('archive');
 
     }
-
-
-
-    /**
-
-     * @param  Builder<Subdivision>  $query
-
-     * @return Builder<Subdivision>
-
-     */
-
     public function scopeArchived(Builder $query): Builder
 
     {
@@ -170,15 +123,9 @@ class Subdivision extends Model
 
         }
 
-
-
         return $query->whereHas('archive');
 
     }
-
-
-
-    /** @var array<int, true>|null */
     private static ?array $subdivisionIdsWithBoilerChief = null;
 
     public static function hasBoilerChiefAssigned(int $subdivisionId): bool

@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Equipment;
@@ -92,10 +93,6 @@ class EquipmentSeeder extends Seeder
             );
         }
     }
-
-    /**
-     * @return array{0:string,1:?string}
-     */
     private function splitEquipmentName(string $name): array
     {
         $clean = trim(preg_replace('/\s+/u', ' ', $name) ?? '');

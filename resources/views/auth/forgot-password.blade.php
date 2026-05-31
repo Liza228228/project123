@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-guest-layout>
     <div class="mb-4 text-sm text-black dark:text-white">
         Забыли пароль? Укажите почту — мы отправим ссылку для сброса пароля.

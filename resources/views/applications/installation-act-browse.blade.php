@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $actBasename = $selectedApplication && filled(trim((string) ($selectedApplication->act_of_installation ?? '')))
         ? basename($selectedApplication->act_of_installation)
         : null;

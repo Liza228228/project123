@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-guest-layout>
     <form method="POST" action="{{ route('register') }}">
         @csrf

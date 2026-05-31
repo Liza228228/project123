@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Application;
 use App\Models\ApplicationStatus;
 use App\Models\Subdivision;

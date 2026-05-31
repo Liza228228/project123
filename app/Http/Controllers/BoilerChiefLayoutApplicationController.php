@@ -1,5 +1,6 @@
 <?php
 
+// контроллер
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreLayoutApplicationRequest;
@@ -150,10 +151,6 @@ class BoilerChiefLayoutApplicationController extends Controller
 
         return $this->streamPdfResponse($layout, $values, $exporter, $submission->id);
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function layoutApplicationValuesFromRequest(StoreLayoutApplicationRequest $request, RequestLayout $layout): array
     {
         $values = $request->fieldValues($layout);

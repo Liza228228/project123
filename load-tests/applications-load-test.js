@@ -1,30 +1,4 @@
-/**
- * Нагрузочное тестирование: авторизация → дашборд → список заявок → карточка заявки.
- *
- * Переменные окружения:
- *   BASE_URL      — базовый URL приложения (по умолчанию http://127.0.0.1:8000)
- *   K6_EMAIL      — почта пользователя с доступом к разделу заявок
- *   K6_PASSWORD   — пароль
- *   K6_QUICK      — если "1", короткий смоук-тест (30 с, 5 VU)
- *   K6_STRICT     — если "1", для полного сценария включаются пороги k6 (ошибка выхода при нарушении);
- *                   по умолчанию пороги выключены — в конце только сводка, код выхода 0.
- *
- * Запуск полного сценария (как в описании отчёта):
- *   k6 run load-tests/applications-load-test.js
- * На Windows, если «k6 не распознано»: из корня проекта выполните .\k6.exe run ...
- * (PowerShell не ищет программы в текущей папке без .\ ), либо добавьте в PATH каталог
- * с k6 (часто C:\Program Files\k6), либо & 'C:\Program Files\k6\k6.exe' run ...
- * либо из корня проекта: npm run k6:applications (вызывает load-tests/run-k6.cmd).
- *
- * Целевой стенд — MySQL (как в эксплуатации). В .env: DB_CONNECTION=mysql и корректные
- * DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD; миграции и сиды: php artisan migrate --seed.
- * Рекомендуется SESSION_DRIVER=database и CACHE_STORE=database (логин использует RateLimiter через кеш).
- * Убедитесь, что MySQL запущен и доступен, затем: php artisan serve (или nginx/php-fpm).
- * Проверьте public/build/manifest.json (npm run build), иначе возможны ошибки Vite.
- *
- * Значения DB_* и CACHE_* без лишних пробелов в конце строки .env — иначе Laravel не найдёт драйвер.
- */
-
+// нагрузочный тест
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Counter } from 'k6/metrics';

@@ -1,5 +1,6 @@
 <?php
 
+// контроллер
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreBoilerChiefRequestLayoutRequest;
@@ -138,10 +139,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'measurementMeta' => LayoutFormOptions::measurementMetaForUi(),
         ]);
     }
-
-    /**
-     * Сформировать PDF по заполненному отчету без сохранения в БД (журнал удалён).
-     */
     public function downloadFilledPdf(
         StoreReportSubmissionRequest $request,
         RequestLayout $requestLayout,
@@ -160,10 +157,6 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return response()->json($requestLayout->clientFillPayload());
     }
-
-    /**
-     * JSON схемы для формы «Отчеты по макетам» / заполнения отчёта: те же роли, что для заполнения макета по акту.
-     */
     public function layoutSchemaJsonForReportFillers(Request $request, RequestLayout $requestLayout): JsonResponse
     {
         ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
@@ -171,8 +164,6 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return response()->json($requestLayout->clientFillPayload());
     }
-
-    /** JSON схемы для модального «Новый отчёт» в каталоге макетов (роли каталога, без middleware «Заявки»). */
     public function layoutFillSchemaJsonForCatalog(Request $request, RequestLayout $requestLayout): JsonResponse
     {
         ReportLayoutCommercialProposal::abortIfExcluded($requestLayout);
@@ -289,22 +280,6 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return $this->pdfResponseForLayout($layout, $values, $builder, 'zajavka-'.$submission->id.'.pdf');
     }
-
-    /**
-     * Собирает values для PDF из формы заполнения макета (rich + simple).
-     *
-     * @return array<string, mixed>
-     */
-    /**
-     * @param  array<string, mixed>|null  $schema
-     * @return list<array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }>
-     */
     private function applicationOptionsForLayoutSchema(?array $schema, ?User $user): array
     {
         $category = is_array($schema) ? (string) ($schema['category'] ?? '') : '';
@@ -326,6 +301,8 @@ class BoilerChiefRequestLayoutController extends Controller
             $values['_document_date'] = $request->date('form_document_date')->format('d.m.Y');
         }
 
+        $this->syncInstallationActDateFromDocumentDate($values, $requestLayout, $request);
+
         foreach ([1, 2, 3] as $slot) {
             $key = 'signer_'.$slot.'_user_id';
             if ($request->filled($key)) {
@@ -339,10 +316,32 @@ class BoilerChiefRequestLayoutController extends Controller
     }
 
     /**
-     * Формирует PDF response для макета.
-     *
      * @param  array<string, mixed>  $values
      */
+    private function syncInstallationActDateFromDocumentDate(
+        array &$values,
+        RequestLayout $requestLayout,
+        StoreReportSubmissionRequest $request
+    ): void {
+        $schema = is_array($requestLayout->schema) ? $requestLayout->schema : [];
+        if (($schema['category'] ?? '') !== 'installation-act') {
+            return;
+        }
+
+        if ($request->boolean('use_current_date')) {
+            $values['дата_акта'] = now()->format('Y-m-d');
+        } elseif ($request->filled('form_document_date')) {
+            $values['дата_акта'] = $request->date('form_document_date')->format('Y-m-d');
+        } elseif (! empty($values['_document_date'])) {
+            $docDate = trim((string) $values['_document_date']);
+            if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $docDate, $m)) {
+                $values['дата_акта'] = $m[3].'-'.$m[2].'-'.$m[1];
+            } else {
+                $values['дата_акта'] = $docDate;
+            }
+        }
+    }
+
     private function pdfResponseForLayout(
         RequestLayout $layout,
         array $values,
@@ -381,16 +380,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
         ]);
     }
-
-    /**
-     * @return array{
-     *     users: \Illuminate\Database\Eloquent\Collection<int, User>,
-     *     departments: \Illuminate\Database\Eloquent\Collection<int, Department>,
-     *     roles: \Illuminate\Database\Eloquent\Collection<int, Role>,
-     *     documentHeaderLayouts: \Illuminate\Database\Eloquent\Collection<int, DocumentHeaderLayout>,
-     *     documentHeaderLayoutPreviewHtmlById: array<string, string>
-     * }
-     */
     private function layoutFormContext(Request $request, ?RequestLayout $wizardLayout = null): array
     {
         $this->syncDepartmentsFromSubdivisionsIfNeeded();
@@ -411,13 +400,6 @@ class BoilerChiefRequestLayoutController extends Controller
             ),
         ];
     }
-
-    /**
-     * HTML шапки по каждому макету (черновик без данных заявки) для предпросмотра в мастере.
-     *
-     * @param  \Illuminate\Support\Collection<int, DocumentHeaderLayout>  $headerLayouts
-     * @return array<string, string>
-     */
     private function documentHeaderLayoutPreviewHtmlById($headerLayouts, ?RequestLayout $wizardLayout, Request $request): array
     {
         $builder = app(RequestLayoutDocumentBuilder::class);
@@ -440,11 +422,6 @@ class BoilerChiefRequestLayoutController extends Controller
 
         return $out;
     }
-
-    /**
-     * Подтягивает подразделения из subdivisions в departments (по названию),
-     * чтобы список для division_assigner_id не был пустым даже без отдельного сидера.
-     */
     private function syncDepartmentsFromSubdivisionsIfNeeded(): void
     {
         if (! Schema::hasTable('subdivisions')) {
@@ -466,8 +443,6 @@ class BoilerChiefRequestLayoutController extends Controller
             abort(403);
         }
     }
-
-    /** PDF и формы заполнения отчёта по макету — все роли. */
     private function assertLayoutReportPdfFill(?User $user): void
     {
         if (! $user || ! $user->hasAnyRoleId(User::REPORT_LAYOUT_FILL_ROLE_IDS)) {
@@ -479,12 +454,6 @@ class BoilerChiefRequestLayoutController extends Controller
     {
         $this->assertLayoutReportPdfFill($user);
     }
-
-    /**
-     * Куда вести «назад» из списка макетов для заполнения: бухгалтер не имеет доступа к загрузке акта, только к просмотру актов.
-     *
-     * @return array{href: string, label: string}
-     */
     private function installationActParentLink(User $user): array
     {
         if ($user->hasRoleId(3)) {
@@ -506,12 +475,6 @@ class BoilerChiefRequestLayoutController extends Controller
             'label' => 'Главная',
         ];
     }
-
-    /**
-     * Остатки оборудования по складам для вставки в отчет.
-     *
-     * @return \Illuminate\Support\Collection<int, array{id: int, label: string, equipment: array<int, array{name: string, quantity: string, line: string}>}>
-     */
     private function reportWarehouseBalances(?User $user)
     {
         if (! $user) {
@@ -541,7 +504,6 @@ class BoilerChiefRequestLayoutController extends Controller
             $subdivisionIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
             $rows->whereIn('warehouses.subdivision_id', $subdivisionIds);
         } elseif ($user->hasRoleId(3) || $user->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)) {
-            // Бухгалтер, директор, ТД и снабжение — остатки по всем складам.
         } else {
             return collect();
         }
@@ -572,11 +534,6 @@ class BoilerChiefRequestLayoutController extends Controller
             })
             ->values();
     }
-
-    /**
-     * Текст макета → безопасный HTML для DomPDF: переносы строк только через &lt;br&gt;,
-     * без «двойных» интервалов (nl2br оставляет символы перевода строки; вместе с white-space: pre-wrap это давало лишний перенос).
-     */
     private function pdfPlainToHtml(?string $plain): string
     {
         $plain = (string) ($plain ?? '');

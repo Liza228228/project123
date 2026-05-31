@@ -1,7 +1,6 @@
 @php
+    // шаблон страницы
     use Illuminate\Support\Js;
-
-    /** Пример подстановки в тексте макета PDF (не синтаксис Blade). */
     $tpl = static fn (string $key): string => '{{'.$key.'}}';
 
     $users = $users ?? collect();

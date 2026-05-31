@@ -1,9 +1,4 @@
-/**
- * Редактор шаблонов макета заявки: подстановки {{ключ}} отображаются как выделенные блоки.
- * Подключается к Alpine через window.layoutTokenEditorMixin().
- */
-
-/** @type {HTMLElement | null} */
+// скрипт на странице
 let draggingLayoutToken = null;
 
 function caretRangeFromPoint(x, y) {
@@ -258,10 +253,6 @@ export function layoutTokenEditorMixin() {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
         },
-
-        /**
-         * Перетаскивание чипа внутри того же редактора: вставка до/после другого чипа или в позицию курсора.
-         */
         onTokenEditorDrop(e, target) {
             e.preventDefault();
             const dragged = draggingLayoutToken;

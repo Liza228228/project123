@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @if($canDeleteInfrastructure ?? false)
     <form
         id="subdivision-deactivate-form"

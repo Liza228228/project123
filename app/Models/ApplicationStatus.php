@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -7,7 +8,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApplicationStatus extends Model
 {
-    /** Черновик мастера участка до отправки начальнику котельной. */
     public const NAME_DRAFT = 'Черновик';
 
     public const NAME_PENDING = 'На согласовании';
@@ -17,17 +17,11 @@ class ApplicationStatus extends Model
     public const NAME_REJECTED = 'Не согласована';
 
     public const NAME_PARTIAL = 'Частично согласована';
-
-    /** Заявка закрыта: акт, фото, списания — перенос в архив выполненных. */
     public const NAME_COMPLETED = 'Выполнена';
 
     protected $fillable = [
         'name',
     ];
-
-    /**
-     * @var array<string, int>|null
-     */
     protected static ?array $idByNameCache = null;
 
     public function applications(): HasMany

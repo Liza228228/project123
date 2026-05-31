@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +18,7 @@ class MaterialStockMovement extends Model
         'material_stock_movement_type_id',
         'quantity',
         'receipt_variant',
+        'stock_bucket',
         'unit_price',
         'counterparty',
         'comment',
@@ -37,6 +39,7 @@ class MaterialStockMovement extends Model
         return [
             'quantity' => 'decimal:3',
             'unit_price' => 'decimal:2',
+            'stock_bucket' => 'integer',
         ];
     }
 
@@ -48,10 +51,6 @@ class MaterialStockMovement extends Model
 
         return $body === '' ? $prefix : $prefix."\n".$body;
     }
-
-    /**
-     * Текст комментария для интерфейса: без служебного префикса {@see self::CORR_PREFIX} и ключа идемпотентности.
-     */
     public static function commentBodyForDisplay(?string $comment): ?string
     {
         if ($comment === null) {
@@ -77,7 +76,6 @@ class MaterialStockMovement extends Model
             return $body !== '' ? $body : null;
         }
 
-        // Одна строка: ключ и (опционально) пояснение через пробел
         $stripped = preg_replace('#^APP:\d+:ITEM:\d+(?::[A-Za-z0-9-]+)*(?::WH:\d+)?\s+#u', '', $rest);
         $stripped = trim((string) $stripped);
         if ($stripped !== '' && $stripped !== $rest) {
@@ -90,10 +88,6 @@ class MaterialStockMovement extends Model
 
         return $rest;
     }
-
-    /**
-     * Совпадение с ключом идемпотентности в comment (точное, с текстом после перевода строки или с суффиксом через «:», например …:INSTALL).
-     */
     public function scopeWhereCorrelationKey(Builder $query, string $correlationKey): void
     {
         $p = self::CORR_PREFIX.trim($correlationKey);
@@ -144,10 +138,6 @@ class MaterialStockMovement extends Model
 
         return $quantity;
     }
-
-    /**
-     * Подпись к числу в журнале (например «M» вместо «разм» для спецодежды).
-     */
     public function quantityDisplaySuffix(): string
     {
         $eq = $this->equipment;

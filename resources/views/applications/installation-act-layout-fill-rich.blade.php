@@ -1,7 +1,15 @@
 @php
-    /** @var \App\Models\RequestLayout $layout */
+    // шаблон страницы
     $layouts = collect([$layout]);
-    $layoutOptions = $layouts->map(fn ($l) => ['id' => $l->id, 'title' => $l->title])->values();
+    $layoutOptions = $layouts->map(function ($l) {
+        $schema = is_array($l->schema) ? $l->schema : [];
+
+        return [
+            'id' => $l->id,
+            'title' => $l->title,
+            'category' => (string) ($schema['category'] ?? ''),
+        ];
+    })->values();
     $userOptions = \App\Models\User::layoutReportSignerOptions($users ?? collect());
     $applicationOptions = collect($applicationOptions ?? [])->values();
 
@@ -38,7 +46,13 @@
 
                 <div class="px-5 sm:px-8 py-6 space-y-6 border-b border-orange-100/90 dark:border-orange-900/40">
                     <div>
-                        <label for="layout_structure_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100 mb-1">Макет</label>
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <label for="layout_structure_id" class="block text-sm font-medium text-stone-900 dark:text-stone-100">Макет</label>
+                            <span x-show="isInstallationActLayout"
+                                  class="inline-flex items-center rounded-full border border-orange-300/80 bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-950 dark:border-orange-700/60 dark:bg-orange-950/40 dark:text-orange-100">
+                                Акт установки
+                            </span>
+                        </div>
                         <select id="layout_structure_id" name="layout_structure_id" required
                                 x-model.number="layoutId" @change="loadFields()"
                                 class="app-select">
@@ -46,10 +60,13 @@
                                 <option :value="l.id" x-text="l.title"></option>
                             </template>
                         </select>
+                        <p x-show="selectedLayoutLabel" class="mt-2 text-xs text-stone-600 dark:text-stone-400">
+                            Выбран макет: <span class="font-medium text-stone-900 dark:text-stone-100" x-text="selectedLayoutLabel"></span>
+                        </p>
                     </div>
 
                     <div class="space-y-2 rounded-xl border border-orange-200/70 bg-orange-50/50 px-4 py-4 dark:border-orange-900/45 dark:bg-orange-950/20">
-                        <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки</p>
+                        <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Оборудование из заявки · акт установки</p>
                         <div>
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
                                 <label class="block text-xs text-stone-600 dark:text-stone-300">Заявка</label>
@@ -137,10 +154,18 @@
                                 </div>
                             </template>
 
-                            <template x-if="field.type === 'date'">
+                            <template x-if="field.type === 'date' && !(layoutCategory === 'installation-act' && field.key === 'дата_акта')">
                                 <div class="rounded-xl border border-orange-200/75 bg-white p-4 dark:border-orange-900/40 dark:bg-stone-900/40">
                                     <label class="block text-sm text-stone-600 dark:text-stone-400 mb-2" x-text="'(' + (field.label || field.key) + ')'"></label>
                                     <input type="date" class="app-input"
+                                           :name="'values[' + field.key + ']'" />
+                                </div>
+                            </template>
+
+                            <template x-if="field.type === 'text' && field.simple_input">
+                                <div class="rounded-xl border border-orange-200/75 bg-white p-4 dark:border-orange-900/40 dark:bg-stone-900/40">
+                                    <label class="block text-sm text-stone-600 dark:text-stone-400 mb-2" x-text="'(' + (field.label || field.key) + ')'"></label>
+                                    <input type="text" class="app-input" maxlength="120"
                                            :name="'values[' + field.key + ']'" />
                                 </div>
                             </template>
@@ -189,7 +214,7 @@
                                 </div>
                             </template>
 
-                            <template x-if="field.type === 'text' || field.type === 'textarea'">
+                            <template x-if="(field.type === 'text' || field.type === 'textarea') && !field.simple_input">
                                 <div>
                                     <p class="text-sm text-stone-600 dark:text-stone-400 mb-1.5" x-text="'(' + (field.label || field.key) + ')'"></p>
                                     <div class="overflow-hidden rounded-xl border-2 border-orange-400/90 shadow-sm dark:border-orange-600/70">
@@ -207,7 +232,7 @@
                     </template>
 
                     <div class="rounded-xl border border-orange-200/75 bg-orange-50/40 px-4 py-3 space-y-2 dark:border-orange-900/45 dark:bg-orange-950/20">
-                        <p class="text-sm font-medium text-stone-900 dark:text-stone-100">Дата формирования</p>
+                        <p class="text-sm font-medium text-stone-900 dark:text-stone-100" x-text="layoutCategory === 'installation-act' ? 'Дата формирования (дата акта)' : 'Дата формирования'"></p>
                         <input type="hidden" name="use_current_date" value="0"/>
                         <label class="inline-flex items-center gap-2 text-sm cursor-pointer text-stone-800 dark:text-stone-200">
                             <input id="use-current-date-checkbox" type="checkbox" name="use_current_date" value="1" class="rounded border-stone-300 text-orange-600 focus:ring-orange-500/40 dark:border-stone-600 dark:bg-stone-900" checked/>

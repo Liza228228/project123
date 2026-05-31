@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @props(['active'])
 
 @php

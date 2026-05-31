@@ -1,21 +1,13 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
 use App\Support\AdministrationWarehouse;
 use Illuminate\Database\Seeder;
-
-/**
- * Все подразделения задаются здесь текстом. Наименования должны совпадать с полем subdivision в {@see WarehouseSeeder}.
- */
 class SubdivisionSeeder extends Seeder
 {
-    /**
-     * Список подразделений для сидов (дублируется в {@see WarehouseSeeder} в поле subdivision у складов).
-     *
-     * @return list<string>
-     */
     public static function definitionNames(): array
     {
         return [

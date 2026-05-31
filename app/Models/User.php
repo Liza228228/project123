@@ -1,5 +1,6 @@
 <?php
 
+// роли и права пользователей
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,99 +12,51 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
     public const APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2];
-
-    /** @var list<int> */
     public const MANAGEMENT_EDITOR_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
 
-
     public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = [1, 2];
-
-    /**
-     * Директор, технический директор и начальник снабжения — отметки поставки и прочие операции снабжения
-     * (без раздела «Учёт оборудования» у технического директора).
-     *
-     * @var list<int>
-     */
     public const SUPPLY_PROCUREMENT_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
-
-    /**
-     * Директор и начальник отдела снабжения — полный паритет (включая учёт оборудования).
-     *
-     * @var list<int>
-     */
     public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
-
-    /** Прямая ссылка «Подразделения» в верхнем меню (каталог подразделений и складов). */
     public const SUBDIVISION_DIRECTORY_TOP_NAV_ROLE_IDS = [1, 2, 6, 3, 5];
-
-    /** Раздел «Оборудование к заказу» и формы заказа своего оборудования (без технического директора). */
     public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
-
-    /**
-     * Заполнение отчётов по макету, каталог макетов для заполнения, «Отчеты по макетам» — все роли.
-     *
-     * @var list<int>
-     */
+    public const CUSTOM_EQUIPMENT_ORDER_FILTER_ROLE_IDS = [
+        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        self::ACCOUNTANT_ROLE_ID,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
     public const REPORT_LAYOUT_FILL_ROLE_IDS = [1, 2, 3, 4, 5, 6, 7];
-
-    /** @var list<int> */
     public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
-
-    /**
-     * Полное меню «Генератор отчётов» (шапки, PDF-макеты, отчёты по макетам) — у директора и ТД идентично.
-     *
-     * @var list<int>
-     */
     public const REPORT_GENERATOR_FULL_MENU_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID];
-
-    /** Директор, технический директор и администратор — макеты шапок и конструктор макетов отчётов (PDF). */
     public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [
         ...self::REPORT_GENERATOR_FULL_MENU_ROLE_IDS,
         self::ADMINISTRATOR_ROLE_ID,
     ];
-
-    /** @var list<int> */
     public const REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
-
-    /** Списание со склада «Администрация» по согласованным позициям из справочника. */
     public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
-
-    /** Бухгалтер — просмотр всех заявок и актов установки. */
-    public const ACCOUNTANT_ROLE_ID = 3;
-
-    /** Администратор — пользователи и блокировки. */
-    public const ADMINISTRATOR_ROLE_ID = 5;
-
-    /** Начальник котельной. */
-    public const BOILER_CHIEF_ROLE_ID = 7;
-
-    /**
-     * Роли, которые создают заявки: мастер участка и начальник котельной.
-     *
-     * @var list<int>
-     */
-    public const APPLICATION_CREATOR_ROLE_IDS = [
-        4,
+    public const MAIN_WAREHOUSE_STOCK_MANAGEMENT_ROLE_IDS = [
+        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
+    public const FOREMAN_ROLE_ID = 4;
+    public const SUBDIVISION_WAREHOUSE_STOCK_MANAGEMENT_ROLE_IDS = [
+        self::FOREMAN_ROLE_ID,
         self::BOILER_CHIEF_ROLE_ID,
     ];
-
-    /**
-     * Загрузка акта установки (руководство + создатели заявок).
-     *
-     * @var list<int>
-     */
+    public const ACCOUNTANT_ROLE_ID = 3;
+    public const ADMINISTRATOR_ROLE_ID = 5;
+    public const BOILER_CHIEF_ROLE_ID = 7;
+    public const APPLICATION_CREATOR_ROLE_IDS = [
+        self::FOREMAN_ROLE_ID,
+        self::BOILER_CHIEF_ROLE_ID,
+    ];
     public const APPLICATION_INSTALLATION_ACT_ROLE_IDS = [
         ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
         ...self::APPLICATION_CREATOR_ROLE_IDS,
     ];
-
-    /** Технический директор. */
     public const TECHNICAL_DIRECTOR_ROLE_ID = 6;
-
 
     public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2, 5];
     public const SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS = [1, 2, 5];
@@ -151,18 +104,12 @@ class User extends Authenticatable
             ->whereDoesntHave('archive')
             ->withTimestamps();
     }
-
-    /** Подразделения, за которые отвечает начальник котельной (согласование заявок). */
     public function boilerChiefSubdivisions(): BelongsToMany
     {
         return $this->belongsToMany(Subdivision::class, 'boiler_chief_subdivision_user', 'boiler_chief_user_id', 'subdivision_id')
             ->whereDoesntHave('archive')
             ->withTimestamps();
     }
-
-    /**
-     * Начальник котельной может выбрать этого мастера участка как подписанта (пересечение подразделений).
-     */
     public static function boilerChiefMaySelectForemanAsSigner(User $chief, User $foreman): bool
     {
         if (! $chief->hasRoleId(7) || ! $foreman->hasRoleId(4)) {
@@ -174,13 +121,6 @@ class User extends Authenticatable
 
         return $chiefIds !== [] && $foremanIds !== [] && count(array_intersect($chiefIds, $foremanIds)) > 0;
     }
-
-    /**
-     * Пользователи для выбора подписи в отчёте по макету (роль и подразделения).
-     *
-     * @param  \Illuminate\Support\Collection<int, self>|\Illuminate\Database\Eloquent\Collection<int, self>  $users
-     * @return list<array{id: int, label: string, role_id: int, role_name: string, subdivision_ids: list<int>}>
-     */
     public static function layoutReportSignerOptions($users): array
     {
         return $users
@@ -211,12 +151,6 @@ class User extends Authenticatable
             ->values()
             ->all();
     }
-
-    /**
-     * Для формы «Отчёт по макету»: фильтр мастеров по подразделениям начальника котельной.
-     *
-     * @return array{isBoilerChief: bool, foremanRoleId: int, chiefSubdivisionIds: list<int>}
-     */
     public static function layoutReportViewerContext(?User $user): array
     {
         if (! $user?->hasRoleId(7)) {
@@ -238,22 +172,14 @@ class User extends Authenticatable
     {
         return (int) $this->role_id === $roleId;
     }
-
-    /**
-     * @param  list<int>  $roleIds
-     */
     public function hasAnyRoleId(array $roleIds): bool
     {
         return in_array((int) $this->role_id, $roleIds, true);
     }
-
-    /** Директор, ТД или начальник снабжения — полный цикл работы с заявками. */
     public function hasApplicationSupplyWorkflowRole(): bool
     {
         return $this->hasAnyRoleId(self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS);
     }
-
-    /** Фамилия Имя Отчество одной строкой (без лишних пробелов). */
     public function fullName(): string
     {
         $parts = array_filter([

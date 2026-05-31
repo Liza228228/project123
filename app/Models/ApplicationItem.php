@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use App\Models\Scopes\ActiveApplicationItemScope;
@@ -19,8 +20,6 @@ class ApplicationItem extends Model
         'quantity_unit',
         'raw_input',
     ];
-
-    /** Максимальная длина свободного наименования в форме заявки (совпадает с колонкой БД). */
     public const EQUIPMENT_NAME_MAX_LENGTH = 255;
 
     public const SIZE_VALUE_MAX_LENGTH = 120;
@@ -34,23 +33,11 @@ class ApplicationItem extends Model
     public const CUSTOM_SUPPLY_ON_WAREHOUSE_ID = 5;
 
     public const CUSTOM_SUPPLY_PENDING_APPROVAL = 'pending_approval';
-
-    /** Согласовано по заявке; заказ у поставщика ещё не отмечен. */
     public const CUSTOM_SUPPLY_ACCEPTED = 'accepted';
-
-    /** Отмечено снабжением: позиция заказана у поставщика. */
     public const CUSTOM_SUPPLY_ORDERED = 'ordered';
-
-    /** Заказано; груз от поставщика в пути (до прихода на основной склад). */
     public const CUSTOM_SUPPLY_IN_TRANSIT = 'supply_in_transit';
-
-    /** Устаревший код в БД: после «На складе» позиция привязывается к справочнику и этот статус сбрасывается. */
     public const CUSTOM_SUPPLY_ON_WAREHOUSE = 'on_warehouse';
-
-    /** @deprecated используйте CUSTOM_SUPPLY_ACCEPTED */
     private const LEGACY_AWAITING_ARRIVAL = 'awaiting_arrival';
-
-    /** @deprecated используйте CUSTOM_SUPPLY_ON_WAREHOUSE */
     private const LEGACY_ON_MAIN_WAREHOUSE = 'on_main_warehouse';
 
     public const DELIVERY_IN_TRANSIT = 'in_transit';
@@ -58,17 +45,9 @@ class ApplicationItem extends Model
     public const DELIVERY_DELIVERED = 'delivered';
     public const DELIVERY_IN_TRANSIT_ID = 1;
     public const DELIVERY_DELIVERED_ID = 2;
-
-    /**
-     * @var array<string, mixed>
-     */
     protected $attributes = [
         'is_checked' => false,
     ];
-
-    /**
-     * @var array<string, mixed>
-     */
     protected array $manualWriteBuffer = [];
 
     protected $fillable = [
@@ -295,10 +274,6 @@ class ApplicationItem extends Model
     {
         return $this->belongsTo(User::class, 'removed_by_user_id');
     }
-
-    /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<ApplicationChangeJournal, $this>
-     */
     public function changeJournalEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ApplicationChangeJournal::class)->orderByDesc('created_at');
@@ -381,10 +356,6 @@ class ApplicationItem extends Model
 
         return ((int) $this->quantity).' '.$unit;
     }
-
-    /**
-     * Подпись к количеству в текстах про склад (без числа): для размера одежды — M, L и т.п.
-     */
     public function quantityUnitLabelForDisplay(): string
     {
         if (($this->measurement_type ?? '') === 'clothing_size') {
@@ -396,18 +367,10 @@ class ApplicationItem extends Model
 
         return trim((string) ($this->quantity_unit ?? '')) ?: 'шт';
     }
-
-    /**
-     * Позиция без id из справочника: название введено вручную (мастер участка и т.п.).
-     */
     public function usesFreeTextEquipment(): bool
     {
         return $this->equipment_id === null;
     }
-
-    /**
-     * Оборудование по согласованной позиции уже на складе (для подстановки в отчёт по макету).
-     */
     public function hasArrivedAtWarehouseForReport(): bool
     {
         if (! $this->is_checked) {
@@ -422,10 +385,6 @@ class ApplicationItem extends Model
         return $this->usesFreeTextEquipment()
             && $this->resolvedCustomSupplyStatus() === self::CUSTOM_SUPPLY_ON_WAREHOUSE;
     }
-
-    /**
-     * Тип учёта, сохранённый в строке заявки (для каталога не подменяется справочником).
-     */
     public function storedMeasurementType(): string
     {
         $this->loadMissing('manualDetail');
@@ -436,10 +395,6 @@ class ApplicationItem extends Model
 
         return trim((string) ($this->measurement_type ?? 'piece')) ?: 'piece';
     }
-
-    /**
-     * Размер, сохранённый в строке заявки (для каталога — из manual detail, не equipment.value).
-     */
     public function storedSizeValue(): ?string
     {
         $this->loadMissing('manualDetail');
@@ -456,10 +411,6 @@ class ApplicationItem extends Model
 
         return $fromAccessor !== '' ? $fromAccessor : null;
     }
-
-    /**
-     * Нормализует значение из БД (в т.ч. устаревшие коды после смены цепочки статусов).
-     */
     public function normalizedCustomSupplyStatus(): ?string
     {
         if ($this->custom_equipment_supply_status_id === null) {
@@ -510,10 +461,6 @@ class ApplicationItem extends Model
             default => 'Своё оборудование',
         };
     }
-
-    /**
-     * Согласованные позиции со своим названием, по которым снабжение ещё не отметило заказ у поставщика.
-     */
     public static function queryPendingCustomEquipmentOrder(): Builder
     {
         return static::query()
@@ -553,10 +500,6 @@ class ApplicationItem extends Model
 
         return $s === self::CUSTOM_SUPPLY_IN_TRANSIT || $s === self::CUSTOM_SUPPLY_ORDERED;
     }
-
-    /**
-     * Подразделение-получатель для доставки каталожного оборудования (из заявки).
-     */
     public function resolvedDeliveryTargetSubdivisionId(): ?int
     {
         return $this->application?->subdivision_id ? (int) $this->application->subdivision_id : null;
@@ -591,10 +534,6 @@ class ApplicationItem extends Model
             && $this->equipment_id !== null
             && $this->resolvedDeliveryStatus() === null;
     }
-
-    /**
-     * Позиция в состоянии «в пути» для отображения сводки по заявке: своё оборудование до прихода на склад или доставка каталога.
-     */
     public function isInShipmentTransitState(): bool
     {
         if ($this->usesFreeTextEquipment()) {
@@ -652,10 +591,6 @@ class ApplicationItem extends Model
             default => null,
         };
     }
-
-    /**
-     * @return array<string, string>
-     */
     public static function applicationFormValidationMessages(): array
     {
         return [

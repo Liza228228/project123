@@ -1,13 +1,21 @@
+@php // шаблон страницы
+@endphp
 @props([
     'balances',
     'heading' => null,
     'intro' => null,
     'emptyText' => 'Нет позиций.',
     'equipmentSearch' => '',
+    'stockFilter' => '',
 ])
 
 @php
     $isPaginator = $balances instanceof \Illuminate\Contracts\Pagination\Paginator;
+    $stockFilterEmptyMessage = match ($stockFilter) {
+        'on_stock' => 'Нет позиций с остатком на складе.',
+        'written_off' => 'Нет полностью списанных позиций.',
+        default => $emptyText,
+    };
 @endphp
 
 <div class="space-y-4">
@@ -28,6 +36,7 @@
                 $qtyIn = (float) ($row->qty_in ?? 0);
                 $qtyOut = (float) ($row->qty_out ?? 0);
                 $balance = (float) ($row->balance ?? 0);
+                $defectiveBalance = (float) ($row->defective_balance ?? 0);
                 $unitCode = trim((string) ($row->unit_code ?? '')) ?: 'шт';
                 $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
             @endphp
@@ -39,7 +48,7 @@
                         'measurementTypeCode' => $measurementTypeCode,
                     ])
                 </p>
-                <dl class="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <dl class="mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
                     <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
                         <dt class="font-medium uppercase tracking-wide text-black/50 dark:text-white/50">Приход</dt>
                         <dd class="mt-1 text-sm font-medium text-black dark:text-white">
@@ -50,6 +59,12 @@
                         <dt class="font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Остаток</dt>
                         <dd class="mt-1 text-sm font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/50 dark:text-white/50 @else text-emerald-900 dark:text-emerald-100 @endif">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </dd>
+                    </div>
+                    <div class="rounded-lg bg-amber-50/90 px-2 py-2 dark:bg-amber-950/35">
+                        <dt class="font-medium uppercase tracking-wide text-amber-800/80 dark:text-amber-200/70">Брак</dt>
+                        <dd class="mt-1 text-sm font-semibold text-amber-950 dark:text-amber-100">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $defectiveBalance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </dd>
                     </div>
                     <div class="rounded-lg bg-white/90 px-2 py-2 dark:bg-stone-800/80">
@@ -65,7 +80,7 @@
                 @if(filled($equipmentSearch))
                     По запросу «{{ $equipmentSearch }}» ничего не найдено.
                 @else
-                    {{ $emptyText }}
+                    {{ $stockFilterEmptyMessage }}
                 @endif
             </p>
         @endforelse
@@ -78,6 +93,7 @@
                     <th class="text-left py-3 px-4">Оборудование</th>
                     <th class="text-right py-3 px-4">Приход</th>
                     <th class="text-right py-3 px-4">Остаток</th>
+                    <th class="text-right py-3 px-4">Брак</th>
                     <th class="text-right py-3 px-4">Списано</th>
                 </tr>
             </thead>
@@ -87,6 +103,7 @@
                         $qtyIn = (float) ($row->qty_in ?? 0);
                         $qtyOut = (float) ($row->qty_out ?? 0);
                         $balance = (float) ($row->balance ?? 0);
+                        $defectiveBalance = (float) ($row->defective_balance ?? 0);
                         $unitCode = trim((string) ($row->unit_code ?? '')) ?: 'шт';
                         $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
                     @endphp
@@ -104,17 +121,20 @@
                         <td class="py-3 px-4 text-right font-semibold @if(abs($balance) < 0.0005 && $qtyOut > 0.0005) text-black/55 dark:text-white/55 @endif">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $balance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </td>
+                        <td class="py-3 px-4 text-right font-semibold text-amber-800 dark:text-amber-200/90">
+                            @include('materials.partials.balance-quantity-cell', ['quantity' => $defectiveBalance, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
+                        </td>
                         <td class="py-3 px-4 text-right text-red-700 dark:text-red-300/90">
                             @include('materials.partials.balance-quantity-cell', ['quantity' => $qtyOut, 'unitCode' => $unitCode, 'measurementTypeCode' => $measurementTypeCode])
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="4" class="py-6 px-4 text-sm text-black/65 dark:text-white/65">
+                        <td colspan="5" class="py-6 px-4 text-sm text-black/65 dark:text-white/65">
                             @if(filled($equipmentSearch))
                                 По запросу «{{ $equipmentSearch }}» ничего не найдено.
                             @else
-                                {{ $emptyText }}
+                                {{ $stockFilterEmptyMessage }}
                             @endif
                         </td>
                     </tr>

@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\Application;
@@ -11,10 +12,6 @@ use Illuminate\Validation\ValidationException;
 final class ForemanApplicationReassignment
 {
     public const FOREMAN_ROLE_ID = 4;
-
-    /**
-     * @return Collection<int, Application>
-     */
     public function applicationsRequiringReassignment(User $foreman): Collection
     {
         if (! $foreman->hasRoleId(self::FOREMAN_ROLE_ID)) {
@@ -42,10 +39,6 @@ final class ForemanApplicationReassignment
 
         return $this->applicationsRequiringReassignment($user)->isNotEmpty();
     }
-
-    /**
-     * @return Builder<User>
-     */
     public function activeForemenForSubdivisionQuery(int $subdivisionId, ?int $excludeUserId = null): Builder
     {
         $query = User::query()
@@ -61,10 +54,6 @@ final class ForemanApplicationReassignment
 
         return $query;
     }
-
-    /**
-     * @return list<array{id: int, label: string}>
-     */
     public function replacementForemenOptionsForSubdivision(int $subdivisionId, int $excludeUserId): array
     {
         return $this->activeForemenForSubdivisionQuery($subdivisionId, $excludeUserId)
@@ -78,19 +67,6 @@ final class ForemanApplicationReassignment
             ->values()
             ->all();
     }
-
-    /**
-     * @return list<array{
-     *     id: int,
-     *     subdivision_id: int,
-     *     subdivision_name: string,
-     *     desired_delivery_date: ?string,
-     *     involvement: list<string>,
-     *     foremen: list<array{id: int, label: string}>,
-     *     can_reassign: bool,
-     *     message: ?string
-     * }>
-     */
     public function blockPreviewPayload(User $foreman): array
     {
         return $this->previewPayloadForApplications(
@@ -98,11 +74,6 @@ final class ForemanApplicationReassignment
             (int) $foreman->id
         );
     }
-
-    /**
-     * @param  list<int>  $newSubdivisionIds
-     * @return list<int>
-     */
     public function removedSubdivisionIds(User $foreman, array $newSubdivisionIds): array
     {
         $foreman->loadMissing('assignedSubdivisions:id');
@@ -111,11 +82,6 @@ final class ForemanApplicationReassignment
 
         return $current->diff($new)->values()->all();
     }
-
-    /**
-     * @param  list<int>  $subdivisionIds
-     * @return Collection<int, Application>
-     */
     public function applicationsInSubdivisions(User $foreman, array $subdivisionIds): Collection
     {
         if (! $foreman->hasRoleId(self::FOREMAN_ROLE_ID) || $subdivisionIds === []) {
@@ -136,10 +102,6 @@ final class ForemanApplicationReassignment
             ->orderBy('id')
             ->get();
     }
-
-    /**
-     * @param  list<int>  $newSubdivisionIds
-     */
     public function requiresReassignmentBeforeSubdivisionRemoval(User $foreman, array $newSubdivisionIds): bool
     {
         if (! $foreman->hasRoleId(self::FOREMAN_ROLE_ID)) {
@@ -150,21 +112,6 @@ final class ForemanApplicationReassignment
 
         return $this->applicationsInSubdivisions($foreman, $removed)->isNotEmpty();
     }
-
-    /**
-     * @param  list<int>  $newSubdivisionIds
-     * @return list<array{
-     *     id: int,
-     *     subdivision_id: int,
-     *     subdivision_name: string,
-     *     desired_delivery_date: ?string,
-     *     involvement: list<string>,
-     *     involvement_label: string,
-     *     foremen: list<array{id: int, label: string}>,
-     *     can_reassign: bool,
-     *     message: ?string
-     * }>
-     */
     public function subdivisionRemovalPreviewPayload(User $foreman, array $newSubdivisionIds): array
     {
         $removed = $this->removedSubdivisionIds($foreman, $newSubdivisionIds);
@@ -174,11 +121,6 @@ final class ForemanApplicationReassignment
             (int) $foreman->id
         );
     }
-
-    /**
-     * @param  list<int>  $newSubdivisionIds
-     * @param  array<int|string, mixed>  $rawReassignments
-     */
     public function applySubdivisionRemovalReassignments(User $foreman, array $newSubdivisionIds, array $rawReassignments): void
     {
         if (! $foreman->hasRoleId(self::FOREMAN_ROLE_ID)) {
@@ -231,10 +173,6 @@ final class ForemanApplicationReassignment
             ]);
         }
     }
-
-    /**
-     * @param  array<int|string, mixed>  $rawReassignments  application_id => foreman_user_id
-     */
     public function applyBlockReassignments(User $foreman, array $rawReassignments): void
     {
         if (! $foreman->hasRoleId(self::FOREMAN_ROLE_ID)) {
@@ -316,21 +254,6 @@ final class ForemanApplicationReassignment
             ->where('users.id', $foremanId)
             ->exists();
     }
-
-    /**
-     * @param  Collection<int, Application>  $applications
-     * @return list<array{
-     *     id: int,
-     *     subdivision_id: int,
-     *     subdivision_name: string,
-     *     desired_delivery_date: ?string,
-     *     involvement: list<string>,
-     *     involvement_label: string,
-     *     foremen: list<array{id: int, label: string}>,
-     *     can_reassign: bool,
-     *     message: ?string
-     * }>
-     */
     private function previewPayloadForApplications(Collection $applications, int $excludeForemanId): array
     {
         $rows = [];
@@ -357,10 +280,6 @@ final class ForemanApplicationReassignment
 
         return $rows;
     }
-
-    /**
-     * @return list<string>
-     */
     private function involvementLabels(Application $application, int $foremanId): array
     {
         $labels = [];

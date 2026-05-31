@@ -1,14 +1,11 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\DocumentHeaderLayout;
 use App\Models\RequestLayout;
 use Illuminate\Database\Eloquent\Builder;
-
-/**
- * Исключение макетов «Коммерческое предложение» из каталогов отчётов и генератора.
- */
 final class ReportLayoutCommercialProposal
 {
     public const CATEGORY = 'commercial-proposal';
@@ -37,11 +34,6 @@ final class ReportLayoutCommercialProposal
             is_array($layout->schema) ? $layout->schema : null
         );
     }
-
-    /**
-     * @param  Builder<RequestLayout>  $query
-     * @return Builder<RequestLayout>
-     */
     public static function scopeVisibleInReportCatalog(Builder $query): Builder
     {
         return $query

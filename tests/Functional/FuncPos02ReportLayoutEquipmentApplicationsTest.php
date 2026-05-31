@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
@@ -224,4 +225,53 @@ test('installation act report layout list excludes archive act and partial deliv
     expect($ids)->toContain((int) $eligible->id);
     expect($ids)->not->toContain((int) $withAct->id);
     expect($ids)->not->toContain((int) $partialDelivery->id);
+});
+
+test('installation act equipment quantity excludes marked defective stock', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Компенсатор акт PDF');
+
+    $application = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+    ]);
+
+    $item = ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 10,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+
+    \App\Models\MaterialStockMovement::query()->create([
+        'equipment_id' => $ctx['equipment']->id,
+        'warehouse_id' => $ctx['warehouse']->id,
+        'material_stock_movement_type_id' => \App\Models\MaterialStockMovementType::idFor(\App\Models\MaterialStockMovementType::NAME_RECEIPT),
+        'quantity' => 10,
+        'stock_bucket' => \App\Support\WarehouseStockBucket::GOOD,
+        'comment' => 'Приход.',
+    ]);
+
+    \App\Support\WarehouseStockBucket::transferToDefective(
+        (int) $ctx['equipment']->id,
+        (int) $ctx['warehouse']->id,
+        3.0,
+        (int) $application->id,
+        (int) $item->id,
+        'Повреждение',
+        (int) $ctx['foreman']->id,
+    );
+
+    $options = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($ctx['foreman']);
+    $row = collect($options)->firstWhere('id', (int) $application->id);
+
+    expect($row)->not->toBeNull();
+    expect($row['equipment'][0]['quantity'] ?? '')->toBe('7 шт');
 });

@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $reservedStatusCodes = ['profile-updated', 'password-updated'];
     $statusMessage = session('status');
     $showStatus = filled($statusMessage) && ! in_array($statusMessage, $reservedStatusCodes, true);

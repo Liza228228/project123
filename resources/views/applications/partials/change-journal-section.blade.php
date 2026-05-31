@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @if($application->changeJournalEntries->isNotEmpty())
     <section class="space-y-3" aria-labelledby="show-section-change-journal">
         <h3 id="show-section-change-journal" class="app-section-title">Журнал изменений</h3>

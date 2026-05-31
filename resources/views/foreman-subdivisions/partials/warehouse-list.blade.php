@@ -1,5 +1,5 @@
 @php
-    /** @var \Illuminate\Support\Collection<int, \App\Models\Warehouse>|\App\Models\Warehouse[] $warehouses */
+    // шаблон страницы
     $warehouses = $warehouses ?? collect();
     $subdivisionInactive = (bool) ($subdivisionInactive ?? false);
 @endphp

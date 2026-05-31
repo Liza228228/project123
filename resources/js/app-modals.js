@@ -1,6 +1,4 @@
-/**
- * Открытие/закрытие x-modal без привязки к дереву Alpine (кнопки в header slot и т.п.).
- */
+// скрипт на странице
 export function openAppModal(name) {
     if (!name) {
         return;

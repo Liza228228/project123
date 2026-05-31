@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use Illuminate\Validation\ValidationException;
@@ -31,10 +32,6 @@ final class PieceQuantity
     {
         return mb_strtolower(trim((string) $unitCode)) === 'разм';
     }
-
-    /**
-     * Суффикс после числа: для одежды — S, M, L…; иначе код единицы (шт, кг…).
-     */
     public static function quantitySuffix(?string $unitCode, ?string $measurementType = null): string
     {
         $unitCode = trim((string) $unitCode);
@@ -44,10 +41,6 @@ final class PieceQuantity
 
         return $unitCode !== '' ? $unitCode : 'шт';
     }
-
-    /**
-     * Число для отображения в остатках и журнале: штуки и размеры одежды — без дробной части.
-     */
     public static function formatForDisplay(float $value, ?string $unitCode = null, ?string $measurementType = null): string
     {
         if (
@@ -77,10 +70,6 @@ final class PieceQuantity
 
         return $float > 0 && abs($float - round($float)) < 0.000001;
     }
-
-    /**
-     * @throws ValidationException
-     */
     public static function assertWholeQuantity(mixed $value, string $field = 'quantity'): void
     {
         if (self::isWholeQuantity($value)) {

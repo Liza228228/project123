@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
@@ -19,11 +21,7 @@
 
             @isset($header)
                 <header class="border-b border-orange-400/70 dark:border-orange-800/60 bg-orange-200/95 dark:bg-orange-950/75 backdrop-blur-md shadow-sm shadow-orange-900/[0.08] dark:shadow-black/30 text-stone-900 dark:text-stone-100">
-                    <div @class([
-                        'mx-auto py-3 sm:py-6 px-4 sm:px-6 lg:px-8',
-                        'max-w-7xl' => ! ($wide ?? false),
-                        'w-full max-w-[min(100%,1920px)]' => ($wide ?? false),
-                    ])>
+                    <div class="app-page-header">
                         <div class="w-full min-w-0">
                             {{ $header }}
                         </div>
@@ -32,7 +30,7 @@
             @endisset
 
             <main class="flex-1 overflow-x-hidden bg-white dark:bg-orange-950/80 py-4 sm:py-8 px-4 sm:px-0 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-                <div class="mx-auto w-full max-w-[min(100%,1920px)] px-0 sm:px-6 lg:px-8 mb-4 sm:mb-6 empty:hidden">
+                <div class="app-main-inset">
                     <x-flash-messages />
                 </div>
                 {{ $slot }}

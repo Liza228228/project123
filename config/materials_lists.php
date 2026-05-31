@@ -1,12 +1,5 @@
 <?php
-
-/**
- * Пагинация: журнал операций по складу, таблицы остатков (учёт оборудования и обзор по складам).
- *
- * MATERIALS_JOURNAL_PER_PAGE — по умолчанию для журнала (должно входить в MATERIALS_JOURNAL_PER_PAGE_OPTIONS).
- * MATERIALS_BALANCES_PER_PAGE — по умолчанию для остатков (должно входить в MATERIALS_BALANCES_PER_PAGE_OPTIONS).
- * По умолчанию допустимые размеры: 10, 15, 20, 30, 50.
- */
+// свой код проекта
 $parse = static function (string $optionsEnv, string $defaultEnv, string $optionsCsvDefault, string $defaultInt): array {
     $allowedRaw = array_filter(array_map('trim', explode(',', (string) env($optionsEnv, $optionsCsvDefault))));
     $allowed = array_values(array_unique(array_filter(array_map(static fn (string $v): int => (int) $v, $allowedRaw), static fn (int $v): bool => $v > 0)));

@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -357,6 +359,13 @@
                             && $inTransitCandidates->isNotEmpty();
                         $chiefCanMarkDelivered = Auth::user()->hasAnyRoleId([7, 4]);
                         $chiefDeliveryCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryDeliveredByBoilerChief());
+                        $chiefCanManageDeliveryDefect = $chiefCanMarkDelivered;
+                        $deliveryDefectItems = $application->items->filter(function ($i) {
+                            return $i->is_checked
+                                && $i->equipment_id !== null
+                                && $i->resolvedDeliveryStatus() === \App\Models\ApplicationItem::DELIVERY_DELIVERED
+                                && (int) ($i->delivery_warehouse_id ?? 0) > 0;
+                        });
                         $chiefOwnDraftView = $application->isBoilerChiefCreatedApplication()
                             && $application->isBoilerChiefDraftBeforeManagement();
                     @endphp
@@ -925,7 +934,7 @@
                                                             Применить ко всем позициям
                                                         </button>
                                                         <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm w-full whitespace-normal sm:whitespace-nowrap">
-                                                            Доставлено для всех в блоке
+                                                            Принять все на склад
                                                         </button>
                                                     </div>
                                                 </div>
@@ -973,7 +982,7 @@
                                                         </div>
                                                         <div class="w-full shrink-0 sm:w-auto">
                                                             <button type="submit" class="ui-btn ui-btn--primary ui-btn--sm w-full whitespace-nowrap sm:w-auto">
-                                                                Доставлено
+                                                                Принять на склад
                                                             </button>
                                                         </div>
                                                     </form>
@@ -1012,6 +1021,12 @@
                                     </script>
                                 </div>
                             @endif
+
+                            @include('applications.partials.delivery-defect-stock-section', [
+                                'application' => $application,
+                                'chiefCanManageDeliveryDefect' => $chiefCanManageDeliveryDefect,
+                                'deliveryDefectItems' => $deliveryDefectItems,
+                            ])
                         @endif
 
                         @if($showCatalogDeliveryInTransitForm)

@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
@@ -74,4 +75,41 @@ test('subdivision boiler chief lookup is cached per request', function (): void 
     Subdivision::resetBoilerChiefCache();
 
     expect(Subdivision::hasBoilerChiefAssigned((int) $subdivision->id))->toBeTrue();
+});
+
+test('custom equipment order filter is visible only to supply management accountant and administrator', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл фильтр-своё');
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Фильтр',
+        'patronymic' => '',
+        'email' => 'supply-filter-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $accountant = User::query()->create([
+        'surname' => 'Бух',
+        'name' => 'Фильтр',
+        'patronymic' => '',
+        'email' => 'accountant-filter-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => User::ACCOUNTANT_ROLE_ID,
+    ]);
+
+    $customOrderKey = \App\Support\ApplicationApprovalListingFilter::KEY_NEEDS_CUSTOM_ORDER;
+
+    expect(\App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($ctx['foreman'])['Исполнение'] ?? [])
+        ->not->toHaveKey($customOrderKey);
+    expect(\App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($supplyHead)['Исполнение'])
+        ->toHaveKey($customOrderKey);
+    expect(\App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($accountant)['Исполнение'])
+        ->toHaveKey($customOrderKey);
+
+    expect(\App\Support\ApplicationApprovalListingFilter::normalizeForUser($customOrderKey, $ctx['foreman']))
+        ->toBe(\App\Support\ApplicationApprovalListingFilter::KEY_ALL);
+    expect(\App\Support\ApplicationApprovalListingFilter::normalizeForUser($customOrderKey, $supplyHead))
+        ->toBe($customOrderKey);
 });

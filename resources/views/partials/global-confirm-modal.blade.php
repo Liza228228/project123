@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-modal name="app-confirm" :show="false" maxWidth="md" focusable>
     <div class="p-5 sm:p-6 space-y-4">
         <h3 id="app-confirm-title" class="text-base sm:text-lg font-semibold text-black dark:text-white">

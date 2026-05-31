@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
@@ -7,11 +8,6 @@ use App\Models\Warehouse;
 use App\Models\WarehouseType;
 use App\Support\AdministrationWarehouse;
 use Illuminate\Database\Seeder;
-
-/**
- * Все склады перечислены ниже текстом: подразделение (как в {@see SubdivisionSeeder::definitionNames()}), наименование, тип.
- * Главный склад — подразделение {@see AdministrationWarehouse::SUBDIVISION_NAME}, склад {@see AdministrationWarehouse::WAREHOUSE_NAME}.
- */
 class WarehouseSeeder extends Seeder
 {
     public function run(): void
@@ -77,20 +73,6 @@ class WarehouseSeeder extends Seeder
             );
         }
     }
-
-    /**
-     * Адреса складов по подразделениям (Иркутская область и города области).
-     * Поле address_house задаётся при сиде по порядку складов в подразделении (1, 2, 3…).
-     *
-     * @return array<string, array{
-     *     address_postal_code: string,
-     *     address_region: string,
-     *     address_city: string,
-     *     address_street: string,
-     *     address_block?: string|null,
-     *     address_flat?: string|null
-     * }>
-     */
     public static function subdivisionAddressCatalog(): array
     {
         return [
@@ -264,10 +246,6 @@ class WarehouseSeeder extends Seeder
             ],
         ];
     }
-
-    /**
-     * @return list<array{subdivision: string, name: string, type: string, comment: ?string}>
-     */
     private function warehouseRows(): array
     {
         return [

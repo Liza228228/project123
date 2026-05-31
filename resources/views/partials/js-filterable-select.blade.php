@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $searchInputId = $searchInputId ?? 'filterable_select_search';
     $selectInputId = $selectInputId ?? 'filterable_select';
     $preserveSelection = (bool) ($preserveSelection ?? true);

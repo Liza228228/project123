@@ -1,5 +1,6 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\User;
@@ -8,12 +9,6 @@ use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
-    /**
-     * Почты начальников котельной в том же порядке, что и {@see SubdivisionSeeder::definitionNames()}:
-     * первые 27 — по одному на подразделение, затем два дополнительных на первые два подразделения (Северный, Южный).
-     *
-     * @var list<string>
-     */
     public const BOILER_CHIEF_SEED_EMAILS = [
         'AntonovSV@mail.ru',
         'BelovDO@mail.ru',
@@ -45,13 +40,6 @@ class UserSeeder extends Seeder
         'GromovAP@mail.ru',
         'DorokhovIS@mail.ru',
     ];
-
-    /**
-     * Почты мастеров участка (role_id = 4) в том же порядке, что и в {@see ForemanSubdivisionSeeder}:
-     * первые записи — по одному подразделению из {@see SubdivisionSeeder::definitionNames()}, далее дополнительные мастера.
-     *
-     * @var list<string>
-     */
     public const FOREMAN_SEED_EMAILS = [
         'Kozlov@mail.ru',
         'SokolovIM@mail.ru',
@@ -147,10 +135,6 @@ class UserSeeder extends Seeder
             );
         }
     }
-
-    /**
-     * @return list<array{surname: string, name: string, patronymic: string, email: string, password: string, role_id: int}>
-     */
     private function boilerChiefUsers(string $password): array
     {
         $rows = [
@@ -199,10 +183,6 @@ class UserSeeder extends Seeder
 
         return $out;
     }
-
-    /**
-     * @return list<array{surname: string, name: string, patronymic: string, email: string, password: string, role_id: int}>
-     */
     private function foremanUsers(string $password): array
     {
         $rows = [

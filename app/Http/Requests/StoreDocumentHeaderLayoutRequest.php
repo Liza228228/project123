@@ -1,5 +1,6 @@
 <?php
 
+// валидация формы
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
@@ -21,10 +22,6 @@ class StoreDocumentHeaderLayoutRequest extends FormRequest
     {
         return $this->user() !== null;
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
@@ -46,10 +43,6 @@ class StoreDocumentHeaderLayoutRequest extends FormRequest
             'blocks' => 'блоки шапки',
         ];
     }
-
-    /**
-     * @return array{title: string, schema: array{blocks: list<array<string, mixed>>}}
-     */
     public function payload(): array
     {
         $validated = $this->validated();

@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     @php
         $minimalFillFieldsOnly = (bool) ($minimalFillFieldsOnly ?? false);
@@ -269,7 +271,6 @@
             if (!form) return;
             const minimalFillFieldsOnly = @json($minimalFillFieldsOnly);
             if (minimalFillFieldsOnly) {
-                // Нужна только логика DaData + отправка формы; всё остальное не инициализируем.
             }
             const applications = @json($applicationOptions);
             const singleApplicationSelection = @json($singleApplicationSelection ?? false);
@@ -854,7 +855,6 @@
                     }
                     metaInput.value = JSON.stringify(normalized);
                 } catch (_) {
-                    // ignore transient network issues
                 }
             };
 

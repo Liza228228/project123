@@ -1,17 +1,12 @@
 <?php
 
+// начальные данные для базы
 namespace Database\Seeders;
 
 use App\Models\Subdivision;
 use App\Models\Warehouse;
 use App\Models\WarehouseType;
 use Illuminate\Database\Seeder;
-
-/**
- * После {@see WarehouseSeeder}: у каждого подразделения не меньше 1 и не больше 2 складов
- * из этого сидера. Уже существующие склады (в т.ч. из CSV) не удаляются; добавляются только
- * недостающие, если у подразделения 0 или 1 склад.
- */
 class SubdivisionWarehouseSeeder extends Seeder
 {
     public function run(): void

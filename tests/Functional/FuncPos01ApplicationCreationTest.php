@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
@@ -98,6 +99,15 @@ test('foreman can save draft and submit to boiler chief when chief assigned', fu
         $chief
     );
     expect($app->index_list_status)->toBe('boiler');
+    expect($app->index_stage_key)->toBe('boiler');
+    expect($app->index_approval_key)->toBeNull();
+
+    $pendingIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_PENDING))
+        ->pluck('id')
+        ->all();
+    expect($pendingIds)->not->toContain($app->id);
 
     $this->actingAs($ctx['foreman'])->get(route('applications.edit', $app))
         ->assertForbidden();
@@ -915,10 +925,33 @@ test('boiler chief submits foreman application to management after boiler approv
     expect($app->boilerChiefCanSubmitToManagement())->toBeFalse();
     expect($app->isPendingManagementReview())->toBeTrue();
 
+    $atBoilerChiefIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_BOILER_CHIEF))
+        ->pluck('id')
+        ->all();
+    expect($atBoilerChiefIds)->not->toContain($app->id);
+
+    $atManagementIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_MANAGEMENT))
+        ->pluck('id')
+        ->all();
+    expect($atManagementIds)->toContain($app->id);
+
+    $pendingIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_PENDING))
+        ->pluck('id')
+        ->all();
+    expect($pendingIds)->toContain($app->id);
+
     ApplicationIndexPresenter::prepare(
         new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
         $management
     );
+    expect($app->index_stage_key)->toBe('management');
+    expect($app->index_approval_key)->toBe('pending');
     expect($app->index_list_status)->toBe('management');
 
     $this->actingAs($management)->get(route('applications.index'))
@@ -951,6 +984,297 @@ test('boiler chief submits foreman application to management after boiler approv
 
     $this->actingAs($chief)->get(route('applications.edit', $app))
         ->assertForbidden();
+});
+
+test('approved catalog application is highlighted for management until marked in transit', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл transit-highlight');
+
+    $mainWarehouse = \App\Support\AdministrationWarehouse::resolvePrimaryWarehouse();
+    expect($mainWarehouse)->not->toBeNull();
+
+    \App\Models\MaterialStockMovement::query()->where('equipment_id', $ctx['equipment']->id)->delete();
+    \App\Models\MaterialStockMovement::query()->create([
+        'equipment_id' => $ctx['equipment']->id,
+        'warehouse_id' => (int) $mainWarehouse->id,
+        'material_stock_movement_type_id' => \App\Models\MaterialStockMovementType::idFor(\App\Models\MaterialStockMovementType::NAME_RECEIPT),
+        'quantity' => 100,
+    ]);
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Транзит',
+        'patronymic' => 'Подсветка',
+        'email' => 'chief-transit-highlight-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $management = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Транзит',
+        'patronymic' => 'Подсветка',
+        'email' => 'supply-transit-highlight-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->first();
+    $itemId = (int) $app->items()->value('id');
+    expect($itemId)->toBeGreaterThan(0);
+    expect((int) $app->items()->value('equipment_id'))->toBe((int) $ctx['equipment']->id);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'boiler_items' => [(string) $itemId => ['is_checked' => '1']],
+    ])->assertRedirect(route('applications.show', $app));
+    $this->actingAs($chief)->post(route('applications.submit-for-management', $app))
+        ->assertRedirect(route('applications.show', $app));
+    $this->actingAs($management)->post(route('applications.approval', $app), [
+        'items' => [(string) $itemId => ['is_checked' => '1']],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh()->load('items');
+    $item = $app->items->firstWhere('id', $itemId);
+    expect($item)->not->toBeNull();
+    expect($item->equipment_id)->toBe($ctx['equipment']->id);
+    expect($app->managementHasSavedApproval())->toBeTrue();
+    expect($item->canMarkDeliveryInTransit())->toBeTrue();
+    expect($app->needsCatalogDeliveryInTransit())->toBeTrue();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $management
+    );
+    expect($app->index_needs_delivery_in_transit)->toBeTrue();
+    expect($app->index_fulfillment_key)->toBe('needs_delivery_in_transit');
+
+    $needsTransitFilterKey = \App\Support\ApplicationApprovalListingFilter::KEY_NEEDS_DELIVERY_IN_TRANSIT;
+    expect(\App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($management)['Исполнение'])
+        ->toHaveKey($needsTransitFilterKey);
+    expect(\App\Support\ApplicationApprovalListingFilter::optionGroupsForUser($ctx['foreman'])['Исполнение'] ?? [])
+        ->not->toHaveKey($needsTransitFilterKey);
+
+    $needsTransitIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, $needsTransitFilterKey, $management))
+        ->pluck('id')
+        ->all();
+    expect($needsTransitIds)->toContain($app->id);
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $ctx['foreman']
+    );
+    expect($app->index_needs_delivery_in_transit)->toBeFalse();
+
+    $app->items()->whereKey($itemId)->update([
+        'delivery_status_id' => \App\Models\ApplicationItem::DELIVERY_IN_TRANSIT_ID,
+    ]);
+
+    $app->refresh()->load('items');
+    expect($app->needsCatalogDeliveryInTransit())->toBeFalse();
+    expect($app->isApprovedDeliveryFullyInTransit())->toBeTrue();
+
+    $needsTransitIdsAfter = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, $needsTransitFilterKey, $management))
+        ->pluck('id')
+        ->all();
+    expect($needsTransitIdsAfter)->not->toContain($app->id);
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $management
+    );
+    expect($app->index_needs_delivery_in_transit)->toBeFalse();
+    expect($app->index_fulfillment_key)->toBe('in_transit');
+});
+
+test('partial position approval filter matches applications with partly approved items', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл partial-filter');
+
+    $equipmentTwo = \App\Models\Equipment::query()->create([
+        'name' => 'Фильтр частичное-'.uniqid('', true),
+        'measurement_unit_id' => $ctx['equipment']->measurement_unit_id,
+    ]);
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Частичный',
+        'patronymic' => 'Фильтр',
+        'email' => 'chief-partial-filter-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $management = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Частичный',
+        'patronymic' => 'Фильтр',
+        'email' => 'supply-partial-filter-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+            [
+                'equipment_id' => $equipmentTwo->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->latest('id')->first();
+    $itemIds = $app->items()->orderBy('id')->pluck('id')->all();
+    expect($itemIds)->toHaveCount(2);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app));
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'boiler_items' => [
+            (string) $itemIds[0] => ['is_checked' => '1'],
+            (string) $itemIds[1] => ['is_checked' => '1'],
+        ],
+    ]);
+    $this->actingAs($chief)->post(route('applications.submit-for-management', $app));
+
+    $app->refresh();
+    $this->actingAs($management)->post(route('applications.approval', $app), [
+        'items' => [
+            (string) $itemIds[0] => ['is_checked' => '1'],
+            (string) $itemIds[1] => ['is_checked' => '0', 'reason_not_selected' => 'Не требуется по объекту'],
+        ],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh()->load('items');
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $management
+    );
+    expect($app->index_approval_key)->toBe('partial');
+
+    $partialIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_PARTIAL))
+        ->pluck('id')
+        ->all();
+    expect($partialIds)->toContain($app->id);
+});
+
+test('partial at management shows mixed badge and matches partial filter before management saves', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл partial-at-mgmt');
+
+    $equipmentTwo = \App\Models\Equipment::query()->create([
+        'name' => 'Фильтр partial-at-mgmt-'.uniqid('', true),
+        'measurement_unit_id' => $ctx['equipment']->measurement_unit_id,
+    ]);
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Частичный',
+        'patronymic' => 'УРуководства',
+        'email' => 'chief-partial-at-mgmt-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $chief->boilerChiefSubdivisions()->sync([$ctx['subdivision']->id]);
+
+    $management = \App\Models\User::query()->create([
+        'surname' => 'Снаб',
+        'name' => 'Частичный',
+        'patronymic' => 'УРуководства',
+        'email' => 'supply-partial-at-mgmt-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+            [
+                'equipment_id' => $equipmentTwo->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->latest('id')->first();
+    $itemIds = $app->items()->orderBy('id')->pluck('id')->all();
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app));
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'boiler_items' => [
+            (string) $itemIds[0] => ['is_checked' => '1'],
+            (string) $itemIds[1] => ['is_checked' => '0', 'reason_not_selected' => 'Не требуется по объекту'],
+        ],
+    ]);
+    $this->actingAs($chief)->post(route('applications.submit-for-management', $app));
+
+    $app->refresh()->load('items');
+    expect($app->isPendingManagementReview())->toBeTrue();
+    expect(\App\Support\ApplicationApprovalListingFilter::hasMixedItemApproval($app))->toBeTrue();
+
+    ApplicationIndexPresenter::prepare(
+        new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
+        $management
+    );
+    expect($app->index_stage_key)->toBe('management');
+    expect($app->index_approval_key)->toBe('partial');
+
+    $atManagementIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_MANAGEMENT))
+        ->pluck('id')
+        ->all();
+    expect($atManagementIds)->toContain($app->id);
+
+    $partialIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_PARTIAL))
+        ->pluck('id')
+        ->all();
+    expect($partialIds)->toContain($app->id);
 });
 
 test('management edit of released application requires manual approval without boiler chief re-review', function (): void {

@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $qty = (float) ($quantity ?? 0);
     $unitCode = trim((string) ($unitCode ?? '')) ?: 'шт';
     $measurementTypeCode = trim((string) ($measurementTypeCode ?? ''));

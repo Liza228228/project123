@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\Application;
@@ -9,16 +10,8 @@ use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use Illuminate\Database\Eloquent\Builder;
 
-/**
- * Доступный остаток каталожного оборудования на основном складе с учётом резерва
- * по другим заявкам после согласования снабжения (без физического списания).
- * Для типа «размер» — отдельно по каждому размеру (receipt_variant на складе).
- */
 final class ApplicationCatalogStockAvailability
 {
-    /**
-     * @return array<int|string, float> ключ: equipment_id или "equipment_id:SIZE"
-     */
     public static function reservedQuantitiesByEquipmentId(?int $excludeApplicationId = null): array
     {
         $applicationIds = Application::query()
@@ -94,7 +87,8 @@ final class ApplicationCatalogStockAvailability
         $issueId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
         $query = MaterialStockMovement::query()
             ->where('equipment_id', $equipmentId)
-            ->where('warehouse_id', $warehouseId);
+            ->where('warehouse_id', $warehouseId)
+            ->where('stock_bucket', WarehouseStockBucket::GOOD);
 
         if ($sizeVariant !== null && trim($sizeVariant) !== '') {
             $normalizedSize = mb_strtoupper(trim($sizeVariant));
@@ -107,10 +101,6 @@ final class ApplicationCatalogStockAvailability
 
         return (float) $sum;
     }
-
-    /**
-     * @return int|string
-     */
     public static function stockAggregateKey(int $equipmentId, ?string $sizeVariant): int|string
     {
         if ($sizeVariant !== null && trim($sizeVariant) !== '') {
@@ -119,10 +109,6 @@ final class ApplicationCatalogStockAvailability
 
         return $equipmentId;
     }
-
-    /**
-     * @return int|string
-     */
     private static function reservationAggregateKey(int $equipmentId, ApplicationItem $item): int|string
     {
         if (PieceQuantity::isClothingMeasurement($item->storedMeasurementType())) {
@@ -134,10 +120,6 @@ final class ApplicationCatalogStockAvailability
 
         return $equipmentId;
     }
-
-    /**
-     * @return array<string, float> "applicationId:itemId" => issued qty
-     */
     private static function issuedQuantitiesByApplicationItemKey(): array
     {
         $issueId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
@@ -160,10 +142,6 @@ final class ApplicationCatalogStockAvailability
 
         return $map;
     }
-
-    /**
-     * Каталожная строка или «своё» с пометкой «+на согласовании» (дробление при нехватке на складе).
-     */
     private static function resolveCatalogEquipmentIdForReservation(ApplicationItem $item): int
     {
         $direct = (int) ($item->equipment_id ?? 0);

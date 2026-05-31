@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\Application;
@@ -10,9 +11,6 @@ use Illuminate\Support\Collection;
 
 final class ReportLayoutEquipmentApplications
 {
-    /**
-     * @return Builder<Application>
-     */
     public static function queryForUser(?User $user): Builder
     {
         return self::applyUserAccessScope(
@@ -24,13 +22,6 @@ final class ReportLayoutEquipmentApplications
             $user
         );
     }
-
-    /**
-     * Заявки для подстановки оборудования в акт установки: доставлено, можно прикрепить акт,
-     * не в архиве, акт и фото ещё не загружены.
-     *
-     * @return Builder<Application>
-     */
     public static function queryForInstallationActUser(?User $user): Builder
     {
         return self::applyUserAccessScope(
@@ -42,18 +33,10 @@ final class ReportLayoutEquipmentApplications
             $user
         );
     }
-
-    /**
-     * @return Collection<int, Application>
-     */
     public static function collectionForUser(?User $user): Collection
     {
         return self::queryForUser($user)->get();
     }
-
-    /**
-     * @return Collection<int, Application>
-     */
     public static function collectionForInstallationActUser(?User $user): Collection
     {
         return self::queryForInstallationActUser($user)
@@ -64,58 +47,25 @@ final class ReportLayoutEquipmentApplications
             )
             ->values();
     }
-
-    /**
-     * @return list<array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }>
-     */
     public static function clientOptionsForUser(?User $user): array
     {
         return self::clientOptionsFromCollection(self::collectionForUser($user));
     }
-
-    /**
-     * @return list<array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }>
-     */
     public static function clientOptionsForInstallationActUser(?User $user): array
     {
-        return self::clientOptionsFromCollection(self::collectionForInstallationActUser($user));
+        return self::clientOptionsFromCollection(
+            self::collectionForInstallationActUser($user),
+            forInstallationAct: true,
+        );
     }
-
-    /**
-     * @param  Collection<int, Application>  $applications
-     * @return list<array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }>
-     */
-    private static function clientOptionsFromCollection(Collection $applications): array
+    private static function clientOptionsFromCollection(Collection $applications, bool $forInstallationAct = false): array
     {
         return $applications
-            ->map(fn (Application $application): array => self::clientOptionFromApplication($application))
+            ->map(fn (Application $application): array => self::clientOptionFromApplication($application, $forInstallationAct))
             ->filter(fn (array $row): bool => $row['equipment'] !== [])
             ->values()
             ->all();
     }
-
-    /**
-     * @param  Builder<Application>  $query
-     * @return Builder<Application>
-     */
     private static function applyUserAccessScope(Builder $query, ?User $user): Builder
     {
         if (! $user instanceof User) {
@@ -143,39 +93,70 @@ final class ReportLayoutEquipmentApplications
 
         return $query->whereRaw('1 = 0');
     }
-
-    /**
-     * @return array{
-     *     id: int,
-     *     label: string,
-     *     equipment: list<array{name: string, quantity: string, line: string}>,
-     *     foreman_user_id: int,
-     *     subdivision_id: int
-     * }
-     */
-    private static function clientOptionFromApplication(Application $application): array
+    private static function clientOptionFromApplication(Application $application, bool $forInstallationAct = false): array
     {
         $lineItems = $application->items
             ->filter(fn (ApplicationItem $item): bool => $item->hasArrivedAtWarehouseForReport())
-            ->map(function (ApplicationItem $item): array {
-                $line = trim($item->equipment_display_name.' x '.$item->quantity_with_unit);
+            ->map(function (ApplicationItem $item) use ($application, $forInstallationAct): ?array {
+                $quantityLabel = $forInstallationAct
+                    ? self::installationActQuantityLabelForItem($application, $item)
+                    : (string) $item->quantity_with_unit;
+
+                if ($forInstallationAct && trim($quantityLabel) === '') {
+                    return null;
+                }
+
+                $line = trim($item->equipment_display_name.' x '.$quantityLabel);
+                if ($line === '' || str_ends_with($line, ' x ')) {
+                    return null;
+                }
 
                 return [
                     'name' => (string) $item->equipment_display_name,
-                    'quantity' => (string) $item->quantity_with_unit,
+                    'quantity' => $quantityLabel,
                     'line' => $line,
                 ];
             })
-            ->filter(fn (array $row): bool => $row['line'] !== '')
+            ->filter(fn ($row): bool => is_array($row))
             ->values()
             ->all();
 
         return [
             'id' => (int) $application->id,
             'label' => '#'.$application->id.' - '.($application->subdivision?->name ?? 'Без подразделения'),
+            'subdivision_name' => (string) ($application->subdivision?->name ?? ''),
             'equipment' => $lineItems,
             'foreman_user_id' => (int) ($application->user_id ?? 0),
             'subdivision_id' => (int) ($application->subdivision_id ?? 0),
         ];
+    }
+
+    private static function installationActQuantityLabelForItem(Application $application, ApplicationItem $item): string
+    {
+        $quantity = WarehouseStockBucket::installationActReportQuantityForApplicationItem(
+            (float) $item->quantity,
+            (int) $application->id,
+            (int) $item->id,
+        );
+
+        if ($quantity < 0.0005) {
+            return '';
+        }
+
+        if (($item->measurement_type ?? '') === 'clothing_size') {
+            $size = trim((string) ($item->size_value ?? ''));
+            if ($size !== '') {
+                $rounded = (int) round($quantity);
+
+                return $rounded === 1 ? $size : $rounded.'×'.$size;
+            }
+        }
+
+        $unit = trim((string) ($item->quantity_unit ?? '')) ?: 'шт';
+        if (abs($quantity - round($quantity)) < 0.0005) {
+            return ((int) round($quantity)).' '.$unit;
+        }
+
+        return rtrim(rtrim(number_format($quantity, 3, '.', ''), '0'), '.').' '.$unit;
     }
 }

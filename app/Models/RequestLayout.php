@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -23,10 +24,6 @@ class RequestLayout extends Model
         'division_assigner_id',
         'document_header_layout_id',
     ];
-
-    /**
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -54,11 +51,6 @@ class RequestLayout extends Model
     {
         return $this->hasMany(RequestSubmission::class, 'layout_structure_id');
     }
-
-    /**
-     * Число слотов подписей для PDF: 0 — макет без подписей (явно в schema).
-     * Если ключ отсутствует (старые макеты), число выводится из пресета подвала (минимум 1).
-     */
     public static function allowsApplicationEquipmentInsert(?array $schema): bool
     {
         $schema = is_array($schema) ? $schema : [];
@@ -85,20 +77,6 @@ class RequestLayout extends Model
 
         return max(1, min(3, $inferred));
     }
-
-    /**
-     * JSON для формы «Заявки по макетам» и GET layout-schema (поля, подписи, пресет подвала).
-     *
-     * @return array{
-     *     id: int,
-     *     title: string,
-     *     fields: list<array<string, mixed>>,
-     *     pdf_footer_preset: string,
-     *     signature_slots_count: int,
-     *     signature_roles: array<int, int>,
-     *     signature_role_names: array<int, string>
-     * }
-     */
     public function clientFillPayload(): array
     {
         $schema = is_array($this->schema) ? $this->schema : [];
@@ -126,6 +104,9 @@ class RequestLayout extends Model
             }
             if (! empty($row['readonly'])) {
                 $fieldPayload['readonly'] = true;
+            }
+            if (! empty($row['simple_input'])) {
+                $fieldPayload['simple_input'] = true;
             }
             $fields[] = $fieldPayload;
         }

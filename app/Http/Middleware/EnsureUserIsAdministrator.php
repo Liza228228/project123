@@ -1,5 +1,6 @@
 <?php
 
+// проверка доступа
 namespace App\Http\Middleware;
 
 use Closure;

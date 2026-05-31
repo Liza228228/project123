@@ -1,3 +1,4 @@
+// скрипт на странице
 const STORAGE_KEY = 'color-scheme';
 
 export function bindThemeToggles() {

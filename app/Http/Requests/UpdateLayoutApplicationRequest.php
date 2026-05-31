@@ -1,5 +1,6 @@
 <?php
 
+// валидация формы
 namespace App\Http\Requests;
 
 use App\Models\RequestSubmission;

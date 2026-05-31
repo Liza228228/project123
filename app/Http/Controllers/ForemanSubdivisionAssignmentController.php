@@ -1,5 +1,6 @@
 <?php
 
+// контроллер
 namespace App\Http\Controllers;
 
 use App\Models\Subdivision;
@@ -268,7 +269,6 @@ class ForemanSubdivisionAssignmentController extends Controller
         ];
 
         try {
-            /** @var DadataAddressService $dadata */
             $dadata = app(DadataAddressService::class);
             $cleaned = $dadata->clean($normalizedAddress);
             if ($cleaned !== []) {
@@ -284,7 +284,6 @@ class ForemanSubdivisionAssignmentController extends Controller
                 ];
             }
         } catch (RuntimeException) {
-            //
         }
 
         if (! $this->warehouseStructuredAddressIsPresent($addressParts)) {
@@ -416,10 +415,6 @@ class ForemanSubdivisionAssignmentController extends Controller
                 ? 'Заявки переназначены, назначения мастера обновлены.'
                 : 'Назначения для мастера участка обновлены.');
     }
-
-    /**
-     * @return list<int>
-     */
     private function resolveNewSubdivisionIdsForUpdate(Request $request, User $foreman): array
     {
         $chiefManagedIds = $this->chiefManagedSubdivisionIds($request);
@@ -444,12 +439,6 @@ class ForemanSubdivisionAssignmentController extends Controller
             $chiefManagedIds
         );
     }
-
-    /**
-     * @param  array{subdivision_ids?: list<int|string>}  $validated
-     * @param  Collection<int, int>|null  $chiefManagedIds
-     * @return list<int>
-     */
     private function resolveNewSubdivisionIdsFromValidated(User $foreman, array $validated, ?Collection $chiefManagedIds): array
     {
         $selectedFromForm = collect($validated['subdivision_ids'] ?? [])
@@ -477,10 +466,6 @@ class ForemanSubdivisionAssignmentController extends Controller
             abort(403, 'Просмотр подразделений и складов разрешён только директору, техническому директору, начальнику отдела снабжения, администратору и бухгалтеру.');
         }
     }
-
-    /**
-     * Просмотр списка мастеров и правка назначений мастеров на подразделения.
-     */
     private function authorizeForemanAssignmentAccess(Request $request): void
     {
         if ($this->canAssignForemenToSubdivisions($request)) {
@@ -518,12 +503,6 @@ class ForemanSubdivisionAssignmentController extends Controller
             abort(403, 'Удаление подразделений и складов разрешено только администратору.');
         }
     }
-
-    /**
-     * Для начальника котельной — id подразделений в его зоне; иначе null (полный доступ).
-     *
-     * @return Collection<int, int>|null
-     */
     private function chiefManagedSubdivisionIds(Request $request): ?Collection
     {
         if (! $request->user()?->hasRoleId(7)) {
@@ -542,10 +521,6 @@ class ForemanSubdivisionAssignmentController extends Controller
 
         return mb_substr($text, 0, $maxLength);
     }
-
-    /**
-     * @param  array<string, ?string>  $addressParts
-     */
     private function warehouseStructuredAddressIsPresent(array $addressParts): bool
     {
         foreach ($addressParts as $key => $value) {

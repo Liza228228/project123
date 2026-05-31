@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -13,7 +15,6 @@
             margin: 0;
             padding: 28px 36px 40px;
         }
-        /* nl2br даёт <br>; без pre-wrap переносы только от <br>, без дублирования */
         br {
             line-height: 1.2em;
         }

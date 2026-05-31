@@ -1,5 +1,6 @@
 <?php
 
+// валидация формы
 namespace App\Http\Requests;
 
 use App\Models\RequestLayout;
@@ -14,10 +15,6 @@ class StoreReportSubmissionRequest extends FormRequest
     {
         return $this->user() !== null;
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
@@ -30,10 +27,6 @@ class StoreReportSubmissionRequest extends FormRequest
             'form_document_number' => ['nullable', 'string', 'max:120'],
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function attributes(): array
     {
         return [
@@ -47,10 +40,6 @@ class StoreReportSubmissionRequest extends FormRequest
             'form_document_number' => 'номер документа',
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
@@ -106,10 +95,6 @@ class StoreReportSubmissionRequest extends FormRequest
             }
         });
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function fieldValues(RequestLayout $layout): array
     {
         $fieldsByKey = [];

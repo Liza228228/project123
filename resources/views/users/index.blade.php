@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-2 w-full min-w-0">
@@ -12,7 +14,7 @@
         </div>
     </x-slot>
 
-    <div class="py-2 sm:py-8 md:py-12"
+    <div class="app-shell py-2 sm:py-8 md:py-12"
          x-data="{
             blockUserName: '',
             blockActionUrl: '',
@@ -93,8 +95,7 @@
                 }
             },
          }">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
+        <div class="bg-white dark:bg-stone-950 overflow-hidden shadow-sm rounded-lg border border-stone-200 dark:border-stone-800">
                 <div class="p-4 sm:p-6 space-y-5 sm:space-y-6">
                     <form method="get" action="{{ route('users.index') }}" class="flex flex-col gap-4" data-auto-submit="filter">
                         <div class="app-filter-panel">
@@ -334,7 +335,6 @@
                     @endif
                 </div>
             </div>
-        </div>
 
         <x-modal name="confirm-user-block-error" :show="false" maxWidth="md" focusable>
             <div class="p-5 sm:p-6 space-y-4">

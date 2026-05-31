@@ -1,3 +1,4 @@
+// скрипт на странице
 import Alpine from 'alpinejs';
 
 document.addEventListener('alpine:init', () => {

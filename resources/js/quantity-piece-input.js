@@ -1,6 +1,4 @@
-/**
- * Правила поля количества: в штуках — только целые, без точки и запятой.
- */
+// скрипт на странице
 export function isPieceMeasurementType(type) {
     return String(type || '').trim() === 'piece';
 }

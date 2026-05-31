@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -37,7 +39,6 @@
                                 <tbody class="divide-y divide-orange-100/90 dark:divide-orange-900/30">
                                     @foreach($applicationRows as $row)
                                         @php
-                                            /** @var \App\Models\Application $application */
                                             $application = $row['application'];
                                             $foremen = $row['foremen'];
                                         @endphp

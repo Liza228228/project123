@@ -1,5 +1,6 @@
 <?php
 
+// функциональный тест
 use App\Http\Controllers\ApplicationController;
 use App\Models\Application;
 use App\Models\ApplicationItem;
@@ -55,8 +56,6 @@ test('installation act write-off uses partial quantity up to ordered amount', fu
     $controller = app(ApplicationController::class);
     $method = new ReflectionMethod(ApplicationController::class, 'writeOffDeliveredItemsOnRecipientWarehouses');
     $method->setAccessible(true);
-
-    /** @var array{issued_lines: int, warnings: list<string>} $summary */
     $summary = $method->invoke(
         $controller,
         $application,

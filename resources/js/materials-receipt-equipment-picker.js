@@ -1,3 +1,4 @@
+// скрипт на странице
 import {
     bindPieceQuantityTextInput,
     isPieceMeasurementType,

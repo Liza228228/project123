@@ -1,14 +1,11 @@
 <?php
 
+// модель
 namespace App\Models\Scopes;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
-
-/**
- * Скрывает позиции, снятые с заявки при редактировании (soft-remove).
- */
 final class ActiveApplicationItemScope implements Scope
 {
     public function apply(Builder $builder, Model $model): void

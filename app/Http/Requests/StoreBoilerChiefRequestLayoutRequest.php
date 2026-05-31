@@ -1,5 +1,6 @@
 <?php
 
+// валидация формы
 namespace App\Http\Requests;
 
 use App\Support\RequestLayoutTableField;
@@ -80,10 +81,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             $this->merge($merge);
         }
     }
-
-    /**
-     * Нормализует ключ поля: обрезка, одиночные пробелы, только буквы/цифры/пробел/«_».
-     */
     private function sanitizeRequestLayoutFieldKey(string $key): string
     {
         $key = trim(preg_replace('/\s+/u', ' ', $key));
@@ -106,10 +103,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
     {
         return $this->user() !== null;
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
@@ -169,10 +162,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             ],
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
@@ -259,19 +248,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             }
         });
     }
-
-    /**
-     * @return array{
-     *     title: string,
-     *     schema: array<string, mixed>,
-     *     has_header: bool,
-     *     type: string,
-     *     version: int,
-     *     approver_id: int|null,
-     *     division_assigner_id: int|null,
-     *     document_header_layout_id: int|null
-     * }
-     */
     public function layoutPayload(): array
     {
         $validated = $this->validated();
@@ -412,10 +388,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             'document_header_layout_id' => $documentHeaderLayoutId,
         ];
     }
-
-    /**
-     * @return array{0: string, 1: string}
-     */
     private function footerTemplatesFromPreset(string $preset, bool $stamp): array
     {
         $mp = $stamp ? "\n\nМ.П." : '';
@@ -443,10 +415,6 @@ class StoreBoilerChiefRequestLayoutRequest extends FormRequest
             ],
         };
     }
-
-    /**
-     * @param  list<string>  $allowed
-     */
     private function normalizedPdfAlign(mixed $value, array $allowed, string $default): string
     {
         $v = strtolower(trim((string) ($value ?? '')));

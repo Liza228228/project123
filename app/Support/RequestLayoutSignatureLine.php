@@ -1,10 +1,10 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 final class RequestLayoutSignatureLine
 {
-    /** Линия под подпись в превью макета и в PDF. */
     public const MARK = '_______________';
 
     public static function mark(): string

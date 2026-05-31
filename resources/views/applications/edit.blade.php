@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -631,8 +633,6 @@
                     var cur = normalizeReasonState(mode === 'list' ? readListRowState(row) : readCustomRowState(row));
                     var wrapInitKey = 'data-ui-initial-state';
                     if (!wrap.hasAttribute(wrapInitKey)) {
-                        // Фиксируем стартовое состояние из реального UI, чтобы не требовать комментарий
-                        // из-за служебных автоподстановок при первом рендере.
                         wrap.setAttribute(wrapInitKey, JSON.stringify(cur));
                     }
                     var initFromUi = null;

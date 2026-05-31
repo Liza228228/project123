@@ -1,5 +1,6 @@
 <?php
 
+// учёт материалов на складах
 namespace App\Http\Controllers;
 
 use App\Models\Equipment;
@@ -11,8 +12,9 @@ use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Support\AdministrationWarehouse;
-use App\Support\PieceQuantity;
 use App\Support\MaterialsListPerPage;
+use App\Support\PieceQuantity;
+use App\Support\WarehouseStockBucket;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,6 +25,9 @@ use Illuminate\View\View;
 
 class MaterialAccountingController extends Controller
 {
+    private const OVERVIEW_STOCK_FILTER_ON_WAREHOUSE = 'on_stock';
+
+    private const OVERVIEW_STOCK_FILTER_WRITTEN_OFF = 'written_off';
     public function index(Request $request): View
     {
         $user = $request->user();
@@ -126,12 +131,6 @@ class MaterialAccountingController extends Controller
             'mainWarehouseForJournalContext',
         ) + $journalPerPage);
     }
-
-    /**
-     * Склады, по которым мастер участка / начальник котельной может видеть журнал (только свои подразделения).
-     *
-     * @return list<int>|null null — без ограничения (прочие роли).
-     */
     private function materialsJournalWarehouseIdsScopedToUserSubdivisions(?User $user): ?array
     {
         if (! $user) {
@@ -166,10 +165,6 @@ class MaterialAccountingController extends Controller
             ->values()
             ->all();
     }
-
-    /**
-     * «Учёт оборудования» (роли {@see User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS} и бухгалтер для просмотра) или «Остатки по складам».
-     */
     private function materialsJournalBackUrl(?User $user, ?int $selectedWarehouseId): string
     {
         if ($user?->hasAnyRoleId([1, 2, 3])) {
@@ -262,15 +257,28 @@ class MaterialAccountingController extends Controller
             $overviewTabQuery['equipment'] = $equipmentSearch;
         }
 
+        $stockFilter = $this->overviewStockFilter($request);
+        if ($stockFilter !== '') {
+            $overviewTabQuery['stock_filter'] = $stockFilter;
+        }
+
         $equipmentBalances = collect();
-        if ($selectedWarehouseId > 0) {
+        $warehouseStockOptions = [];
+        $canManageWarehouseStock = false;
+        if ($selectedWarehouseId > 0 && $selectedWarehouse) {
             $equipmentBalancesQuery = $this->overviewWarehouseBalanceBaseQuery($selectedWarehouseId);
             $this->applyEquipmentBalancesSearchToMovementAggregates($equipmentBalancesQuery, $equipmentSearch);
+            $this->applyOverviewBalanceStockFilter($equipmentBalancesQuery, $stockFilter);
 
             $equipmentBalances = $equipmentBalancesQuery
                 ->orderBy('equipment.name')
                 ->paginate($balancesPerPage['perPage'])
                 ->appends($overviewTabQuery);
+
+            if ($this->userCanManageStockOnWarehouse($user, $selectedWarehouse)) {
+                $canManageWarehouseStock = true;
+                $warehouseStockOptions = $this->mainWarehouseStockOperationOptions($selectedWarehouseId);
+            }
         }
 
         return view('materials.overview', [
@@ -282,6 +290,10 @@ class MaterialAccountingController extends Controller
             'usingDefaultMainWarehouse' => $usingDefaultMainWarehouse,
             'overviewTabQuery' => $overviewTabQuery,
             'equipmentSearch' => $equipmentSearch,
+            'stockFilter' => $stockFilter,
+            'canManageWarehouseStock' => $canManageWarehouseStock,
+            'warehouseStockOptions' => $warehouseStockOptions,
+            'mainWarehouse' => $mainWarehouse,
         ] + $balancesPerPage);
     }
 
@@ -380,32 +392,61 @@ class MaterialAccountingController extends Controller
         return mb_substr(trim((string) $request->query('equipment', '')), 0, 150);
     }
 
-    private function applyEquipmentBalancesSearchToEquipmentQuery(Builder $query, string $term): void
+    private function overviewStockFilter(Request $request): string
     {
-        $term = trim($term);
-        if ($term === '') {
+        $filter = trim((string) $request->query('stock_filter', ''));
+
+        return in_array($filter, [
+            self::OVERVIEW_STOCK_FILTER_ON_WAREHOUSE,
+            self::OVERVIEW_STOCK_FILTER_WRITTEN_OFF,
+        ], true) ? $filter : '';
+    }
+
+    private function applyOverviewBalanceStockFilter(Builder $query, string $filter): void
+    {
+        if ($filter === '') {
             return;
         }
 
-        $pattern = '%'.addcslashes($term, '%_\\').'%';
-        $query->where(function (Builder $q) use ($pattern): void {
-            $q->where('name', 'like', $pattern)
-                ->orWhere('value', 'like', $pattern);
-        });
+        $goodBucket = WarehouseStockBucket::GOOD;
+        $defectiveBucket = WarehouseStockBucket::DEFECTIVE;
+        $issueType = str_replace("'", "''", MaterialStockMovementType::NAME_ISSUE);
+
+        $warehouseBalanceSql = "(
+            SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = '{$issueType}' THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$goodBucket} THEN material_stock_movements.quantity ELSE 0 END)
+            + SUM(CASE WHEN material_stock_movements.stock_bucket = {$defectiveBucket} AND msm_types.name = '{$issueType}' THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$defectiveBucket} THEN material_stock_movements.quantity ELSE 0 END)
+        )";
+
+        $qtyOutSql = "SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = '{$issueType}' THEN material_stock_movements.quantity ELSE 0 END)";
+
+        if ($filter === self::OVERVIEW_STOCK_FILTER_ON_WAREHOUSE) {
+            $query->havingRaw("{$warehouseBalanceSql} > 0.0005");
+
+            return;
+        }
+
+        $query->havingRaw("{$warehouseBalanceSql} <= 0.0005 AND {$qtyOutSql} > 0.0005");
+    }
+
+    private function applyEquipmentBalancesSearchToEquipmentQuery(Builder $query, string $term): void
+    {
+        $this->applyEquipmentBalancesSearchConstraints($query, $term, '');
     }
 
     private function applyEquipmentBalancesSearchToMovementAggregates(Builder $query, string $term): void
     {
+        $this->applyEquipmentBalancesSearchConstraints($query, $term, 'equipment.');
+    }
+
+    private function applyEquipmentBalancesSearchConstraints(Builder $query, string $term, string $prefix): void
+    {
         $term = trim($term);
         if ($term === '') {
             return;
         }
 
         $pattern = '%'.addcslashes($term, '%_\\').'%';
-        $query->where(function (Builder $q) use ($pattern): void {
-            $q->where('equipment.name', 'like', $pattern)
-                ->orWhere('equipment.value', 'like', $pattern);
-        });
+        $query->where($prefix.'name', 'like', $pattern);
     }
 
     public function storeMaterial(Request $request): RedirectResponse
@@ -535,7 +576,11 @@ class MaterialAccountingController extends Controller
 
         DB::transaction(function () use ($validated, $type, $quantity, $receiptVariant, $equipment) {
             if ($type === MaterialStockMovementType::NAME_ISSUE) {
-                $balance = $this->currentBalance((int) $validated['equipment_id'], (int) $validated['warehouse_id']);
+                $balance = WarehouseStockBucket::balance(
+                    (int) $validated['equipment_id'],
+                    (int) $validated['warehouse_id'],
+                    WarehouseStockBucket::GOOD
+                );
                 if ($balance < $quantity) {
                     throw ValidationException::withMessages([
                         'quantity' => 'Недостаточно остатка на складе. Доступно: '.PieceQuantity::formatForDisplay(
@@ -553,6 +598,7 @@ class MaterialAccountingController extends Controller
                 'material_stock_movement_type_id' => (int) $validated['material_stock_movement_type_id'],
                 'quantity' => $quantity,
                 'receipt_variant' => $receiptVariant,
+                'stock_bucket' => WarehouseStockBucket::GOOD,
                 'unit_price' => null,
                 'counterparty' => isset($validated['counterparty']) ? trim((string) $validated['counterparty']) : null,
                 'comment' => isset($validated['comment']) ? trim((string) $validated['comment']) : null,
@@ -567,26 +613,277 @@ class MaterialAccountingController extends Controller
             ->with('status', 'Операция по оборудованию сохранена.');
     }
 
+    public function transferMainWarehouseToDefective(Request $request): RedirectResponse
+    {
+        $warehouse = $this->authorizeWarehouseStockManagement($request);
+
+        $validated = $request->validate(
+            $this->mainWarehouseStockOperationBaseRules() + [
+                'defect_reason' => ['required', 'string', 'min:3', 'max:1000'],
+            ],
+            $this->mainWarehouseStockOperationValidationMessages() + [
+                'defect_reason.required' => 'Укажите причину брака (не менее 3 символов).',
+            ],
+        );
+
+        $operation = $this->resolveMainWarehouseStockOperation($validated, 'quantity', $warehouse);
+
+        WarehouseStockBucket::transferGoodToDefectiveOnWarehouse(
+            $operation['equipment_id'],
+            (int) $warehouse->id,
+            $operation['quantity'],
+            (string) $validated['defect_reason'],
+            (int) $request->user()->id,
+            $operation['receipt_variant'],
+        );
+
+        return $this->redirectToOverviewAfterStockOperation($request, $warehouse)
+            ->with('status', 'Оборудование переведено в брак на складе «'.$warehouse->name.'».');
+    }
+
+    public function disposeMainWarehouseDefective(Request $request): RedirectResponse
+    {
+        $warehouse = $this->authorizeWarehouseStockManagement($request);
+
+        $validated = $request->validate(
+            $this->mainWarehouseStockOperationBaseRules() + [
+                'comment' => ['nullable', 'string', 'max:2000'],
+            ],
+            $this->mainWarehouseStockOperationValidationMessages(),
+        );
+
+        $operation = $this->resolveMainWarehouseStockOperation($validated, 'quantity', $warehouse);
+
+        WarehouseStockBucket::disposeDefectiveOnWarehouse(
+            $operation['equipment_id'],
+            (int) $warehouse->id,
+            $operation['quantity'],
+            isset($validated['comment']) ? trim((string) $validated['comment']) : null,
+            (int) $request->user()->id,
+            $operation['receipt_variant'],
+        );
+
+        return $this->redirectToOverviewAfterStockOperation($request, $warehouse)
+            ->with('status', 'Бракованное оборудование утилизировано со склада «'.$warehouse->name.'».');
+    }
+
+    private function userCanManageStockOnWarehouse(?User $user, Warehouse $warehouse): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $mainWarehouse = $this->resolveMainWarehouse();
+        if (
+            $mainWarehouse
+            && AdministrationWarehouse::isAdministrationWarehouse($warehouse)
+            && (int) $warehouse->id === (int) $mainWarehouse->id
+            && $user->hasAnyRoleId(User::MAIN_WAREHOUSE_STOCK_MANAGEMENT_ROLE_IDS)
+        ) {
+            return true;
+        }
+
+        if ($user->hasRoleId(User::FOREMAN_ROLE_ID)) {
+            return $user->assignedSubdivisions()
+                ->where('subdivisions.id', (int) $warehouse->subdivision_id)
+                ->exists();
+        }
+
+        if ($user->hasRoleId(User::BOILER_CHIEF_ROLE_ID)) {
+            return $user->boilerChiefSubdivisions()
+                ->where('subdivisions.id', (int) $warehouse->subdivision_id)
+                ->exists();
+        }
+
+        return false;
+    }
+
+    private function authorizeWarehouseStockManagement(Request $request): Warehouse
+    {
+        $warehouseId = $request->integer('warehouse_id');
+        if ($warehouseId <= 0) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'Выберите склад на странице обзора.',
+            ]);
+        }
+
+        $warehouse = Warehouse::query()->find($warehouseId);
+        if ($warehouse === null) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'Выберите склад на странице обзора.',
+            ]);
+        }
+
+        if (! $this->userCanManageStockOnWarehouse($request->user(), $warehouse)) {
+            abort(403, 'Операции брака и утилизации на этом складе вам недоступны.');
+        }
+
+        return $warehouse;
+    }
+
     /**
-     * Агрегат приход / списание / остаток по оборудованию на одном складе (без фильтра по остатку).
-     * Для спецодежды — отдельная строка на каждый размер (S, M, L…) из прихода.
-     *
-     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\MaterialStockMovement>
+     * @return array<string, list<string>>
      */
+    private function mainWarehouseStockOperationBaseRules(): array
+    {
+        return [
+            'equipment_key' => ['required', 'string', 'max:64'],
+            'quantity' => ['required', 'numeric'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function mainWarehouseStockOperationValidationMessages(): array
+    {
+        return [
+            'equipment_key.required' => 'Выберите оборудование в списке «Оборудование».',
+            'equipment_key.string' => 'Выберите оборудование в списке «Оборудование».',
+            'quantity.required' => 'Укажите количество.',
+            'quantity.numeric' => 'Количество должно быть числом.',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{equipment_id: int, quantity: float, receipt_variant: ?string}
+     */
+    private function resolveMainWarehouseStockOperation(array $validated, string $quantityField, Warehouse $warehouse): array
+    {
+        $equipmentKey = trim((string) ($validated['equipment_key'] ?? ''));
+        $option = collect($this->mainWarehouseStockOperationOptions((int) $warehouse->id))
+            ->first(fn (array $row): bool => (string) $row['key'] === $equipmentKey);
+
+        if ($option === null) {
+            throw ValidationException::withMessages([
+                'equipment_key' => 'Выберите оборудование в списке «Оборудование».',
+            ]);
+        }
+
+        $equipment = Equipment::query()
+            ->with(['measurementUnit.unitType:id,code'])
+            ->findOrFail((int) $option['equipment_id']);
+
+        $equipmentUnitType = (string) ($equipment->measurementUnit?->unitType?->code ?? '');
+        $receiptVariant = isset($option['receipt_variant']) && $option['receipt_variant'] !== ''
+            ? (string) $option['receipt_variant']
+            : null;
+
+        if ($equipmentUnitType === PieceQuantity::CLOTHING_MEASUREMENT_TYPE && $receiptVariant === null) {
+            throw ValidationException::withMessages([
+                'equipment_key' => 'Для одежды выберите позицию с указанным размером.',
+            ]);
+        }
+
+        if ($equipmentUnitType !== PieceQuantity::CLOTHING_MEASUREMENT_TYPE) {
+            $receiptVariant = null;
+        }
+
+        $qtyRaw = (string) ($validated[$quantityField] ?? '');
+        if (in_array($equipmentUnitType, ['piece', 'mass', 'length'], true) && preg_match('/\p{L}/u', $qtyRaw)) {
+            throw ValidationException::withMessages([
+                $quantityField => 'Для оборудования с типом учёта «штуки», «масса» или «длина» в количестве не допускаются буквы — только число.',
+            ]);
+        }
+
+        if (PieceQuantity::isPieceMeasurement($equipmentUnitType)) {
+            PieceQuantity::assertWholeQuantity($validated[$quantityField]);
+        }
+
+        $quantity = PieceQuantity::isPieceMeasurement($equipmentUnitType)
+            ? (float) PieceQuantity::normalizeStoredQuantity($validated[$quantityField], $equipmentUnitType)
+            : (float) $validated[$quantityField];
+
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages([
+                $quantityField => 'Количество должно быть больше нуля.',
+            ]);
+        }
+
+        return [
+            'equipment_id' => (int) $equipment->id,
+            'quantity' => $quantity,
+            'receipt_variant' => $receiptVariant,
+        ];
+    }
+
+    private function redirectToOverviewAfterStockOperation(Request $request, Warehouse $warehouse): RedirectResponse
+    {
+        return redirect()->route('materials.overview', array_filter([
+            'subdivision_id' => (int) $warehouse->subdivision_id,
+            'warehouse_id' => (int) $warehouse->id,
+            'equipment' => $this->equipmentBalancesSearchTerm($request),
+            'stock_filter' => $this->overviewStockFilter($request),
+            'per_page' => $request->integer('per_page') ?: null,
+        ], static fn ($value) => $value !== null && $value !== '' && $value !== 0));
+    }
+
+    /**
+     * @return list<array{
+     *     key: string,
+     *     equipment_id: int,
+     *     receipt_variant: ?string,
+     *     label: string,
+     *     good_balance: float,
+     *     defective_balance: float,
+     *     measurement_type_code: string,
+     *     unit_code: string,
+     * }>
+     */
+    private function mainWarehouseStockOperationOptions(int $warehouseId): array
+    {
+        return $this->overviewWarehouseBalanceBaseQuery($warehouseId)
+            ->selectRaw('MAX(material_stock_movements.receipt_variant) as receipt_variant')
+            ->orderBy('equipment.name')
+            ->get()
+            ->map(function ($row): ?array {
+                $goodBalance = (float) ($row->balance ?? 0);
+                $defectiveBalance = (float) ($row->defective_balance ?? 0);
+                if ($goodBalance < 0.0005 && $defectiveBalance < 0.0005) {
+                    return null;
+                }
+
+                $unitCode = trim((string) ($row->unit_code ?? '')) ?: 'шт';
+                $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
+                $receiptVariant = trim((string) ($row->receipt_variant ?? ''));
+                $receiptVariant = $receiptVariant !== '' ? $receiptVariant : null;
+                $equipmentName = (string) ($row->equipment_name ?? '');
+                $label = $equipmentName.' ('.$unitCode.')';
+                if ($measurementTypeCode === PieceQuantity::CLOTHING_MEASUREMENT_TYPE && $receiptVariant !== null) {
+                    $label = $equipmentName.', размер '.$receiptVariant;
+                }
+
+                $key = (int) $row->equipment_id.':'.($receiptVariant ?? '');
+
+                return [
+                    'key' => $key,
+                    'equipment_id' => (int) $row->equipment_id,
+                    'receipt_variant' => $receiptVariant,
+                    'label' => $label,
+                    'good_balance' => $goodBalance,
+                    'defective_balance' => $defectiveBalance,
+                    'measurement_type_code' => $measurementTypeCode,
+                    'unit_code' => $unitCode,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     private function overviewWarehouseBalanceBaseQuery(int $warehouseId): \Illuminate\Database\Eloquent\Builder
     {
         return $this->warehouseBalanceAggregatesQuery()
             ->where('material_stock_movements.warehouse_id', $warehouseId);
     }
-
-    /**
-     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\MaterialStockMovement>
-     */
     private function warehouseBalanceAggregatesQuery(): \Illuminate\Database\Eloquent\Builder
     {
         $r = MaterialStockMovementType::NAME_RECEIPT;
         $i = MaterialStockMovementType::NAME_ISSUE;
         $clothingType = PieceQuantity::CLOTHING_MEASUREMENT_TYPE;
+        $goodBucket = WarehouseStockBucket::GOOD;
+        $defectiveBucket = WarehouseStockBucket::DEFECTIVE;
 
         $unitCodeSql = "CASE WHEN unit_types.code = '{$clothingType}' THEN COALESCE(NULLIF(TRIM(MAX(material_stock_movements.receipt_variant)), ''), NULLIF(TRIM(MAX(equipment.value)), ''), 'разм') ELSE COALESCE(MAX(measurement_units.code), 'шт') END";
 
@@ -607,14 +904,11 @@ class MaterialAccountingController extends Controller
             ->selectRaw('equipment.name as equipment_name')
             ->selectRaw('unit_types.code as measurement_type_code')
             ->selectRaw("{$unitCodeSql} as unit_code")
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_in', [$r])
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_out', [$i])
-            ->selectRaw('SUM(CASE WHEN msm_types.name = ? THEN -material_stock_movements.quantity ELSE material_stock_movements.quantity END) as balance', [$i]);
+            ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_in", [$r])
+            ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_out", [$i])
+            ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$goodBucket} THEN material_stock_movements.quantity ELSE 0 END) as balance", [$i])
+            ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$defectiveBucket} AND msm_types.name = ? THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$defectiveBucket} THEN material_stock_movements.quantity ELSE 0 END) as defective_balance", [$i]);
     }
-
-    /**
-     * @return array<int, array{in: float, out: float, balance: float}>
-     */
     private function buildMaterialBalances(?int $warehouseId = null): array
     {
         $lines = $this->buildMaterialBalanceLines($warehouseId);
@@ -637,12 +931,6 @@ class MaterialAccountingController extends Controller
 
         return $result;
     }
-
-    /**
-     * Строки остатков по оборудованию; для одежды — по размеру.
-     *
-     * @return array<int, list<array{in: float, out: float, balance: float, unit_code: string, measurement_type_code: string}>>
-     */
     private function buildMaterialBalanceLines(?int $warehouseId = null): array
     {
         $query = $this->warehouseBalanceAggregatesQuery();
@@ -667,24 +955,13 @@ class MaterialAccountingController extends Controller
 
     private function currentBalance(int $equipmentId, int $warehouseId): float
     {
-        $issueId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
-        $balance = MaterialStockMovement::query()
-            ->where('equipment_id', $equipmentId)
-            ->where('warehouse_id', $warehouseId)
-            ->selectRaw('COALESCE(SUM(CASE WHEN material_stock_movement_type_id = ? THEN -quantity ELSE quantity END), 0) as balance', [$issueId])
-            ->value('balance');
-
-        return (float) $balance;
+        return WarehouseStockBucket::balance($equipmentId, $warehouseId, WarehouseStockBucket::GOOD);
     }
 
     private function resolveMainWarehouse(): ?Warehouse
     {
         return AdministrationWarehouse::resolvePrimaryWarehouse();
     }
-
-    /**
-     * @return list<string>
-     */
     private function clothingCatalogSizeOptions(): array
     {
         return ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL'];

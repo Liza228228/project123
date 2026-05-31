@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-4 w-full min-w-0">
@@ -94,13 +96,15 @@
                                             @php
                                                 $canIssueHere = $deliveredWarehouseIssueCandidates->contains(fn ($candidate) => (int) $candidate->id === (int) $item->id);
                                                 $checkedIssue = collect(old('issue_item_ids', []))->contains((string) $item->id) || collect(old('issue_item_ids', []))->contains((int) $item->id);
-                                                $orderedQty = (int) $item->quantity;
-                                                $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $orderedQty);
+                                                $maxIssueQty = (float) ($installationIssueMaxQuantitiesByItemId[(int) $item->id] ?? (float) $item->quantity);
+                                                $maxIssueQtyInput = (int) floor($maxIssueQty + 0.0005);
+                                                $maxIssueQtyDisplay = rtrim(rtrim(number_format($maxIssueQty, 3, '.', ''), '0'), '.');
+                                                $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $maxIssueQtyInput);
                                                 if ($defaultIssueQty < 1) {
-                                                    $defaultIssueQty = $orderedQty;
+                                                    $defaultIssueQty = $maxIssueQtyInput;
                                                 }
-                                                if ($defaultIssueQty > $orderedQty) {
-                                                    $defaultIssueQty = $orderedQty;
+                                                if ($defaultIssueQty > $maxIssueQtyInput) {
+                                                    $defaultIssueQty = $maxIssueQtyInput;
                                                 }
                                             @endphp
                                             <article class="app-card-list__item">
@@ -155,14 +159,15 @@
                                                                 type="number"
                                                                 value="{{ $defaultIssueQty }}"
                                                                 min="1"
-                                                                max="{{ $orderedQty }}"
+                                                                max="{{ $maxIssueQtyInput }}"
                                                                 step="1"
                                                                 inputmode="numeric"
                                                                 data-item-id="{{ $item->id }}"
-                                                                data-max-qty="{{ $orderedQty }}"
+                                                                data-max-qty="{{ $maxIssueQtyInput }}"
                                                                 class="js-installation-act-issue-qty app-input mt-1 w-full max-w-[8rem] min-h-0 py-1.5 text-sm"
                                                                 @disabled(! $checkedIssue)
                                                             >
+                                                            <p class="mt-1 text-[10px] text-stone-500 dark:text-stone-400">макс. {{ $maxIssueQtyDisplay }} {{ $item->quantityUnitLabelForDisplay() }}</p>
                                                             <x-input-error :messages="$errors->get('issue_quantities.'.$item->id)" class="mt-1" />
                                                         </div>
                                                     @endif
@@ -201,13 +206,15 @@
                                                     @php
                                                         $canIssueHere = $deliveredWarehouseIssueCandidates->contains(fn ($candidate) => (int) $candidate->id === (int) $item->id);
                                                         $checkedIssue = collect(old('issue_item_ids', []))->contains((string) $item->id) || collect(old('issue_item_ids', []))->contains((int) $item->id);
-                                                        $orderedQty = (int) $item->quantity;
-                                                        $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $orderedQty);
+                                                        $maxIssueQty = (float) ($installationIssueMaxQuantitiesByItemId[(int) $item->id] ?? (float) $item->quantity);
+                                                        $maxIssueQtyInput = (int) floor($maxIssueQty + 0.0005);
+                                                        $maxIssueQtyDisplay = rtrim(rtrim(number_format($maxIssueQty, 3, '.', ''), '0'), '.');
+                                                        $defaultIssueQty = (int) old('issue_quantities.'.$item->id, $maxIssueQtyInput);
                                                         if ($defaultIssueQty < 1) {
-                                                            $defaultIssueQty = $orderedQty;
+                                                            $defaultIssueQty = $maxIssueQtyInput;
                                                         }
-                                                        if ($defaultIssueQty > $orderedQty) {
-                                                            $defaultIssueQty = $orderedQty;
+                                                        if ($defaultIssueQty > $maxIssueQtyInput) {
+                                                            $defaultIssueQty = $maxIssueQtyInput;
                                                         }
                                                     @endphp
                                                     <tr class="bg-white/90 dark:bg-stone-900/40">
@@ -244,16 +251,16 @@
                                                                         type="number"
                                                                         value="{{ $defaultIssueQty }}"
                                                                         min="1"
-                                                                        max="{{ $orderedQty }}"
+                                                                        max="{{ $maxIssueQtyInput }}"
                                                                         step="1"
                                                                         inputmode="numeric"
                                                                         data-item-id="{{ $item->id }}"
-                                                                        data-max-qty="{{ $orderedQty }}"
+                                                                        data-max-qty="{{ $maxIssueQtyInput }}"
                                                                         class="js-installation-act-issue-qty app-input w-24 min-h-0 py-1 text-right text-sm"
                                                                         aria-label="Количество к списанию, {{ $item->quantityUnitLabelForDisplay() }}"
                                                                         @disabled(! $checkedIssue)
                                                                     >
-                                                                    <span class="text-[10px] text-stone-500 dark:text-stone-400">макс. {{ $orderedQty }} {{ $item->quantityUnitLabelForDisplay() }}</span>
+                                                                    <span class="text-[10px] text-stone-500 dark:text-stone-400">макс. {{ $maxIssueQtyDisplay }} {{ $item->quantityUnitLabelForDisplay() }}</span>
                                                                     <x-input-error :messages="$errors->get('issue_quantities.'.$item->id)" class="text-left" />
                                                                 </div>
                                                             @else

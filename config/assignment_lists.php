@@ -1,11 +1,5 @@
 <?php
-
-/**
- * Пагинация списков: подразделения/склады, мастера участка, начальники котельных.
- *
- * ASSIGNMENT_LIST_PER_PAGE — значение по умолчанию (должно входить в список допустимых).
- * ASSIGNMENT_LIST_PER_PAGE_OPTIONS — допустимые размеры страницы через запятую (по умолчанию как в списках заявок: 10, 15, 20, 30, 50).
- */
+// свой код проекта
 $allowedRaw = array_filter(array_map('trim', explode(',', (string) env('ASSIGNMENT_LIST_PER_PAGE_OPTIONS', '10,15,20,30,50'))));
 $allowed = array_values(array_unique(array_filter(array_map(static fn (string $v): int => (int) $v, $allowedRaw), static fn (int $v): bool => $v > 0)));
 if ($allowed === []) {

@@ -1,5 +1,6 @@
 <?php
 
+// модель
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -31,10 +32,6 @@ class Warehouse extends Model
             'is_primary' => 'boolean',
         ];
     }
-
-    /**
-     * Строка адреса только из разобранных полей (для отображения и поиска).
-     */
     protected function formattedAddress(): Attribute
     {
         return Attribute::get(fn (): string => $this->composeFormattedAddress());
@@ -71,21 +68,10 @@ class Warehouse extends Model
     {
         return $this->belongsTo(Subdivision::class);
     }
-
-    /**
-     * Склады подразделений, доступных для новых операций (активное подразделение).
-     *
-     * @param  Builder<Warehouse>  $query
-     * @return Builder<Warehouse>
-     */
     public function scopeInActiveSubdivision(Builder $query): Builder
     {
         return $query->whereHas('subdivision', fn (Builder $subdivisionQuery): Builder => $subdivisionQuery->active());
     }
-
-    /**
-     * @param  array<string, ?string>  $addressParts
-     */
     public static function existsWithStructuredAddress(array $addressParts, ?int $exceptId = null): bool
     {
         $query = static::query()->matchingStructuredAddress($addressParts);
@@ -95,11 +81,6 @@ class Warehouse extends Model
 
         return $query->exists();
     }
-
-    /**
-     * @param  array<string, ?string>  $addressParts
-     * @param  Builder<Warehouse>  $query
-     */
     public function scopeMatchingStructuredAddress(Builder $query, array $addressParts): void
     {
         $fiasId = trim((string) ($addressParts['address_fias_id'] ?? ''));

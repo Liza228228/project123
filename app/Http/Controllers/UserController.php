@@ -1,5 +1,6 @@
 <?php
 
+// управление пользователями
 namespace App\Http\Controllers;
 
 use App\Models\Role;
@@ -287,10 +288,6 @@ class UserController extends Controller
             abort(404);
         }
     }
-
-    /**
-     * @return array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string}
-     */
     private function resolveSortState(Request $request): array
     {
         $allowedFields = $this->allowedSortFields();
@@ -326,10 +323,6 @@ class UserController extends Controller
             'secondary_direction' => $secondaryDirection,
         ];
     }
-
-    /**
-     * @param  array{primary_field:string,primary_direction:string,secondary_field:?string,secondary_direction:string}  $sortState
-     */
     private function applyUserSorting($usersQuery, array $sortState): void
     {
         $allowedFields = $this->allowedSortFields();
@@ -356,10 +349,6 @@ class UserController extends Controller
 
         $usersQuery->orderBy('id', 'asc');
     }
-
-    /**
-     * @return array<string, string>
-     */
     private function allowedSortFields(): array
     {
         return [

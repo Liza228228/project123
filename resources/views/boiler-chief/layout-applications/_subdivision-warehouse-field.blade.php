@@ -1,4 +1,5 @@
-{{-- Выбор склада → values[подразделение] и адрес объекта. --}}
+@php // шаблон страницы
+@endphp
 <div class="rounded-xl border border-orange-200/75 bg-white p-4 dark:border-orange-900/40 dark:bg-stone-900/40 space-y-3">
     <label class="block text-sm font-medium text-stone-800 dark:text-stone-200 mb-1"
            x-text="field.label || 'Склад'"></label>

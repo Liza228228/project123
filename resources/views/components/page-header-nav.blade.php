@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @props(['href'])
 <nav {{ $attributes->class(['page-header-nav']) }} aria-label="Навигация к разделу">
     <a

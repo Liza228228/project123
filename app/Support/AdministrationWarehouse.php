@@ -1,5 +1,6 @@
 <?php
 
+// вспомогательная логика
 namespace App\Support;
 
 use App\Models\Subdivision;
@@ -13,8 +14,6 @@ class AdministrationWarehouse
     public const SUBDIVISION_NAME = 'Администрация';
 
     public const WAREHOUSE_NAME = 'Администрация офис';
-
-    /** @var list<int> */
     public const ACCESS_ROLE_IDS = [
         ...User::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
         User::ACCOUNTANT_ROLE_ID,
@@ -25,8 +24,6 @@ class AdministrationWarehouse
     {
         return $user?->hasAnyRoleId(self::ACCESS_ROLE_IDS) ?? false;
     }
-
-    /** Добавление складов подразделения «Администрация» (без технического директора). */
     public static function userCanManageWarehouses(?User $user): bool
     {
         return $user?->hasAnyRoleId(User::SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS) ?? false;
@@ -63,11 +60,6 @@ class AdministrationWarehouse
             }
         }
     }
-
-    /**
-     * @param  list<int>  $subdivisionIds
-     * @return list<int>
-     */
     public static function withoutAdministrationSubdivisionIds(array $subdivisionIds): array
     {
         $adminId = self::subdivisionId();
@@ -116,11 +108,6 @@ class AdministrationWarehouse
 
         return $subdivisionId !== null && self::isAdministrationSubdivisionId((int) $subdivisionId);
     }
-
-    /**
-     * @param  Builder<Subdivision>  $query
-     * @return Builder<Subdivision>
-     */
     public static function excludeAdministrationSubdivision(Builder $query): Builder
     {
         $adminId = self::subdivisionId();
@@ -130,11 +117,6 @@ class AdministrationWarehouse
 
         return $query;
     }
-
-    /**
-     * @param  Builder<Warehouse>  $query
-     * @return Builder<Warehouse>
-     */
     public static function excludeAdministrationWarehouse(Builder $query): Builder
     {
         $adminSubId = self::subdivisionId();

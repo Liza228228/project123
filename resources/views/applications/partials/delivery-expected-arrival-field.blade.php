@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $uid = (string) ($fieldUid ?? 'delivery-arrival');
     $nameExpectedArrival = $nameExpectedArrival ?? null;
     $expectedArrivalValue = trim((string) ($expectedArrivalValue ?? ''));

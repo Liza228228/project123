@@ -1,3 +1,4 @@
+// скрипт на странице
 import Alpine from 'alpinejs';
 import { openAppModal } from './app-modals';
 

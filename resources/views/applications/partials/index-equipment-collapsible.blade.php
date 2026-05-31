@@ -1,9 +1,11 @@
+@php // шаблон страницы
+@endphp
 @if($application->items->isEmpty())
     <span class="opacity-50">—</span>
 @else
     @php
-        $idxUnchecked = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id))->sortBy('id');
-        $idxChecked = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id))->sortBy('id');
+        $idxUnchecked = $application->items->filter(fn ($i) => ! (bool) $i->is_checked)->sortBy('id');
+        $idxChecked = $application->items->filter(fn ($i) => (bool) $i->is_checked)->sortBy('id');
         $equipmentCount = (int) $application->items->count();
         $chiefOwnDraftList = $application->isBoilerChiefCreatedApplication()
             && $application->isBoilerChiefDraftBeforeManagement();
@@ -26,8 +28,8 @@
                                     {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                 </span>
                                 @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
-                                @if($application->itemLineRejectionReason($item->id))
-                                    <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}</p>
+                                @if($rejectionReason = trim((string) ($item->reason_not_selected ?? '')))
+                                    <p class="mt-1 text-sm text-black dark:text-white"><span class="font-medium text-black dark:text-white">Причина:</span> {{ $rejectionReason }}</p>
                                 @endif
                             </li>
                         @endforeach

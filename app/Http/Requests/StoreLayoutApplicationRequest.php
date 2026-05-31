@@ -1,5 +1,6 @@
 <?php
 
+// валидация формы
 namespace App\Http\Requests;
 
 use App\Models\RequestLayout;
@@ -40,10 +41,6 @@ class StoreLayoutApplicationRequest extends FormRequest
     {
         return $this->user() !== null;
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
@@ -111,10 +108,6 @@ class StoreLayoutApplicationRequest extends FormRequest
             }
         });
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function attributes(): array
     {
         return [
@@ -128,10 +121,6 @@ class StoreLayoutApplicationRequest extends FormRequest
             'form_document_date' => 'дата документа',
         ];
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
@@ -142,15 +131,10 @@ class StoreLayoutApplicationRequest extends FormRequest
 
     public function layout(): RequestLayout
     {
-        /** @var RequestLayout $l */
         $l = RequestLayout::query()->findOrFail((int) $this->validated('layout_structure_id'));
 
         return $l;
     }
-
-    /**
-     * @return array<string, string>
-     */
     public function fieldValues(RequestLayout $layout): array
     {
         $fieldsByKey = [];

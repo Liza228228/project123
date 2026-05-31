@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-black dark:text-white leading-tight tracking-tight">
@@ -5,7 +7,7 @@
         </h2>
     </x-slot>
 
-    <div class="mx-auto max-w-7xl space-y-8 px-0 py-2 sm:px-6 sm:py-6 lg:px-8">
+    <div class="app-shell space-y-8 py-2 sm:py-6">
         @if($applicationAnalytics !== null)
             <section aria-labelledby="dash-applications-heading" class="rounded-2xl border border-orange-200/90 bg-gradient-to-br from-orange-50/95 via-white to-amber-50/40 p-5 shadow-md shadow-orange-950/[0.06] ring-1 ring-orange-100/80 dark:border-orange-900/55 dark:from-orange-950/50 dark:via-stone-950 dark:to-stone-950 dark:shadow-black/30 dark:ring-orange-950/40 sm:p-8">
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

@@ -1,3 +1,4 @@
+// скрипт на странице
 import { closeAppModal, openAppModal } from './app-modals';
 
 const MODAL_NAME = 'app-confirm';
@@ -39,11 +40,6 @@ function settle(confirmed) {
     closeAppModal(MODAL_NAME);
     resolve?.(confirmed);
 }
-
-/**
- * @param {{ message?: string, title?: string, confirmLabel?: string, cancelLabel?: string, variant?: 'primary'|'danger' }} options
- * @returns {Promise<boolean>}
- */
 export function showAppConfirm(options = {}) {
     return new Promise((resolve) => {
         if (resolvePending) {
@@ -153,10 +149,6 @@ function bindLinkConfirm(link) {
         }
     });
 }
-
-/**
- * Переносит устаревшие onsubmit="return confirm('…')" в data-app-confirm.
- */
 export function migrateLegacyConfirmHandlers(root = document) {
     root.querySelectorAll('form[onsubmit]').forEach((form) => {
         const onsubmit = form.getAttribute('onsubmit') || '';

@@ -1,3 +1,5 @@
+@php // шаблон страницы
+@endphp
 @if($item->usesFreeTextEquipment())
     @php
         $code = $item->resolvedCustomSupplyStatus();

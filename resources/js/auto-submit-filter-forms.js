@@ -1,8 +1,4 @@
-/**
- * GET-формы с атрибутом data-auto-submit="filter":
- * — select и checkbox/radio отправляют форму сразу;
- * — поля поиска (type=search с name, либо name="q") — с задержкой + Enter без ожидания.
- */
+// скрипт на странице
 const DEBOUNCE_MS = 450;
 
 function requestSubmitForm(form) {
@@ -48,6 +44,9 @@ export function bindAutoSubmitFilterForms(root = document) {
         }
 
         form.querySelectorAll('select').forEach((el) => {
+            if (el.dataset.manualSubmit === '1') {
+                return;
+            }
             el.addEventListener('change', submitForm);
         });
 

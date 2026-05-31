@@ -1,5 +1,6 @@
 <?php
 
+// сервис
 namespace App\Services;
 
 use App\Models\Application;
@@ -11,9 +12,6 @@ use Illuminate\Support\Facades\Schema;
 
 final class ApplicationChangeRecorder
 {
-    /**
-     * @return array<string, mixed>
-     */
     public static function snapshot(Application $application): array
     {
         $application->loadMissing([
@@ -40,11 +38,6 @@ final class ApplicationChangeRecorder
             ])->all(),
         ];
     }
-
-    /**
-     * @param  array<string, mixed>  $before
-     * @return list<string>
-     */
     public static function diff(array $before, Application $after): array
     {
         $after->loadMissing([
@@ -89,8 +82,6 @@ final class ApplicationChangeRecorder
         if (! empty($before['approved_by_user_id']) && $after->approved_by_user_id === null) {
             $lines[] = 'Согласование сброшено; заявка снова на рассмотрении.';
         }
-
-        /** @var array<int, array{label: string, quantity: int, is_checked: bool}> $beforeItems */
         $beforeItems = $before['items'];
         $afterItemsKeyed = $after->items->mapWithKeys(fn ($i) => [
             $i->id => [
@@ -155,20 +146,11 @@ final class ApplicationChangeRecorder
 
         return $name !== '' ? $name : '—';
     }
-
-    /**
-     * Только изменения по позициям оборудования (без подразделения, дат, транспорта и т.д.).
-     *
-     * @param  array<string, mixed>  $before
-     * @return list<string>
-     */
     public static function equipmentDiff(array $before, Application $after): array
     {
         $after->loadMissing(['items.equipment.measurementUnit.unitType', 'items.manualDetail']);
 
         $lines = [];
-
-        /** @var array<int, array{label: string, quantity: int, is_checked: bool}> $beforeItems */
         $beforeItems = $before['items'];
         $afterItemsKeyed = $after->items->mapWithKeys(fn ($i) => [
             $i->id => [

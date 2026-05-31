@@ -1,4 +1,5 @@
 @php
+    // шаблон страницы
     $needsSubmitToApproval = Auth::check() && $application->needsSubmitToApprovalBy(Auth::user());
     $submitRoute = null;
     if ($needsSubmitToApproval && Auth::user()->hasRoleId(4)) {

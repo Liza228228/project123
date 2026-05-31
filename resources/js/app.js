@@ -1,3 +1,4 @@
+// скрипт на странице
 import './bootstrap';
 import './auto-submit-filter-forms';
 import { bindAppConfirmHandlers, initAppConfirmModal, showAppConfirm } from './app-confirm';

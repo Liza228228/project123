@@ -1,5 +1,6 @@
 <?php
 
+// сервис
 namespace App\Services;
 
 use Illuminate\Http\Client\RequestException;
@@ -8,9 +9,6 @@ use RuntimeException;
 
 class DadataAddressService
 {
-    /**
-     * @return array<int, array<string, mixed>>
-     */
     public function suggest(string $query, int $limit = 7): array
     {
         $payload = [
@@ -40,11 +38,6 @@ class DadataAddressService
             $items
         );
     }
-
-    /**
-     * @param  array<string, mixed>  $item
-     * @return array{value: string, unrestricted_value: mixed, postal_code: ?string, data: array<string, mixed>}
-     */
     private function normalizeSuggestionItem(array $item): array
     {
         $data = is_array($item['data'] ?? null) ? $item['data'] : [];
@@ -57,10 +50,6 @@ class DadataAddressService
             'data' => $data,
         ];
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function clean(string $address): array
     {
         $response = $this->request()
@@ -81,10 +70,6 @@ class DadataAddressService
 
         return $items[0];
     }
-
-    /**
-     * @return array<string, mixed>
-     */
     public function cleanName(string $fullName): array
     {
         $response = $this->request()
@@ -105,10 +90,6 @@ class DadataAddressService
 
         return $items[0];
     }
-
-    /**
-     * @return array<string, string>
-     */
     private function authHeaders(): array
     {
         $apiKey = trim((string) config('services.dadata.api_key'));
