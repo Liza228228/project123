@@ -15,7 +15,7 @@
             <div class="px-4 py-5 sm:p-8 space-y-8 sm:space-y-10">
               
 
-                @if(Auth::user()->hasAnyRoleId([1, 2, 3, 4, 6, 7]))
+                @if(Auth::user()->hasAnyRoleId(\App\Models\User::REPORT_LAYOUT_FILL_ROLE_IDS))
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ route('boiler-chief.layout-applications.index') }}" class="ui-btn ui-btn--secondary ui-btn--sm">
                             Заполнить макет отчета

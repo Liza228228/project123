@@ -5,6 +5,7 @@ namespace App\Models;
 
 use App\Models\Scopes\ActiveApplicationItemScope;
 use App\Support\PieceQuantity;
+use App\Support\ReserveEquipmentDisplayName;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +16,6 @@ class ApplicationItem extends Model
 {
     private const MANUAL_DETAIL_KEYS = [
         'equipment_name',
-        'base_name',
         'size_value',
         'measurement_type',
         'quantity_unit',
@@ -55,7 +55,6 @@ class ApplicationItem extends Model
         'application_id',
         'equipment_id',
         'equipment_name',
-        'base_name',
         'size_value',
         'quantity',
         'measurement_type',
@@ -101,7 +100,6 @@ class ApplicationItem extends Model
                         ['application_item_id' => $item->id],
                         [
                             'equipment_name' => null,
-                            'base_name' => $existing?->base_name,
                             'size_value' => $buffer['size_value'] ?? $existing?->size_value,
                             'measurement_type' => $buffer['measurement_type'] ?? $existing?->measurement_type ?? 'piece',
                             'quantity_unit' => $buffer['quantity_unit'] ?? $existing?->quantity_unit ?? 'шт',
@@ -117,7 +115,6 @@ class ApplicationItem extends Model
             $existing = $item->manualDetail()->first();
             $base = [
                 'equipment_name' => $existing?->equipment_name,
-                'base_name' => $existing?->base_name ?? '—',
                 'size_value' => $existing?->size_value,
                 'measurement_type' => $existing?->measurement_type ?? 'piece',
                 'quantity_unit' => $existing?->quantity_unit ?? 'шт',
@@ -144,7 +141,6 @@ class ApplicationItem extends Model
 
             return match ($key) {
                 'equipment_name' => $m?->equipment_name,
-                'base_name' => ($m && trim((string) $m->base_name) !== '') ? $m->base_name : '—',
                 'size_value' => $m?->size_value,
                 'measurement_type' => $m?->measurement_type ?? 'piece',
                 'quantity_unit' => $m?->quantity_unit ?? 'шт',
@@ -192,7 +188,6 @@ class ApplicationItem extends Model
             return match ($key) {
                 'measurement_type' => 'piece',
                 'quantity_unit' => 'шт',
-                'base_name' => '—',
                 default => null,
             };
         }
@@ -205,13 +200,23 @@ class ApplicationItem extends Model
 
         return match ($key) {
             'equipment_name' => null,
-            'base_name' => $this->catalogBaseNameLabel($eq),
             'size_value' => $manualSize !== '' ? $manualSize : $eq->value,
             'measurement_type' => $manualType !== '' ? $manualType : ($eq->measurementUnit?->unitType?->code ?? 'piece'),
             'quantity_unit' => $manualUnit !== '' ? $manualUnit : $this->catalogQuantityUnitLabel($eq),
             'raw_input' => null,
             default => null,
         };
+    }
+
+    public function catalogEquipmentName(): string
+    {
+        if ($this->equipment_id === null) {
+            return '';
+        }
+
+        $this->loadMissing('equipment');
+
+        return $this->equipment ? $this->catalogBaseNameLabel($this->equipment) : '';
     }
 
     private function catalogBaseNameLabel(Equipment $eq): string
@@ -329,7 +334,20 @@ class ApplicationItem extends Model
 
     public function getEquipmentDisplayNameAttribute(): string
     {
-        $baseName = trim((string) ($this->base_name ?? ''));
+        if ($this->isCatalogOverflowPendingOrderLine()) {
+            return $this->catalogOverflowDisplayName();
+        }
+
+        $equipmentName = trim((string) ($this->equipment_name ?? ''));
+        if (
+            $this->equipment_id === null
+            && ($this->measurement_type ?? '') === 'clothing_size'
+            && $equipmentName !== ''
+        ) {
+            return $equipmentName;
+        }
+
+        $baseName = trim((string) ($this->humanEquipmentBaseName() ?? ''));
         $size = trim((string) ($this->size_value ?? ''));
         if ($baseName !== '' && $baseName !== '—') {
             return trim($baseName.($size !== '' ? ' '.$size : ''));
@@ -386,21 +404,152 @@ class ApplicationItem extends Model
         return str_contains(trim((string) ($this->equipment_name ?? '')), '+на согласовании');
     }
 
-    public function catalogOverflowBaseNameForMatching(): string
+    public function humanEquipmentBaseName(): string
     {
-        $baseName = trim((string) ($this->base_name ?? ''));
-        if ($baseName !== '' && $baseName !== '—') {
-            return $baseName;
+        $rawInput = trim((string) ($this->raw_input ?? ''));
+        if ($rawInput !== '') {
+            return $this->enrichHumanBaseNameFromApplication($rawInput);
+        }
+
+        $equipmentName = trim((string) ($this->equipment_name ?? ''));
+        if ($equipmentName !== '' && str_contains($equipmentName, '+на согласовании')) {
+            $equipmentName = trim((string) preg_replace('/\s*\(\+на согласовании.*$/u', '', $equipmentName));
+        }
+
+        if ($equipmentName !== '') {
+            return $this->enrichHumanBaseNameFromApplication($equipmentName);
+        }
+
+        if ($this->isApplicationReserveEquipmentLine()) {
+            return $this->enrichHumanBaseNameFromApplication($this->reserveCatalogBaseName());
         }
 
         if ($this->equipment_id) {
             $equipment = $this->relationLoaded('equipment') ? $this->equipment : $this->equipment()->first();
             if ($equipment) {
-                return trim((string) ($equipment->name ?? ''));
+                return $this->enrichHumanBaseNameFromApplication(trim((string) ($equipment->name ?? '')));
             }
         }
 
-        return '';
+        return $this->enrichHumanBaseNameFromApplication('');
+    }
+
+    private function enrichHumanBaseNameFromApplication(string $current): string
+    {
+        $applicationId = (int) ($this->application_id ?? 0);
+        if ($applicationId <= 0) {
+            return $current;
+        }
+
+        $fromApplication = ReserveEquipmentDisplayName::bestNameForApplication(
+            $applicationId,
+            $current,
+            (int) ($this->equipment_id ?? 0) > 0 ? (int) $this->equipment_id : null
+        );
+
+        return mb_strlen($fromApplication) > mb_strlen($current) ? $fromApplication : $current;
+    }
+
+    public function catalogOverflowDisplayName(): string
+    {
+        $baseName = $this->resolveOverflowSiblingBaseName();
+        if ($baseName === '') {
+            return trim((string) ($this->equipment_name ?? '')) ?: '—';
+        }
+
+        $qty = max(1, (int) round((float) $this->quantity));
+        $size = trim((string) ($this->size_value ?? ''));
+        if (PieceQuantity::isClothingMeasurement($this->storedMeasurementType()) && $size !== '') {
+            return $baseName.' — к заказу '.$qty.' шт., размер '.$size;
+        }
+
+        $unit = trim((string) ($this->quantity_unit ?? '')) ?: 'шт';
+
+        return $baseName.' — к заказу '.$qty.' '.$unit;
+    }
+
+    public function resolveOverflowSiblingBaseName(?iterable $siblingItems = null): string
+    {
+        if (! $this->isCatalogOverflowPendingOrderLine() && ! $this->isApplicationReserveEquipmentLine()) {
+            return $this->humanEquipmentBaseName();
+        }
+
+        $sizeVariant = PieceQuantity::isClothingMeasurement($this->storedMeasurementType())
+            ? trim((string) ($this->storedSizeValue() ?? ''))
+            : '';
+        $shortBase = $this->isApplicationReserveEquipmentLine()
+            ? $this->reserveCatalogBaseName()
+            : $this->humanEquipmentBaseName();
+        $items = $siblingItems;
+        if ($items === null) {
+            $this->loadMissing('application.items');
+            $items = $this->application?->items;
+        }
+
+        $best = '';
+        foreach ($items ?? [] as $candidate) {
+            if (! $candidate instanceof self || $candidate->isCatalogOverflowPendingOrderLine()) {
+                continue;
+            }
+            if (! (bool) $candidate->is_checked) {
+                continue;
+            }
+            $candidateSize = PieceQuantity::isClothingMeasurement($candidate->storedMeasurementType())
+                ? trim((string) ($candidate->storedSizeValue() ?? ''))
+                : '';
+            if ($candidateSize !== $sizeVariant) {
+                continue;
+            }
+            $candidateBase = $candidate->humanEquipmentBaseName();
+            if ($candidateBase === '') {
+                continue;
+            }
+            if ($shortBase !== '' && $shortBase !== '—' && ! str_starts_with(mb_strtolower($candidateBase), mb_strtolower($shortBase))) {
+                continue;
+            }
+            if (mb_strlen($candidateBase) > mb_strlen($best)) {
+                $best = $candidateBase;
+            }
+        }
+
+        if ($best !== '') {
+            return $best;
+        }
+
+        if ($shortBase !== '' && $shortBase !== '—') {
+            return $shortBase;
+        }
+
+        $equipmentName = trim((string) ($this->equipment_name ?? ''));
+
+        return trim((string) preg_replace('/\s*\(\+на согласовании.*$/u', '', $equipmentName));
+    }
+
+    public function catalogOverflowBaseNameForMatching(): string
+    {
+        if ($this->isCatalogOverflowPendingOrderLine()) {
+            return $this->resolveOverflowSiblingBaseName();
+        }
+
+        if ($this->isApplicationReserveEquipmentLine()) {
+            return $this->reserveCatalogBaseName();
+        }
+
+        if ($this->equipment_id) {
+            $catalogName = $this->catalogEquipmentName();
+            if ($catalogName !== '') {
+                return $catalogName;
+            }
+        }
+
+        return $this->humanEquipmentBaseName();
+    }
+
+    public function overflowSizeVariantForMatching(): string
+    {
+        return PieceQuantity::isClothingMeasurement($this->storedMeasurementType())
+            ? trim((string) ($this->storedSizeValue() ?? ''))
+            : '';
     }
 
     public function applicationHasPendingOverflowForCatalogItem(?iterable $siblingItems = null): bool
@@ -478,7 +627,9 @@ class ApplicationItem extends Model
 
         if ($this->equipment_id !== null) {
             $this->loadMissing('equipment:id,is_catalog');
-            if (! $this->equipment?->is_catalog) {
+            $isCatalog = (bool) $this->equipment?->is_catalog;
+            $isReserveForApplication = $this->isApplicationReserveEquipmentLine();
+            if (! $isCatalog && ! $isReserveForApplication) {
                 return false;
             }
         }
@@ -487,7 +638,8 @@ class ApplicationItem extends Model
             return false;
         }
 
-        if ($this->applicationHasPendingOverflowForCatalogItem($siblingItems)) {
+        if (! $this->isApplicationReserveEquipmentLine()
+            && $this->applicationHasPendingOverflowForCatalogItem($siblingItems)) {
             return false;
         }
 
@@ -519,10 +671,17 @@ class ApplicationItem extends Model
     }
     public function storedSizeValue(): ?string
     {
-        $this->loadMissing('manualDetail');
+        $this->loadMissing('manualDetail', 'equipment:id,value');
         $fromManual = trim((string) ($this->manualDetail?->size_value ?? ''));
         if ($fromManual !== '') {
             return $fromManual;
+        }
+
+        if (PieceQuantity::isClothingMeasurement($this->storedMeasurementType())) {
+            $fromEquipment = trim((string) ($this->equipment?->value ?? ''));
+            if ($fromEquipment !== '') {
+                return $fromEquipment;
+            }
         }
 
         if ($this->getAttributeFromArray('equipment_id')) {
@@ -670,16 +829,9 @@ class ApplicationItem extends Model
      */
     public function reserveCatalogBaseName(): string
     {
-        $base = trim((string) ($this->base_name ?? ''));
-        if ($base !== '' && $base !== '—') {
-            return $base;
-        }
-
-        return trim((string) preg_replace(
-            '/\s*\[РЕЗЕРВ\s+заявка\s+\d+.*$/u',
-            '',
+        return ReserveEquipmentDisplayName::shortBaseFromReserveName(
             trim((string) ($this->equipment?->name ?? ''))
-        ));
+        );
     }
 
     public function isMisplacedCatalogReserveDuplicateLine(?iterable $siblingItems = null): bool
@@ -714,12 +866,20 @@ class ApplicationItem extends Model
                 continue;
             }
             $catalogName = trim((string) $other->equipment->name);
-            if ($catalogName === $reserveBase
-                || $other->catalogOverflowBaseNameForMatching() === $reserveBase
-                || str_starts_with($catalogName, $reserveBase)
-                || str_starts_with($reserveBase, $catalogName)) {
-                return true;
+            $sameBase = $catalogName === $reserveBase
+                || $other->catalogOverflowBaseNameForMatching() === $reserveBase;
+            if (! $sameBase) {
+                continue;
             }
+
+            if (PieceQuantity::isClothingMeasurement($this->storedMeasurementType())
+                || PieceQuantity::isClothingMeasurement($other->storedMeasurementType())) {
+                if ($other->overflowSizeVariantForMatching() !== $this->overflowSizeVariantForMatching()) {
+                    continue;
+                }
+            }
+
+            return true;
         }
 
         return false;

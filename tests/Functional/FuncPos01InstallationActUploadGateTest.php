@@ -104,6 +104,42 @@ test('installation act upload is allowed only after catalog equipment is deliver
     expect($application->fresh(['items'])->canUploadInstallationActAndPhotos())->toBeTrue();
 });
 
+test('installation act upload is allowed for partially approved application when agreed lines are delivered', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Труба акт-частично');
+
+    $application = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+        'desired_delivery_date' => now()->addDays(3)->toDateString(),
+    ]);
+
+    ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 5,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 2,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => false,
+        'reason_not_selected' => 'Отклонено руководством',
+    ]);
+
+    $application->load('items');
+    expect($application->isStatusPartial())->toBeTrue();
+    expect($application->canUploadInstallationActAndPhotos())->toBeTrue();
+});
+
 test('commercial offer order button is hidden when catalog equipment is in transit', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Пила КП-путь');

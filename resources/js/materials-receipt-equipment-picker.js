@@ -1,7 +1,7 @@
 // скрипт на странице
 import {
     bindPieceQuantityTextInput,
-    isPieceMeasurementType,
+    requiresWholeQuantityMeasurement,
     sanitizePieceQuantityValue,
 } from './quantity-piece-input';
 
@@ -118,7 +118,7 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 let cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
-                if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                if (requiresWholeQuantityMeasurement(this.selectedUnitTypeCode)) {
                     cleaned = sanitizePieceQuantityValue(cleaned);
                 }
                 if (cleaned !== el.value) {
@@ -132,7 +132,7 @@ document.addEventListener('alpine:init', () => {
                 }
                 const el = e.target;
                 let cleaned = String(el.value || '').replace(/[A-Za-zА-Яа-яЁё]/g, '');
-                if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                if (requiresWholeQuantityMeasurement(this.selectedUnitTypeCode)) {
                     cleaned = sanitizePieceQuantityValue(cleaned);
                 }
                 if (cleaned !== el.value) {
@@ -154,7 +154,7 @@ document.addEventListener('alpine:init', () => {
                         this.receiptVariantError = true;
                         return;
                     }
-                } else if (isPieceMeasurementType(this.selectedUnitTypeCode)) {
+                } else if (requiresWholeQuantityMeasurement(this.selectedUnitTypeCode)) {
                     const qtyEl = document.getElementById('quantity');
                     const raw = qtyEl ? String(qtyEl.value || '').trim() : '';
                     const normalized = raw.replace(',', '.');

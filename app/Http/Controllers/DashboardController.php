@@ -15,7 +15,7 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    private const APPLICATION_ACCESS_ROLE_IDS = [1, 6, 4, 2, 3, 7];
+    private const APPLICATION_ACCESS_ROLE_IDS = User::APPLICATION_LISTING_ROLE_IDS;
 
     private const BOILER_CHIEF_ROLE_ID = 7;
 

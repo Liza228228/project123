@@ -8,19 +8,15 @@
         $canManageBoilerChiefAssignments = $user->hasAnyRoleId(\App\Models\User::SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS);
         $canManageForemanAssignments = $canManageBoilerChiefAssignments;
         $canManageMaterials = $user->hasAnyRoleId(\App\Models\User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS);
-        $canViewWarehouseBalances = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7]);
+        $canViewWarehouseBalances = $user->hasAnyRoleId(\App\Models\User::MATERIALS_WAREHOUSE_NAV_ROLE_IDS);
+        $canOpenMaterialsWarehouseNav = $canManageMaterials || $canViewWarehouseBalances;
         $canManageReportLayoutTemplates = $user->hasAnyRoleId(\App\Models\User::REPORT_LAYOUT_DESIGNER_ROLE_IDS);
         $hasReportGeneratorFullMenu = $user->hasAnyRoleId(\App\Models\User::REPORT_GENERATOR_FULL_MENU_ROLE_IDS)
             || $user->hasRoleId(\App\Models\User::ADMINISTRATOR_ROLE_ID);
         $canLayoutApplicationReports = $user->hasAnyRoleId(\App\Models\User::LAYOUT_APPLICATION_REPORT_ROLE_IDS);
         $canLayoutApplicationsOnly = $user->hasRoleId(3);
-        $canFillReport = $user->hasAnyRoleId([1, 2, 4, 6]);
-        $showStandaloneLayoutFillReport = $canFillReport && ! $user->hasAnyRoleId([1, 2, 4, 6]);
-        $foremanLayoutReportsGeneratorOnly = $user->hasRoleId(4) && $canLayoutApplicationReports;
-        $boilerChiefLayoutReportsGeneratorOnly = $user->hasRoleId(7) && $canLayoutApplicationReports;
-        $supplyHeadLayoutReportsGeneratorOnly = $user->hasRoleId(2)
-            && $canLayoutApplicationReports
-            && ! $hasReportGeneratorFullMenu;
+        $foremanLayoutReportsGeneratorOnly = $user->hasRoleId(4) && $canLayoutApplicationReports && ! $hasReportGeneratorFullMenu;
+        $boilerChiefLayoutReportsGeneratorOnly = $user->hasRoleId(7) && $canLayoutApplicationReports && ! $hasReportGeneratorFullMenu;
     @endphp
     <div class="h-px w-full bg-gradient-to-r from-transparent via-orange-400/35 to-transparent dark:via-orange-700/25" aria-hidden="true"></div>
     <!-- Primary Navigation Menu -->
@@ -49,7 +45,7 @@
                         </a>
                     @endif
 
-                    @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7, \App\Models\User::ADMINISTRATOR_ROLE_ID]))
+                    @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_LISTING_ROLE_IDS))
                         <a href="{{ route('applications.index') }}"
                            class="{{ $topNavBtnClass }}"
                            @if(request()->routeIs('applications.*') && ! request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store', 'applications.installation-act.browse', 'applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')) aria-current="page" @endif>
@@ -81,14 +77,6 @@
                         </a>
                     @endif
 
-                    @if ($showStandaloneLayoutFillReport)
-                        <a href="{{ route('applications.installation-act.layout-fill.index') }}"
-                           class="{{ $topNavBtnClass }}"
-                           @if(request()->routeIs('applications.installation-act.layout-fill.*')) aria-current="page" @endif>
-                            Отчет
-                        </a>
-                    @endif
-
                     @if ($hasReportGeneratorFullMenu)
                         <x-dropdown align="left" width="64">
                             <x-slot name="trigger">
@@ -115,7 +103,7 @@
                                @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
                                 Отчеты по макетам
                             </a>
-                        @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly || $supplyHeadLayoutReportsGeneratorOnly)
+                        @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly)
                             <a href="{{ route('boiler-chief.layout-applications.index') }}"
                                class="{{ $topNavBtnClass }}"
                                @if(request()->routeIs('boiler-chief.layout-applications.*')) aria-current="page" @endif>
@@ -140,7 +128,7 @@
                         @endif
                     @endif
 
-                    @if ($canManageMaterials || $canViewWarehouseBalances)
+                    @if ($canOpenMaterialsWarehouseNav)
                         <x-dropdown align="left" width="64">
                             <x-slot name="trigger">
                                 <button type="button" class="{{ $topNavBtnClass }} gap-2"
@@ -261,7 +249,7 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if (Auth::user()->hasAnyRoleId([1, 6, 4, 2, 3, 7, \App\Models\User::ADMINISTRATOR_ROLE_ID]))
+            @if (Auth::user()->hasAnyRoleId(\App\Models\User::APPLICATION_LISTING_ROLE_IDS))
                 <x-responsive-nav-link :href="route('applications.index')" :active="request()->routeIs('applications.*') && ! request()->routeIs('applications.installation-act.upload', 'applications.installation-act.upload.store', 'applications.installation-act.browse', 'applications.custom-equipment-to-order', 'applications.custom-equipment-order', 'applications.custom-equipment-order.ordered', 'applications.custom-equipment-order.on-warehouse')">
                     Заявки
                 </x-responsive-nav-link>
@@ -285,12 +273,6 @@
                 </x-responsive-nav-link>
             @endif
 
-            @if ($showStandaloneLayoutFillReport)
-                <x-responsive-nav-link :href="route('applications.installation-act.layout-fill.index')" :active="request()->routeIs('applications.installation-act.layout-fill.*')">
-                    Отчет
-                </x-responsive-nav-link>
-            @endif
-
             @if ($hasReportGeneratorFullMenu)
                 <div class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-black/45 dark:text-white/45">
                     Генератор отчётов
@@ -311,7 +293,7 @@
                     <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
                         Отчеты по макетам
                     </x-responsive-nav-link>
-                @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly || $supplyHeadLayoutReportsGeneratorOnly)
+                @elseif ($foremanLayoutReportsGeneratorOnly || $boilerChiefLayoutReportsGeneratorOnly)
                     <x-responsive-nav-link :href="route('boiler-chief.layout-applications.index')" :active="request()->routeIs('boiler-chief.layout-applications.*')">
                         Отчеты по макетам
                     </x-responsive-nav-link>
@@ -328,7 +310,7 @@
                 @endif
             @endif
 
-            @if ($canManageMaterials || $canViewWarehouseBalances)
+            @if ($canOpenMaterialsWarehouseNav)
                 <div class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-black/45 dark:text-white/45">
                     Склады и оборудование
                 </div>

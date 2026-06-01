@@ -12,7 +12,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('application_item_id')->unique()->constrained('application_items')->cascadeOnDelete();
             $table->string('equipment_name', 255)->nullable();
-            $table->string('base_name', 255)->nullable();
             $table->string('size_value', 120)->nullable();
             $table->string('measurement_type', 20)->default('piece');
             $table->string('quantity_unit', 20)->default('шт');

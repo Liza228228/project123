@@ -152,6 +152,86 @@ test('report layout equipment list for administrator includes all delivered appl
     expect($ids)->toContain((int) $application->id);
 });
 
+test('installation act report layout list includes application when agreed lines are delivered and other lines are still pending approval', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Акт согласовано доставлено');
+
+    $application = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 3,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => false,
+    ]);
+
+    $application->load('items');
+    expect($application->canUploadInstallationActAndPhotos())->toBeTrue();
+
+    $options = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($ctx['foreman']);
+    $ids = array_column($options, 'id');
+
+    expect($ids)->toContain((int) $application->id);
+});
+
+test('installation act report layout list includes partially approved application when agreed lines are delivered', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Акт частично согласована');
+
+    $partiallyApproved = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'responsible_user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $partiallyApproved->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 4,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+    ApplicationItem::query()->create([
+        'application_id' => $partiallyApproved->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => false,
+        'reason_not_selected' => 'Не требуется',
+    ]);
+
+    $partiallyApproved->load('items');
+    expect($partiallyApproved->isStatusPartial())->toBeTrue();
+    expect($partiallyApproved->canUploadInstallationActAndPhotos())->toBeTrue();
+
+    $options = ReportLayoutEquipmentApplications::clientOptionsForInstallationActUser($ctx['foreman']);
+    $ids = array_column($options, 'id');
+
+    expect($ids)->toContain((int) $partiallyApproved->id);
+});
+
 test('installation act report layout list excludes archive act and partial delivery', function (): void {
     FunctionalScenarioFixture::seedRolesAndUnits();
     $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Акт отчёт фильтр');

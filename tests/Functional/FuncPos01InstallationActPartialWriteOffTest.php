@@ -8,6 +8,7 @@ use App\Models\ApplicationStatus;
 use App\Models\MaterialStockMovement;
 use App\Models\MaterialStockMovementType;
 use App\Models\User;
+use App\Support\WarehouseStockBucket;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\FunctionalScenarioFixture;
 
@@ -83,6 +84,64 @@ test('installation act write-off uses partial quantity up to ordered amount', fu
     $remaining = $remainingMethod->invoke($controller, $application, $item->fresh());
 
     expect($remaining)->toBe(5.0);
+});
+
+test('completion archive recognizes installation act stock write-off correlation', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Труба архив акт');
+
+    $application = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL),
+        'desired_delivery_date' => now()->addDays(3)->toDateString(),
+        'act_of_installation' => 'installation-acts/test-act.pdf',
+    ]);
+
+    $item = ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 10,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+
+    ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 1,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => false,
+        'reason_not_selected' => 'Не требуется',
+    ]);
+
+    $application->installationActPhotos()->create([
+        'path' => 'installation-act-photos/test.jpg',
+    ]);
+
+    $issueTypeId = MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_ISSUE);
+    MaterialStockMovement::query()->create([
+        'equipment_id' => $ctx['equipment']->id,
+        'warehouse_id' => $ctx['warehouse']->id,
+        'material_stock_movement_type_id' => $issueTypeId,
+        'quantity' => 10,
+        'stock_bucket' => WarehouseStockBucket::GOOD,
+        'comment' => MaterialStockMovement::packCommentWithCorrelation(
+            $application->installationStockIssueDocumentRefForItem((int) $item->id),
+            'Списание по акту установки.',
+        ),
+    ]);
+
+    $application->load(['items', 'installationActPhotos']);
+
+    expect($application->catalogApprovedItemsFullyIssued())->toBeTrue();
+    expect($application->qualifiesForCompletionArchive())->toBeTrue();
+    expect($application->archiveIfEligible())->toBeTrue();
+    expect($application->fresh()->isArchived())->toBeTrue();
 });
 
 test('installation act issue quantity validation rejects amount above ordered', function (): void {

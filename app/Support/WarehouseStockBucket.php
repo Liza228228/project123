@@ -160,6 +160,36 @@ final class WarehouseStockBucket
         return 'WH:'.$warehouseId.':DEFECT:'.$transferToken;
     }
 
+    /**
+     * SQL-выражение для колонки «Списано» в обзоре склада: расход годного без перевода в брак + утилизация брака.
+     */
+    public static function overviewWrittenOffQuantitySqlExpression(): string
+    {
+        $corr = str_replace("'", "''", MaterialStockMovement::CORR_PREFIX);
+        $issue = str_replace("'", "''", MaterialStockMovementType::NAME_ISSUE);
+        $good = self::GOOD;
+        $defective = self::DEFECTIVE;
+
+        return "(
+            SUM(CASE
+                WHEN material_stock_movements.stock_bucket = {$good}
+                    AND msm_types.name = '{$issue}'
+                    AND (
+                        material_stock_movements.comment IS NULL
+                        OR material_stock_movements.comment NOT LIKE '{$corr}%:DEFECT:%'
+                    )
+                THEN material_stock_movements.quantity
+                ELSE 0
+            END)
+            + SUM(CASE
+                WHEN material_stock_movements.stock_bucket = {$defective}
+                    AND msm_types.name = '{$issue}'
+                THEN material_stock_movements.quantity
+                ELSE 0
+            END)
+        )";
+    }
+
     public static function warehouseDefectDisposeCorrelationKey(int $warehouseId, string $disposeToken): string
     {
         return 'WH:'.$warehouseId.':DISPOSE:'.$disposeToken;

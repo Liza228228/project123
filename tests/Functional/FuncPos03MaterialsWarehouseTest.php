@@ -319,6 +319,8 @@ test('technical director can access supply procurement sections but not equipmen
         ->assertNotFound();
 
     $this->actingAs($td)->get(route('materials.index'))->assertForbidden();
+    $this->actingAs($td)->get(route('materials.overview'))->assertOk();
+    $this->actingAs($td)->get(route('materials.movements'))->assertOk();
 });
 
 test('technical director cannot open equipment accounting or post warehouse catalog operations', function (): void {
@@ -646,6 +648,17 @@ test('management can transfer to defect issue and dispose stock on main warehous
     expect(WarehouseStockBucket::balance($equipment->id, $mainWarehouse->id, WarehouseStockBucket::GOOD))->toBe(7.0);
     expect(WarehouseStockBucket::balance($equipment->id, $mainWarehouse->id, WarehouseStockBucket::DEFECTIVE))->toBe(3.0);
 
+    $controller = app(\App\Http\Controllers\MaterialAccountingController::class);
+    $aggregatesMethod = new ReflectionMethod($controller, 'warehouseBalanceAggregatesQuery');
+    $aggregatesMethod->setAccessible(true);
+    $overviewRow = $aggregatesMethod->invoke($controller)
+        ->where('material_stock_movements.warehouse_id', $mainWarehouse->id)
+        ->where('equipment.id', $equipment->id)
+        ->first();
+    expect($overviewRow)->not->toBeNull();
+    expect((float) $overviewRow->defective_balance)->toBe(3.0);
+    expect((float) $overviewRow->qty_out)->toBe(0.0);
+
     $this->actingAs($administrator)
         ->post(route('materials.overview-dispose-defective'), $overviewParams + [
             'equipment_key' => $equipment->id.':',
@@ -656,6 +669,13 @@ test('management can transfer to defect issue and dispose stock on main warehous
         ->assertSessionHas('status');
 
     expect(WarehouseStockBucket::balance($equipment->id, $mainWarehouse->id, WarehouseStockBucket::DEFECTIVE))->toBe(0.0);
+
+    $overviewRowAfterDispose = $aggregatesMethod->invoke($controller)
+        ->where('material_stock_movements.warehouse_id', $mainWarehouse->id)
+        ->where('equipment.id', $equipment->id)
+        ->first();
+    expect((float) $overviewRowAfterDispose->defective_balance)->toBe(0.0);
+    expect((float) $overviewRowAfterDispose->qty_out)->toBe(3.0);
 });
 
 test('foreman and boiler chief can manage defect stock on assigned subdivision warehouse overview', function (): void {

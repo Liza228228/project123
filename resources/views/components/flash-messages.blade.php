@@ -14,6 +14,17 @@
             $flashes[] = ['type' => $key, 'message' => $message];
         }
     }
+
+    $seenMessages = [];
+    $flashes = array_values(array_filter($flashes, static function (array $flash) use (&$seenMessages): bool {
+        $text = (string) $flash['message'];
+        if (isset($seenMessages[$text])) {
+            return false;
+        }
+        $seenMessages[$text] = true;
+
+        return true;
+    }));
 @endphp
 
 @if ($flashes !== [])

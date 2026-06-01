@@ -3,6 +3,7 @@
 // функциональный тест
 use App\Http\Controllers\ApplicationController;
 use App\Models\Application;
+use App\Models\ApplicationArchive;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
 use App\Models\MaterialStockMovement;
@@ -315,4 +316,58 @@ test('disposed defective quantity reduces installation act write-off limit', fun
     );
 
     expect($resolved[(int) $item->id])->toBe(7.0);
+});
+
+test('archived application cannot mark delivery defect on recipient warehouse', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Архив брак');
+    MaterialStockMovement::query()->where('equipment_id', $ctx['equipment']->id)->delete();
+
+    $application = Application::query()->create([
+        'user_id' => $ctx['foreman']->id,
+        'subdivision_id' => $ctx['subdivision']->id,
+        'application_status_id' => ApplicationStatus::idFor(ApplicationStatus::NAME_COMPLETED),
+        'desired_delivery_date' => now()->addDays(2)->toDateString(),
+        'act_of_installation' => 'installation-acts/'.$ctx['subdivision']->id.'/archived-act.pdf',
+    ]);
+
+    ApplicationArchive::query()->create([
+        'application_id' => $application->id,
+        'archived_at' => now(),
+    ]);
+
+    $item = ApplicationItem::query()->create([
+        'application_id' => $application->id,
+        'equipment_id' => $ctx['equipment']->id,
+        'quantity' => 3,
+        'measurement_type' => 'piece',
+        'quantity_unit' => 'шт',
+        'is_checked' => true,
+        'delivery_status_id' => ApplicationItem::DELIVERY_DELIVERED_ID,
+        'delivery_warehouse_id' => $ctx['warehouse']->id,
+    ]);
+
+    MaterialStockMovement::query()->create([
+        'equipment_id' => $ctx['equipment']->id,
+        'warehouse_id' => $ctx['warehouse']->id,
+        'material_stock_movement_type_id' => MaterialStockMovementType::idFor(MaterialStockMovementType::NAME_RECEIPT),
+        'quantity' => 3,
+        'stock_bucket' => WarehouseStockBucket::GOOD,
+        'comment' => 'Приход.',
+    ]);
+
+    expect($application->fresh()->allowsRecipientWarehouseDefectManagement())->toBeFalse();
+
+    $this->actingAs($ctx['foreman'])
+        ->get(route('applications.show', $application))
+        ->assertOk()
+        ->assertDontSee('Брак на складе получателя', false);
+
+    $this->actingAs($ctx['foreman'])
+        ->post(route('applications.delivery-defective', [$application, $item]), [
+            'defect_quantity' => 1,
+            'defect_reason' => 'Повреждение после монтажа',
+        ])
+        ->assertRedirect(route('applications.show', $application))
+        ->assertSessionHasErrors('defect');
 });

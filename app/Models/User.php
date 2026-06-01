@@ -17,27 +17,59 @@ class User extends Authenticatable
     public const APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2];
     public const MANAGEMENT_EDITOR_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
 
-    public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = [1, 2];
+    /** Директор и нач. снабжения — каталог, заказ своего оборудования, подразделения/склады, учёт. */
+    public const DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS = [1, 2];
+    public const MATERIALS_CATALOG_RECEIPT_ROLE_IDS = self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS;
+    public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS;
+    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS;
     public const SUPPLY_PROCUREMENT_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
-    public const DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
-    public const SUBDIVISION_DIRECTORY_TOP_NAV_ROLE_IDS = [1, 2, 6, 3, 5];
-    public const CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS = self::MATERIALS_CATALOG_RECEIPT_ROLE_IDS;
+    /** Просмотр справочника подразделений (без права создавать — см. SUBDIVISION_INFRASTRUCTURE_MANAGER). */
+    public const SUBDIVISION_DIRECTORY_VIEW_ROLE_IDS = [
+        ...self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS,
+        self::TECHNICAL_DIRECTOR_ROLE_ID,
+        self::ACCOUNTANT_ROLE_ID,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
+    public const SUBDIVISION_DIRECTORY_TOP_NAV_ROLE_IDS = self::SUBDIVISION_DIRECTORY_VIEW_ROLE_IDS;
+    public const MATERIALS_WAREHOUSE_NAV_ROLE_IDS = [
+        ...self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS,
+        self::TECHNICAL_DIRECTOR_ROLE_ID,
+        self::FOREMAN_ROLE_ID,
+        self::BOILER_CHIEF_ROLE_ID,
+        self::ACCOUNTANT_ROLE_ID,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
+    public const APPLICATION_LISTING_ROLE_IDS = [
+        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        self::FOREMAN_ROLE_ID,
+        self::BOILER_CHIEF_ROLE_ID,
+        self::ACCOUNTANT_ROLE_ID,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
     public const CUSTOM_EQUIPMENT_ORDER_FILTER_ROLE_IDS = [
         ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
         self::ACCOUNTANT_ROLE_ID,
         self::ADMINISTRATOR_ROLE_ID,
     ];
-    public const REPORT_LAYOUT_FILL_ROLE_IDS = [1, 2, 3, 4, 5, 6, 7];
+    /** Полный генератор отчётов — только директор и технический директор. */
+    public const REPORT_GENERATOR_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID];
+    public const REPORT_GENERATOR_FULL_MENU_ROLE_IDS = self::REPORT_GENERATOR_ROLE_IDS;
+    public const REPORT_LAYOUT_FILL_ROLE_IDS = [
+        ...self::REPORT_GENERATOR_ROLE_IDS,
+        self::ACCOUNTANT_ROLE_ID,
+        self::FOREMAN_ROLE_ID,
+        self::BOILER_CHIEF_ROLE_ID,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
     public const LAYOUT_APPLICATION_REPORT_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
-    public const REPORT_GENERATOR_FULL_MENU_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID];
     public const REPORT_LAYOUT_DESIGNER_ROLE_IDS = [
-        ...self::REPORT_GENERATOR_FULL_MENU_ROLE_IDS,
+        ...self::REPORT_GENERATOR_ROLE_IDS,
         self::ADMINISTRATOR_ROLE_ID,
     ];
     public const REPORT_LAYOUT_CATALOG_VIEWER_ROLE_IDS = self::REPORT_LAYOUT_FILL_ROLE_IDS;
     public const ISSUE_STOCK_FROM_MAIN_ROLE_IDS = self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS;
     public const MAIN_WAREHOUSE_STOCK_MANAGEMENT_ROLE_IDS = [
-        ...self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS,
+        ...self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS,
         self::ADMINISTRATOR_ROLE_ID,
     ];
     public const FOREMAN_ROLE_ID = 4;
@@ -58,8 +90,14 @@ class User extends Authenticatable
     ];
     public const TECHNICAL_DIRECTOR_ROLE_ID = 6;
 
-    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [1, self::TECHNICAL_DIRECTOR_ROLE_ID, 2, 5];
-    public const SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS = [1, 2, 5];
+    public const SUBDIVISION_ASSIGNMENT_MANAGER_ROLE_IDS = [
+        ...self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
+    public const SUBDIVISION_INFRASTRUCTURE_MANAGER_ROLE_IDS = [
+        ...self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS,
+        self::ADMINISTRATOR_ROLE_ID,
+    ];
 
     protected $fillable = [
         'surname',
@@ -180,6 +218,32 @@ class User extends Authenticatable
     {
         return $this->hasAnyRoleId(self::APPLICATION_SUPPLY_WORKFLOW_ROLE_IDS);
     }
+
+    public function hasDirectorSupplyHeadParityRole(): bool
+    {
+        return $this->hasAnyRoleId(self::DIRECTOR_SUPPLY_HEAD_PARITY_ROLE_IDS);
+    }
+
+    public function canUseReportGenerator(): bool
+    {
+        return $this->hasAnyRoleId(self::REPORT_GENERATOR_ROLE_IDS);
+    }
+
+    public function hasDirectorSupplyHeadOperationsRole(): bool
+    {
+        return $this->hasAnyRoleId(self::DIRECTOR_SUPPLY_HEAD_OPERATIONS_ROLE_IDS);
+    }
+
+    public function canOrderCustomEquipment(): bool
+    {
+        return $this->hasAnyRoleId(self::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS);
+    }
+
+    public function sharesApplicationWorkflowWithSupplyHead(): bool
+    {
+        return $this->hasApplicationSupplyWorkflowRole();
+    }
+
     public function fullName(): string
     {
         $parts = array_filter([

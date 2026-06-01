@@ -460,7 +460,7 @@ class ForemanSubdivisionAssignmentController extends Controller
 
     private function authorizeForView(Request $request): void
     {
-        $allowed = $request->user()?->hasAnyRoleId([1, 6, 2, 3, 5]) ?? false;
+        $allowed = $request->user()?->hasAnyRoleId(User::SUBDIVISION_DIRECTORY_VIEW_ROLE_IDS) ?? false;
 
         if (! $allowed) {
             abort(403, 'Просмотр подразделений и складов разрешён только директору, техническому директору, начальнику отдела снабжения, администратору и бухгалтеру.');
@@ -472,7 +472,7 @@ class ForemanSubdivisionAssignmentController extends Controller
             return;
         }
 
-        abort(403, 'Назначение мастеров участка по подразделениям разрешено директору, техническому директору, начальнику отдела снабжения и администратору.');
+        abort(403, 'Назначение мастеров участка по подразделениям разрешено директору, начальнику отдела снабжения и администратору.');
     }
 
     private function authorizeSubdivisionInfrastructureManage(Request $request): void

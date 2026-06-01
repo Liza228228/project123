@@ -57,7 +57,7 @@
 
             <dl class="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2" x-show="selectedKey" x-cloak>
                 <div class="rounded-lg border border-emerald-200/80 bg-emerald-50/70 px-2 py-1.5 dark:border-emerald-900/50 dark:bg-emerald-950/30">
-                    <dt class="font-medium text-emerald-900/80 dark:text-emerald-100/80">Годный остаток</dt>
+                    <dt class="font-medium text-emerald-900/80 dark:text-emerald-100/80"> Остаток</dt>
                     <dd class="mt-0.5 text-sm font-semibold text-emerald-950 dark:text-emerald-50" x-text="formatQty(goodBalance) + ' ' + unitCode"></dd>
                 </div>
                 <div class="rounded-lg border border-amber-200/80 bg-amber-50/70 px-2 py-1.5 dark:border-amber-900/50 dark:bg-amber-950/30">

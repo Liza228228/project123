@@ -116,8 +116,74 @@ test('director and technical director see identical full report generator naviga
 
     $supplyNav = $this->actingAs($supplyHead)->get(route('dashboard'))->assertOk()->getContent();
 
-    expect($supplyNav)->toContain('Отчеты по макетам');
-    expect($supplyNav)->not->toContain('Макеты шапок');
+    expect($supplyNav)->toContain('Заявки');
+    expect($supplyNav)->toContain('Оборудование к заказу');
+    expect($supplyNav)->toContain('Склады и оборудование');
+    expect($supplyNav)->not->toContain('Генератор отчётов');
+
+    expect($tdNav)->toContain('Заявки');
+    expect($tdNav)->toContain('Генератор отчётов');
+    expect($tdNav)->not->toContain('Оборудование к заказу');
+    expect($tdNav)->not->toContain('Склады и оборудование');
+});
+
+test('technical director shares application workflow with supply head but not procurement or materials', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Снабжение',
+        'name' => 'Паритет',
+        'patronymic' => 'Тест',
+        'email' => 'supply-parity-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $technicalDirector = User::query()->create([
+        'surname' => 'Техдир',
+        'name' => 'Паритет',
+        'patronymic' => 'Тест',
+        'email' => 'td-parity-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 6,
+    ]);
+
+    foreach ([$supplyHead, $technicalDirector] as $actor) {
+        $this->actingAs($actor)->get(route('applications.index'))->assertOk();
+        $this->actingAs($actor)->get(route('applications.installation-act.upload'))->assertOk();
+    }
+
+    $this->actingAs($supplyHead)->get(route('applications.custom-equipment-to-order'))->assertOk();
+    $this->actingAs($supplyHead)->get(route('materials.index'))->assertOk();
+
+    $this->actingAs($technicalDirector)->get(route('applications.custom-equipment-to-order'))->assertForbidden();
+    $this->actingAs($technicalDirector)->get(route('materials.index'))->assertForbidden();
+    $this->actingAs($technicalDirector)->get(route('materials.overview'))->assertOk();
+    $this->actingAs($technicalDirector)->get(route('materials.movements'))->assertOk();
+    $this->actingAs($technicalDirector)->get(route('boiler-chief.request-layouts.index'))->assertOk();
+
+    $this->actingAs($supplyHead)->get(route('boiler-chief.request-layouts.index'))->assertForbidden();
+});
+
+test('supply head cannot access report generator sections but shares application workflow with director', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+
+    $supplyHead = User::query()->create([
+        'surname' => 'Снабжение',
+        'name' => 'Доступ',
+        'patronymic' => 'Тест',
+        'email' => 'supply-access-'.uniqid('', true).'@test.local',
+        'password' => Hash::make('password'),
+        'role_id' => 2,
+    ]);
+
+    $this->actingAs($supplyHead)->get(route('boiler-chief.request-layouts.index'))->assertForbidden();
+    $this->actingAs($supplyHead)->get(route('boiler-chief.layout-applications.index'))->assertForbidden();
+    $this->actingAs($supplyHead)->get(route('boiler-chief.document-header-layouts.index'))->assertForbidden();
+
+    $this->actingAs($supplyHead)->get(route('applications.index'))->assertOk();
+    $this->actingAs($supplyHead)->get(route('applications.custom-equipment-to-order'))->assertOk();
+    $this->actingAs($supplyHead)->get(route('applications.installation-act.upload'))->assertOk();
 });
 
 test('administrator can access report layout designer tools like technical director', function (): void {

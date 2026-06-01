@@ -4,6 +4,7 @@
 namespace App\Models;
 
 use App\Models\Scopes\ActiveApplicationItemScope;
+use App\Support\WarehouseStockBucket;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -180,6 +181,21 @@ class Application extends Model
         }
 
         return $this->installationActPhotos()->exists();
+    }
+
+    /** Брак на складе получателя — только пока заявка не завершена (архив / списание по акту). */
+    public function allowsRecipientWarehouseDefectManagement(): bool
+    {
+        return ! $this->isLifecycleCompletedForWarehouseAndActOperations();
+    }
+
+    private function isLifecycleCompletedForWarehouseAndActOperations(): bool
+    {
+        if ($this->isLifecycleCompleted()) {
+            return true;
+        }
+
+        return $this->hasInstallationActEvidence() && $this->catalogApprovedItemsFullyIssued();
     }
 
     public function sourceApplication(): BelongsTo
@@ -450,6 +466,13 @@ class Application extends Model
 
         return ! $this->boilerChiefSubdivisionReviewCycleStarted();
     }
+
+    /** Черновик мастера до первой отправки на согласование — правки без комментариев к изменениям. */
+    public function foremanMayEditWithoutChangeReasons(): bool
+    {
+        return $this->isForemanDraftBeforeBoilerChief();
+    }
+
     public function isForemanDraftAfterBoilerChiefBeforeManagement(): bool
     {
         $this->loadMissing('user:id,role_id');
@@ -1358,13 +1381,23 @@ class Application extends Model
         $this->loadMissing('items');
 
         foreach ($this->items as $item) {
-            if (! $item->is_checked || $item->equipment_id === null) {
+            if (! $item->is_checked || $item->equipment_id === null || $item->isCatalogOverflowPendingOrderLine()) {
                 continue;
             }
 
-            $qty = (float) $item->quantity;
-            $issued = $this->totalIssuedQuantityForCatalogItem($item);
-            if ($issued < $qty - 0.0005) {
+            $applicationId = (int) $this->id;
+            $itemId = (int) $item->id;
+            $required = max(
+                0.0,
+                (float) $item->quantity - WarehouseStockBucket::markedDefectiveQuantityForApplicationItem($applicationId, $itemId),
+            );
+            if ($required < 0.0005) {
+                continue;
+            }
+
+            $installationIssued = WarehouseStockBucket::installationIssuedQuantityForApplicationItem($applicationId, $itemId);
+            $otherIssued = $this->totalIssuedQuantityForCatalogItem($item);
+            if ($installationIssued + $otherIssued < $required - 0.0005) {
                 return false;
             }
         }
@@ -1376,7 +1409,7 @@ class Application extends Model
         $this->loadMissing('items');
 
         return $this->items->filter(function (ApplicationItem $item): bool {
-            if (! $item->is_checked) {
+            if (! $item->is_checked || $item->isCatalogOverflowPendingOrderLine()) {
                 return false;
             }
 
@@ -1387,36 +1420,9 @@ class Application extends Model
             return $item->usesFreeTextEquipment();
         })->values();
     }
-    public function catalogItemDeliveredToRecipientWarehouse(ApplicationItem $item): bool
-    {
-        if ($item->equipment_id === null) {
-            return false;
-        }
-
-        if ($item->resolvedDeliveryStatus() !== ApplicationItem::DELIVERY_DELIVERED) {
-            return false;
-        }
-
-        if ((int) ($item->delivery_warehouse_id ?? 0) <= 0) {
-            return false;
-        }
-
-        $targetSubdivisionId = $item->resolvedDeliveryTargetSubdivisionId();
-        $item->loadMissing('deliveryWarehouse');
-        $deliverySubId = $item->deliveryWarehouse?->subdivision_id !== null
-            ? (int) $item->deliveryWarehouse->subdivision_id
-            : null;
-        if ($targetSubdivisionId !== null
-            && $deliverySubId !== null
-            && $deliverySubId !== $targetSubdivisionId) {
-            return false;
-        }
-
-        return true;
-    }
     public function canUploadInstallationActAndPhotos(): bool
     {
-        if (! $this->isStatusApproved()) {
+        if ($this->needsBoilerChiefReviewBeforeManagement() || $this->isPendingManagementReview()) {
             return false;
         }
 
@@ -1427,7 +1433,7 @@ class Application extends Model
 
         foreach ($requiredItems as $item) {
             if ($item->equipment_id !== null) {
-                if (! $this->catalogItemDeliveredToRecipientWarehouse($item)) {
+                if (! $item->hasArrivedAtWarehouseForReport()) {
                     return false;
                 }
 

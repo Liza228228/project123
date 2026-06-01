@@ -14,6 +14,7 @@ use App\Models\Warehouse;
 use App\Support\AdministrationWarehouse;
 use App\Support\MaterialsListPerPage;
 use App\Support\PieceQuantity;
+use App\Support\ReserveEquipmentDisplayName;
 use App\Support\WarehouseStockBucket;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -39,6 +40,7 @@ class MaterialAccountingController extends Controller
     public function movementsJournal(Request $request): View
     {
         $user = $request->user();
+        $this->authorizeMaterialsWarehouseSectionAccess($user);
         $canManage = $user?->hasAnyRoleId(User::MATERIALS_CATALOG_RECEIPT_ROLE_IDS) ?? false;
 
         $scopedWarehouseIds = $this->materialsJournalWarehouseIdsScopedToUserSubdivisions($user);
@@ -186,6 +188,7 @@ class MaterialAccountingController extends Controller
     public function overview(Request $request): View
     {
         $user = $request->user();
+        $this->authorizeMaterialsWarehouseSectionAccess($user);
         $selectedSubdivisionId = $request->integer('subdivision_id');
         $selectedWarehouseId = $request->integer('warehouse_id');
         $canAccessAdministration = AdministrationWarehouse::userCanAccess($user);
@@ -274,6 +277,8 @@ class MaterialAccountingController extends Controller
                 ->orderBy('equipment.name')
                 ->paginate($balancesPerPage['perPage'])
                 ->appends($overviewTabQuery);
+
+            $this->applyReserveEquipmentDisplayNamesToOverviewRows($equipmentBalances);
 
             if ($this->userCanManageStockOnWarehouse($user, $selectedWarehouse)) {
                 $canManageWarehouseStock = true;
@@ -417,7 +422,7 @@ class MaterialAccountingController extends Controller
             + SUM(CASE WHEN material_stock_movements.stock_bucket = {$defectiveBucket} AND msm_types.name = '{$issueType}' THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$defectiveBucket} THEN material_stock_movements.quantity ELSE 0 END)
         )";
 
-        $qtyOutSql = "SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = '{$issueType}' THEN material_stock_movements.quantity ELSE 0 END)";
+        $qtyOutSql = WarehouseStockBucket::overviewWrittenOffQuantitySqlExpression();
 
         if ($filter === self::OVERVIEW_STOCK_FILTER_ON_WAREHOUSE) {
             $query->havingRaw("{$warehouseBalanceSql} > 0.0005");
@@ -667,6 +672,13 @@ class MaterialAccountingController extends Controller
             ->with('status', 'Бракованное оборудование утилизировано со склада «'.$warehouse->name.'».');
     }
 
+    private function authorizeMaterialsWarehouseSectionAccess(?User $user): void
+    {
+        if (! $user?->hasAnyRoleId(User::MATERIALS_WAREHOUSE_NAV_ROLE_IDS)) {
+            abort(403, 'Раздел «Склады и оборудование» недоступен для вашей роли.');
+        }
+    }
+
     private function userCanManageStockOnWarehouse(?User $user, Warehouse $warehouse): bool
     {
         if ($user === null) {
@@ -848,7 +860,10 @@ class MaterialAccountingController extends Controller
                 $measurementTypeCode = trim((string) ($row->measurement_type_code ?? ''));
                 $receiptVariant = trim((string) ($row->receipt_variant ?? ''));
                 $receiptVariant = $receiptVariant !== '' ? $receiptVariant : null;
-                $equipmentName = (string) ($row->equipment_name ?? '');
+                $equipmentName = ReserveEquipmentDisplayName::resolve(
+                    (string) ($row->equipment_name ?? ''),
+                    (int) ($row->equipment_id ?? 0) ?: null
+                );
                 $label = $equipmentName.' ('.$unitCode.')';
                 if ($measurementTypeCode === PieceQuantity::CLOTHING_MEASUREMENT_TYPE && $receiptVariant !== null) {
                     $label = $equipmentName.', размер '.$receiptVariant;
@@ -876,6 +891,29 @@ class MaterialAccountingController extends Controller
     {
         return $this->warehouseBalanceAggregatesQuery()
             ->where('material_stock_movements.warehouse_id', $warehouseId);
+    }
+
+    private function applyReserveEquipmentDisplayNamesToOverviewRows(\Illuminate\Contracts\Pagination\Paginator $paginator): void
+    {
+        $repairedEquipmentIds = [];
+        foreach ($paginator as $row) {
+            $equipmentId = (int) ($row->equipment_id ?? 0);
+            $storedName = (string) ($row->equipment_name ?? '');
+            if ($equipmentId <= 0 || ! ReserveEquipmentDisplayName::isReserveEquipmentName($storedName)) {
+                continue;
+            }
+
+            if (! isset($repairedEquipmentIds[$equipmentId])) {
+                $equipment = Equipment::query()->find($equipmentId);
+                if ($equipment !== null) {
+                    ReserveEquipmentDisplayName::repairEquipmentRecord($equipment);
+                    $storedName = (string) $equipment->fresh()->name;
+                }
+                $repairedEquipmentIds[$equipmentId] = true;
+            }
+
+            $row->equipment_name = ReserveEquipmentDisplayName::resolve($storedName, $equipmentId);
+        }
     }
     private function warehouseBalanceAggregatesQuery(): \Illuminate\Database\Eloquent\Builder
     {
@@ -905,7 +943,7 @@ class MaterialAccountingController extends Controller
             ->selectRaw('unit_types.code as measurement_type_code')
             ->selectRaw("{$unitCodeSql} as unit_code")
             ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_in", [$r])
-            ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN material_stock_movements.quantity ELSE 0 END) as qty_out", [$i])
+            ->selectRaw(WarehouseStockBucket::overviewWrittenOffQuantitySqlExpression().' as qty_out')
             ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$goodBucket} AND msm_types.name = ? THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$goodBucket} THEN material_stock_movements.quantity ELSE 0 END) as balance", [$i])
             ->selectRaw("SUM(CASE WHEN material_stock_movements.stock_bucket = {$defectiveBucket} AND msm_types.name = ? THEN -material_stock_movements.quantity WHEN material_stock_movements.stock_bucket = {$defectiveBucket} THEN material_stock_movements.quantity ELSE 0 END) as defective_balance", [$i]);
     }

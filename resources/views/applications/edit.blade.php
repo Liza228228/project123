@@ -126,8 +126,8 @@
                                     $locked = $lockedApproved || $lockedRejected;
                                     $typeId = $item['equipment_id'] ?? '';
                                     if (($typeId === '' || $typeId === null) && $dbItem) {
-                                        $baseForCatalog = trim((string) ($dbItem->base_name ?? ''));
-                                        if ($baseForCatalog !== '' && $baseForCatalog !== '—') {
+                                        $baseForCatalog = $dbItem->catalogEquipmentName();
+                                        if ($baseForCatalog !== '') {
                                             $resolvedCatalogRowId = \App\Models\Equipment::query()
                                                 ->where('is_catalog', true)
                                                 ->where('name', $baseForCatalog)
@@ -234,15 +234,17 @@
                                                 <select @if($typeChosen) name="items[{{ $idx }}][quantity_unit]" @endif class="measurement-unit app-select" data-current="{{ $typeChosen ? $cqu : '' }}" @if(! $typeChosen) disabled @endif></select>
                                             </div>
                                         </div>
-                                        @if($itemId && $dbItem && ! $locked)
-                                            @include('applications.partials.item-field-change-reasons-inputs', [
-                                                'itemId' => $itemId,
-                                                'dbItem' => $dbItem,
-                                                'locked' => $locked,
-                                                'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
-                                            ])
-                                        @elseif(! $locked && ! $itemId)
-                                            @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                        @if(! ($foremanMayEditWithoutChangeReasons ?? false))
+                                            @if($itemId && $dbItem && ! $locked)
+                                                @include('applications.partials.item-field-change-reasons-inputs', [
+                                                    'itemId' => $itemId,
+                                                    'dbItem' => $dbItem,
+                                                    'locked' => $locked,
+                                                    'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
+                                                ])
+                                            @elseif(! $locked && ! $itemId)
+                                                @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                            @endif
                                         @endif
                                     </div>
                                 @else
@@ -311,15 +313,17 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        @if($itemId && $dbItem && ! $locked)
-                                            @include('applications.partials.item-field-change-reasons-inputs', [
-                                                'itemId' => $itemId,
-                                                'dbItem' => $dbItem,
-                                                'locked' => $locked,
-                                                'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
-                                            ])
-                                        @elseif(! $locked && ! $itemId)
-                                            @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                        @if(! ($foremanMayEditWithoutChangeReasons ?? false))
+                                            @if($itemId && $dbItem && ! $locked)
+                                                @include('applications.partials.item-field-change-reasons-inputs', [
+                                                    'itemId' => $itemId,
+                                                    'dbItem' => $dbItem,
+                                                    'locked' => $locked,
+                                                    'rowMode' => ($dbItem && $dbItem->equipment_id) ? 'list' : 'custom',
+                                                ])
+                                            @elseif(! $locked && ! $itemId)
+                                                @include('applications.partials.item-new-line-change-reasons-inputs', ['idx' => $idx])
+                                            @endif
                                         @endif
                                     </div>
                                 @endif
@@ -353,9 +357,9 @@
                             @endif
                             <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" @if($lockDesiredDeliveryDateEdit ?? false) disabled @endif required class="app-input min-h-[3.25rem] sm:min-h-[2.75rem] @if($lockDesiredDeliveryDateEdit ?? false) bg-stone-100 text-stone-500 dark:bg-stone-800/70 dark:text-stone-300 cursor-not-allowed @endif" />
                             <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1.5" />
-                            @if(!($lockDesiredDeliveryDateEdit ?? false))
+                            @if(!($lockDesiredDeliveryDateEdit ?? false) && ! ($foremanMayEditWithoutChangeReasons ?? false))
                                 @include('applications.partials.application-level-change-reason-inputs', ['block' => 'delivery'])
-                            @else
+                            @elseif($lockDesiredDeliveryDateEdit ?? false)
                                 <p class="mt-1.5 text-xs text-stone-500 dark:text-stone-400">
                                     Для этой роли изменение даты поставки недоступно.
                                 </p>
@@ -413,7 +417,7 @@
                         <input type="text" name="items[__INDEX__][catalog_label]" value="" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search catalog-label-field app-input app-input--with-icon" />
                         <div class="equipment-suggestions app-suggestions hidden"></div>
                     </div>
-                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную — только количество или другая позиция из списка.</p>
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную.</p>
                 </div>
                 <div class="list-amount-block md:col-span-3">
                     <label class="list-amount-label app-form-label !normal-case">Количество, шт</label>
@@ -490,6 +494,7 @@
     </script>
     <script>
         (function() {
+            var foremanMayEditWithoutChangeReasons = @json($foremanMayEditWithoutChangeReasons ?? false);
             var form = document.getElementById('application-edit-form');
             var subdivWrap = document.getElementById('field-reason-subdivision-wrap');
             var subdivInput = document.getElementById('field_change_reasons_subdivision_id');
@@ -651,6 +656,17 @@
                 };
             }
 
+            function readReasonInitFromWrap(wrap) {
+                return normalizeReasonState({
+                    equipmentId: String(wrap.getAttribute('data-initial-equipment-id') || ''),
+                    equipmentName: String(wrap.getAttribute('data-initial-equipment-name') || '').trim(),
+                    quantity: parseInt(wrap.getAttribute('data-initial-quantity') || '1', 10) || 1,
+                    measurementType: String(wrap.getAttribute('data-initial-measurement-type') || 'piece'),
+                    quantityUnit: String(wrap.getAttribute('data-initial-quantity-unit') || 'шт'),
+                    sizeValue: String(wrap.getAttribute('data-initial-size-value') || '').trim(),
+                });
+            }
+
             function syncItemFieldReasonPanels() {
                 Array.prototype.forEach.call(document.querySelectorAll('[data-item-field-change-reasons]'), function(wrap) {
                     var row = wrap.closest('.equipment-row');
@@ -658,26 +674,8 @@
                         return;
                     }
                     var mode = wrap.getAttribute('data-row-mode') || 'list';
-                    var init = {
-                        equipmentId: String(wrap.getAttribute('data-initial-equipment-id') || ''),
-                        equipmentName: String(wrap.getAttribute('data-initial-equipment-name') || '').trim(),
-                        quantity: parseInt(wrap.getAttribute('data-initial-quantity') || '1', 10) || 1,
-                        measurementType: String(wrap.getAttribute('data-initial-measurement-type') || 'piece'),
-                        quantityUnit: String(wrap.getAttribute('data-initial-quantity-unit') || 'шт'),
-                        sizeValue: String(wrap.getAttribute('data-initial-size-value') || '').trim(),
-                    };
+                    var init = readReasonInitFromWrap(wrap);
                     var cur = normalizeReasonState(mode === 'list' ? readListRowState(row) : readCustomRowState(row));
-                    var wrapInitKey = 'data-ui-initial-state';
-                    if (!wrap.hasAttribute(wrapInitKey)) {
-                        wrap.setAttribute(wrapInitKey, JSON.stringify(cur));
-                    }
-                    var initFromUi = null;
-                    try {
-                        initFromUi = JSON.parse(String(wrap.getAttribute(wrapInitKey) || '{}'));
-                    } catch (e) {
-                        initFromUi = null;
-                    }
-                    init = normalizeReasonState(initFromUi || init);
                     var equipmentChanged = mode === 'list'
                         ? cur.equipmentId !== init.equipmentId
                         : cur.equipmentName !== init.equipmentName;
@@ -700,6 +698,9 @@
             }
 
             function syncAllPerFieldReasonUi() {
+                if (foremanMayEditWithoutChangeReasons) {
+                    return;
+                }
                 toggleSubdivReason();
                 toggleDeliveryReason();
                 syncNewLineFieldReasonPanels();
@@ -759,12 +760,12 @@
                 form.addEventListener('input', syncAllPerFieldReasonUi);
                 form.addEventListener('change', syncAllPerFieldReasonUi);
             }
-            syncAllPerFieldReasonUi();
         })();
     </script>
 
     <script>
         (function() {
+            var foremanMayEditWithoutChangeReasons = @json($foremanMayEditWithoutChangeReasons ?? false);
             var container = document.getElementById('equipment-items');
             var tplList = document.getElementById('equipment-row-from-list-tpl').innerHTML;
             var tplCustom = document.getElementById('equipment-row-custom-tpl').innerHTML;
@@ -1243,6 +1244,22 @@
                 return String(raw || '').replace(/[^\d]/g, '');
             }
 
+            function normalizePositivePieceQty(raw) {
+                var digits = pieceQtyDigitsOnly(raw);
+                if (digits === '') {
+                    return '';
+                }
+                var n = parseInt(digits, 10);
+                if (!n || n < 1) {
+                    return '';
+                }
+                return String(n);
+            }
+
+            function requiresWholeQuantity(type) {
+                return type === 'piece' || type === 'clothing_size';
+            }
+
             function attachPieceQuantityGuards(input, row) {
                 if (!input) {
                     return;
@@ -1251,10 +1268,10 @@
                     return measurementTypeFromRow(row);
                 }
                 function guardValue() {
-                    if (rowType() !== 'piece') {
+                    if (!requiresWholeQuantity(rowType())) {
                         return;
                     }
-                    var digits = pieceQtyDigitsOnly(input.value);
+                    var digits = normalizePositivePieceQty(input.value);
                     if (digits !== String(input.value)) {
                         input.value = digits;
                     }
@@ -1262,27 +1279,30 @@
                 if (input.dataset.pieceQtyGuard !== '1') {
                     input.dataset.pieceQtyGuard = '1';
                     input.addEventListener('keydown', function(e) {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
                             e.preventDefault();
                         }
+                        if (e.key === '0' && normalizePositivePieceQty(input.value) === '') {
+                            e.preventDefault();
+                        }
                     });
                     input.addEventListener('paste', function(e) {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
                         e.preventDefault();
                         var t = (e.clipboardData || window.clipboardData).getData('text') || '';
-                        input.value = pieceQtyDigitsOnly(t);
+                        input.value = normalizePositivePieceQty(t);
                     });
                     input.addEventListener('input', guardValue);
                     input.addEventListener('blur', function() {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
-                        var v = pieceQtyDigitsOnly(input.value);
+                        var v = normalizePositivePieceQty(input.value);
                         input.value = v === '' ? '1' : v;
                     });
                 }
@@ -1292,7 +1312,7 @@
             function syncQuantityInputsForRow(row, measurementType) {
                 var type = measurementType || measurementTypeFromRow(row);
                 row.querySelectorAll('.custom-amount-number, .list-amount-number').forEach(function(num) {
-                    if (type === 'piece') {
+                    if (requiresWholeQuantity(type)) {
                         num.type = 'text';
                         num.setAttribute('inputmode', 'numeric');
                         num.setAttribute('pattern', '[0-9]*');
@@ -1764,7 +1784,7 @@
                 }
                 var itemIdInput = row.querySelector('input[name*="[item_id]"]');
                 var itemId = itemIdInput && itemIdInput.value ? String(parseInt(itemIdInput.value, 10) || 0) : '0';
-                if (itemId !== '0' && parseInt(itemId, 10) > 0) {
+                if (itemId !== '0' && parseInt(itemId, 10) > 0 && !foremanMayEditWithoutChangeReasons) {
                     var reason = window.prompt('Укажите причину снятия этой позиции с заявки. Не менее 3 символов:', '');
                     if (reason === null) {
                         return;
@@ -1807,6 +1827,11 @@
             container.querySelectorAll('.equipment-row--custom').forEach(function(row) {
                 syncQuantityInputsForRow(row, measurementTypeFromRow(row));
             });
+
+            var appEditFormAfterInit = document.getElementById('application-edit-form');
+            if (appEditFormAfterInit) {
+                appEditFormAfterInit.dispatchEvent(new Event('input', { bubbles: true }));
+            }
 
             bindDuplicateEquipmentChecks(container);
             syncAllCatalogSearchHiddenIds();

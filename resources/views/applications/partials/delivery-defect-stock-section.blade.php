@@ -1,5 +1,6 @@
 @php // шаблон страницы
     use App\Models\ApplicationItem;
+    use App\Support\MeasurementQuantityUnits;
     use App\Support\WarehouseStockBucket;
 @endphp
 @if($chiefCanManageDeliveryDefect && $deliveryDefectItems->isNotEmpty())
@@ -61,29 +62,59 @@
                     @if($maxMarkDefect > 0.0005)
                         @php
                             $deliveredQty = (float) $defectItem->quantity;
-                            $isWholeQty = abs($deliveredQty - round($deliveredQty)) < 0.0005;
+                            $defectMeasurementType = $defectItem->storedMeasurementType();
+                            $defectBaseUnit = $defectItem->quantityUnitLabelForDisplay();
+                            $defectQtyUnitOptions = MeasurementQuantityUnits::inputUnitsForItem($defectMeasurementType, $defectBaseUnit);
+                            $defectQtyUnitFactors = MeasurementQuantityUnits::factorsToBaseUnitForOptions($defectMeasurementType, $defectBaseUnit);
+                            $defectQtyHasUnitChoice = $defectQtyUnitOptions !== [];
+                            $selectedDefectQtyUnit = MeasurementQuantityUnits::canonicalUnit(
+                                (string) old('defect_quantity_unit', $defectBaseUnit),
+                                $defectMeasurementType
+                            ) ?? ($defectQtyUnitOptions[0] ?? $defectBaseUnit);
+                            $isWholeQty = \App\Support\PieceQuantity::requiresWholeQuantity(
+                                $defectMeasurementType,
+                                $defectItem->quantity_unit
+                            );
                             $defectQtyMin = $isWholeQty ? 1 : 0.001;
                             $defectQtyMaxDisplay = rtrim(rtrim(number_format($deliveredQty, 3, '.', ''), '0'), '.');
                             $defectQtyMaxLength = $isWholeQty ? max(1, strlen((string) (int) ceil($deliveredQty))) : 12;
+                            $markQtyMaxForForm = min($deliveredQty, $maxMarkDefect);
                         @endphp
-                        <form method="POST" action="{{ route('applications.delivery-defective', [$application, $defectItem]) }}" class="space-y-2 rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-900/40 dark:bg-amber-950/20" data-defect-mark-form data-qty-min="{{ $defectQtyMin }}" data-qty-max="{{ $deliveredQty }}" data-qty-whole="{{ $isWholeQty ? '1' : '0' }}">
+                        <form method="POST" action="{{ route('applications.delivery-defective', [$application, $defectItem]) }}" class="space-y-2 rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-900/40 dark:bg-amber-950/20" data-defect-mark-form data-qty-min="{{ $defectQtyMin }}" data-qty-max="{{ $markQtyMaxForForm }}" data-qty-whole="{{ $isWholeQty ? '1' : '0' }}" @if($defectQtyHasUnitChoice) data-unit-to-base="{{ json_encode($defectQtyUnitFactors, JSON_UNESCAPED_UNICODE) }}" data-qty-base-unit="{{ $defectBaseUnit }}" @endif>
                             @csrf
                             <p class="text-xs font-medium text-amber-950 dark:text-amber-100">Перевести в брак</p>
                             <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                                <div class="w-full sm:w-28">
-                                    <label class="app-form-label !normal-case text-xs" for="defect-qty-{{ $defectItem->id }}">Кол-во</label>
-                                    <input
-                                        type="text"
-                                        name="defect_quantity"
-                                        id="defect-qty-{{ $defectItem->id }}"
-                                        value="{{ old('defect_quantity') }}"
-                                        maxlength="{{ $defectQtyMaxLength }}"
-                                        class="app-input text-sm w-full"
-                                        required
-                                        autocomplete="off"
-                                        inputmode="{{ $isWholeQty ? 'numeric' : 'decimal' }}"
-                                        data-defect-qty-input
-                                    >
+                                <div class="flex w-full gap-2 sm:w-auto sm:min-w-[10rem]">
+                                    <div class="min-w-0 flex-1 sm:w-28">
+                                        <label class="app-form-label !normal-case text-xs" for="defect-qty-{{ $defectItem->id }}">Кол-во</label>
+                                        <input
+                                            type="text"
+                                            name="defect_quantity"
+                                            id="defect-qty-{{ $defectItem->id }}"
+                                            value="{{ old('defect_quantity') }}"
+                                            maxlength="{{ $defectQtyMaxLength }}"
+                                            class="app-input text-sm w-full"
+                                            required
+                                            autocomplete="off"
+                                            inputmode="{{ $isWholeQty ? 'numeric' : 'decimal' }}"
+                                            data-defect-qty-input
+                                        >
+                                    </div>
+                                    @if($defectQtyHasUnitChoice)
+                                        <div class="w-24 shrink-0">
+                                            <label class="app-form-label !normal-case text-xs" for="defect-qty-unit-{{ $defectItem->id }}">Ед.</label>
+                                            <select
+                                                name="defect_quantity_unit"
+                                                id="defect-qty-unit-{{ $defectItem->id }}"
+                                                class="app-input text-sm w-full"
+                                                data-defect-qty-unit
+                                            >
+                                                @foreach($defectQtyUnitOptions as $unitOption)
+                                                    <option value="{{ $unitOption }}" @selected($selectedDefectQtyUnit === $unitOption)>{{ $unitOption }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    @endif
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <label class="app-form-label !normal-case text-xs" for="defect-reason-{{ $defectItem->id }}">Причина брака</label>
@@ -102,35 +133,73 @@
                                     Отметить брак
                                 </button>
                             </div>
-                            <p class="text-[11px] text-black/60 dark:text-white/60">От 1 до {{ $defectQtyMaxDisplay }} {{ $defectItem->quantityUnitLabelForDisplay() }} — не больше, чем доставлено по позиции.@if($maxMarkDefect + 0.0005 < $deliveredQty) Сейчас доступно не более {{ rtrim(rtrim(number_format($maxMarkDefect, 3, '.', ''), '0'), '.') }} {{ $defectItem->quantityUnitLabelForDisplay() }}.@endif</p>
+                            <p class="text-[11px] text-black/60 dark:text-white/60" data-defect-qty-hint>
+                                @if($defectQtyHasUnitChoice)
+                                    Укажите количество в выбранных единицах — не больше, чем доставлено по позиции ({{ $defectQtyMaxDisplay }} {{ $defectBaseUnit }}).
+                                @else
+                                    От 1 до {{ $defectQtyMaxDisplay }} {{ $defectBaseUnit }} — не больше, чем доставлено по позиции.
+                                @endif
+                                @if($maxMarkDefect + 0.0005 < $deliveredQty)
+                                    Сейчас доступно не более {{ rtrim(rtrim(number_format($maxMarkDefect, 3, '.', ''), '0'), '.') }} {{ $defectBaseUnit }}.
+                                @endif
+                            </p>
                         </form>
                     @endif
 
                     @if($remainingDefective > 0.0005)
                         @php
-                            $disposeIsWholeQty = abs($remainingDefective - round($remainingDefective)) < 0.0005;
+                            $disposeMeasurementType = $defectItem->storedMeasurementType();
+                            $disposeBaseUnit = $defectItem->quantityUnitLabelForDisplay();
+                            $disposeQtyUnitOptions = MeasurementQuantityUnits::inputUnitsForItem($disposeMeasurementType, $disposeBaseUnit);
+                            $disposeQtyUnitFactors = MeasurementQuantityUnits::factorsToBaseUnitForOptions($disposeMeasurementType, $disposeBaseUnit);
+                            $disposeQtyHasUnitChoice = $disposeQtyUnitOptions !== [];
+                            $selectedDisposeQtyUnit = MeasurementQuantityUnits::canonicalUnit(
+                                (string) old('dispose_quantity_unit', $disposeBaseUnit),
+                                $disposeMeasurementType
+                            ) ?? ($disposeQtyUnitOptions[0] ?? $disposeBaseUnit);
+                            $disposeIsWholeQty = \App\Support\PieceQuantity::requiresWholeQuantity(
+                                $disposeMeasurementType,
+                                $defectItem->quantity_unit
+                            );
                             $disposeQtyMin = $disposeIsWholeQty ? 1 : 0.001;
                             $disposeQtyMaxDisplay = rtrim(rtrim(number_format($remainingDefective, 3, '.', ''), '0'), '.');
                             $disposeQtyMaxLength = $disposeIsWholeQty ? max(1, strlen((string) (int) ceil($remainingDefective))) : 12;
                         @endphp
-                        <form method="POST" action="{{ route('applications.delivery-defective-dispose', [$application, $defectItem]) }}" class="space-y-2 rounded-lg border border-stone-200/80 bg-stone-50/50 p-3 dark:border-stone-700 dark:bg-stone-900/30" data-defect-dispose-form data-qty-min="{{ $disposeQtyMin }}" data-qty-max="{{ $remainingDefective }}" data-qty-whole="{{ $disposeIsWholeQty ? '1' : '0' }}">
+                        <form method="POST" action="{{ route('applications.delivery-defective-dispose', [$application, $defectItem]) }}" class="space-y-2 rounded-lg border border-stone-200/80 bg-stone-50/50 p-3 dark:border-stone-700 dark:bg-stone-900/30" data-defect-dispose-form data-qty-min="{{ $disposeQtyMin }}" data-qty-max="{{ $remainingDefective }}" data-qty-whole="{{ $disposeIsWholeQty ? '1' : '0' }}" @if($disposeQtyHasUnitChoice) data-unit-to-base="{{ json_encode($disposeQtyUnitFactors, JSON_UNESCAPED_UNICODE) }}" data-qty-base-unit="{{ $disposeBaseUnit }}" @endif>
                             @csrf
                             <p class="text-xs font-medium text-black dark:text-white">Утилизировать брак</p>
                             <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                                <div class="w-full sm:w-28">
-                                    <label class="app-form-label !normal-case text-xs" for="dispose-qty-{{ $defectItem->id }}">Кол-во</label>
-                                    <input
-                                        type="text"
-                                        name="dispose_quantity"
-                                        id="dispose-qty-{{ $defectItem->id }}"
-                                        value="{{ old('dispose_quantity') }}"
-                                        maxlength="{{ $disposeQtyMaxLength }}"
-                                        class="app-input text-sm w-full"
-                                        required
-                                        autocomplete="off"
-                                        inputmode="{{ $disposeIsWholeQty ? 'numeric' : 'decimal' }}"
-                                        data-defect-qty-input
-                                    >
+                                <div class="flex w-full gap-2 sm:w-auto sm:min-w-[10rem]">
+                                    <div class="min-w-0 flex-1 sm:w-28">
+                                        <label class="app-form-label !normal-case text-xs" for="dispose-qty-{{ $defectItem->id }}">Кол-во</label>
+                                        <input
+                                            type="text"
+                                            name="dispose_quantity"
+                                            id="dispose-qty-{{ $defectItem->id }}"
+                                            value="{{ old('dispose_quantity') }}"
+                                            maxlength="{{ $disposeQtyMaxLength }}"
+                                            class="app-input text-sm w-full"
+                                            required
+                                            autocomplete="off"
+                                            inputmode="{{ $disposeIsWholeQty ? 'numeric' : 'decimal' }}"
+                                            data-defect-qty-input
+                                        >
+                                    </div>
+                                    @if($disposeQtyHasUnitChoice)
+                                        <div class="w-24 shrink-0">
+                                            <label class="app-form-label !normal-case text-xs" for="dispose-qty-unit-{{ $defectItem->id }}">Ед.</label>
+                                            <select
+                                                name="dispose_quantity_unit"
+                                                id="dispose-qty-unit-{{ $defectItem->id }}"
+                                                class="app-input text-sm w-full"
+                                                data-defect-qty-unit
+                                            >
+                                                @foreach($disposeQtyUnitOptions as $unitOption)
+                                                    <option value="{{ $unitOption }}" @selected($selectedDisposeQtyUnit === $unitOption)>{{ $unitOption }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    @endif
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <label class="app-form-label !normal-case text-xs" for="dispose-comment-{{ $defectItem->id }}">Комментарий</label>
@@ -148,7 +217,13 @@
                                     Утилизировать
                                 </button>
                             </div>
-                            <p class="text-[11px] text-black/60 dark:text-white/60">От 1 до {{ $disposeQtyMaxDisplay }} {{ $defectItem->quantityUnitLabelForDisplay() }} — не больше, чем к утилизации по позиции.</p>
+                            <p class="text-[11px] text-black/60 dark:text-white/60" data-defect-qty-hint>
+                                @if($disposeQtyHasUnitChoice)
+                                    Укажите количество в выбранных единицах — не больше, чем к утилизации ({{ $disposeQtyMaxDisplay }} {{ $disposeBaseUnit }}).
+                                @else
+                                    От 1 до {{ $disposeQtyMaxDisplay }} {{ $disposeBaseUnit }} — не больше, чем к утилизации по позиции.
+                                @endif
+                            </p>
                         </form>
                     @endif
                 </li>
@@ -163,13 +238,81 @@
         @error('dispose_quantity')
             <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
         @enderror
+        @error('defect_quantity_unit')
+            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+        @enderror
+        @error('dispose_quantity_unit')
+            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+        @enderror
     </div>
     @once
         <script>
             (function () {
+                function unitFactor(form) {
+                    var raw = form.getAttribute('data-unit-to-base');
+                    if (! raw) {
+                        return 1;
+                    }
+                    var map;
+                    try {
+                        map = JSON.parse(raw);
+                    } catch (e) {
+                        return 1;
+                    }
+                    var select = form.querySelector('[data-defect-qty-unit]');
+                    var unit = select ? String(select.value || '') : '';
+                    var factor = map[unit];
+                    return Number.isFinite(parseFloat(factor)) && parseFloat(factor) > 0 ? parseFloat(factor) : 1;
+                }
+
+                function maxQtyInFormUnits(form) {
+                    var maxBase = parseFloat(form.getAttribute('data-qty-max') || '0');
+                    var factor = unitFactor(form);
+                    if (factor <= 0) {
+                        return maxBase;
+                    }
+                    return maxBase / factor;
+                }
+
+                function minQtyInFormUnits(form) {
+                    var minBase = parseFloat(form.getAttribute('data-qty-min') || '1');
+                    var factor = unitFactor(form);
+                    if (factor <= 0) {
+                        return minBase;
+                    }
+                    return minBase / factor;
+                }
+
+                function formatQtyHint(value) {
+                    if (! Number.isFinite(value)) {
+                        return '';
+                    }
+                    if (Math.abs(value - Math.round(value)) < 0.0005) {
+                        return String(Math.round(value));
+                    }
+                    return String(Math.round(value * 1000) / 1000).replace(/\.?0+$/, '');
+                }
+
+                function updateDefectQtyHint(form) {
+                    var hint = form.querySelector('[data-defect-qty-hint]');
+                    if (! hint || ! form.getAttribute('data-unit-to-base')) {
+                        return;
+                    }
+                    var maxInUnit = maxQtyInFormUnits(form);
+                    var baseUnit = form.getAttribute('data-qty-base-unit') || '';
+                    var select = form.querySelector('[data-defect-qty-unit]');
+                    var unit = select ? String(select.value || baseUnit) : baseUnit;
+                    var maxBase = parseFloat(form.getAttribute('data-qty-max') || '0');
+                    var isDispose = form.hasAttribute('data-defect-dispose-form');
+                    var intro = isDispose
+                        ? 'Укажите количество в выбранных единицах — не больше, чем к утилизации'
+                        : 'Укажите количество в выбранных единицах — не больше, чем доставлено по позиции';
+                    hint.textContent = intro + ' (до ' + formatQtyHint(maxInUnit) + ' ' + unit + ', ' + formatQtyHint(maxBase) + ' ' + baseUnit + ').';
+                }
+
                 function clampDefectQtyInput(input, form) {
-                    var maxQty = parseFloat(form.getAttribute('data-qty-max') || '0');
-                    var minQty = parseFloat(form.getAttribute('data-qty-min') || '1');
+                    var maxQty = maxQtyInFormUnits(form);
+                    var minQty = minQtyInFormUnits(form);
                     var wholeOnly = form.getAttribute('data-qty-whole') === '1';
                     var raw = String(input.value || '');
 
@@ -220,8 +363,8 @@
                         return false;
                     }
 
-                    var maxQty = parseFloat(form.getAttribute('data-qty-max') || '0');
-                    var minQty = parseFloat(form.getAttribute('data-qty-min') || '1');
+                    var maxQty = maxQtyInFormUnits(form);
+                    var minQty = minQtyInFormUnits(form);
                     var value = parseFloat(raw.replace(',', '.'));
 
                     return Number.isFinite(value) && value >= minQty - 0.000001 && value <= maxQty + 0.000001;
@@ -241,6 +384,14 @@
                         clampDefectQtyInput(input, form);
                     });
 
+                    var unitSelect = form.querySelector('[data-defect-qty-unit]');
+                    if (unitSelect) {
+                        unitSelect.addEventListener('change', function () {
+                            clampDefectQtyInput(input, form);
+                            updateDefectQtyHint(form);
+                        });
+                    }
+
                     form.addEventListener('submit', function (event) {
                         if (! isDefectQtyInputValid(input, form)) {
                             event.preventDefault();
@@ -249,6 +400,7 @@
                     });
 
                     clampDefectQtyInput(input, form);
+                    updateDefectQtyHint(form);
                 }
 
                 function initDefectQtyForms() {

@@ -209,7 +209,7 @@
                                                     />
                                                     <div class="equipment-suggestions app-suggestions hidden"></div>
                                                 </div>
-                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную — только количество или другая позиция из списка.</p>
+                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную.</p>
                                                 <x-input-error :messages="$errors->get('items.'.$idx.'.equipment_id')" class="mt-1.5" />
                                             </div>
                                             <div class="list-amount-block md:col-span-3">
@@ -308,7 +308,7 @@
                         <input type="text" name="items[__INDEX__][catalog_label]" value="" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search catalog-label-field app-input app-input--with-icon" />
                         <div class="equipment-suggestions app-suggestions hidden"></div>
                     </div>
-                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную — только количество или другая позиция из списка.</p>
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную.</p>
                 </div>
                 <div class="list-amount-block md:col-span-3">
                     <label class="list-amount-label app-form-label !normal-case">Количество, шт</label>
@@ -957,6 +957,22 @@
                 return String(raw || '').replace(/[^\d]/g, '');
             }
 
+            function normalizePositivePieceQty(raw) {
+                var digits = pieceQtyDigitsOnly(raw);
+                if (digits === '') {
+                    return '';
+                }
+                var n = parseInt(digits, 10);
+                if (!n || n < 1) {
+                    return '';
+                }
+                return String(n);
+            }
+
+            function requiresWholeQuantity(type) {
+                return type === 'piece' || type === 'clothing_size';
+            }
+
             function attachPieceQuantityGuards(input, row) {
                 if (!input) {
                     return;
@@ -965,10 +981,10 @@
                     return measurementTypeFromRow(row);
                 }
                 function guardValue() {
-                    if (rowType() !== 'piece') {
+                    if (!requiresWholeQuantity(rowType())) {
                         return;
                     }
-                    var digits = pieceQtyDigitsOnly(input.value);
+                    var digits = normalizePositivePieceQty(input.value);
                     if (digits !== String(input.value)) {
                         input.value = digits;
                     }
@@ -976,27 +992,30 @@
                 if (input.dataset.pieceQtyGuard !== '1') {
                     input.dataset.pieceQtyGuard = '1';
                     input.addEventListener('keydown', function(e) {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
                         if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
                             e.preventDefault();
                         }
+                        if (e.key === '0' && normalizePositivePieceQty(input.value) === '') {
+                            e.preventDefault();
+                        }
                     });
                     input.addEventListener('paste', function(e) {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
                         e.preventDefault();
                         var t = (e.clipboardData || window.clipboardData).getData('text') || '';
-                        input.value = pieceQtyDigitsOnly(t);
+                        input.value = normalizePositivePieceQty(t);
                     });
                     input.addEventListener('input', guardValue);
                     input.addEventListener('blur', function() {
-                        if (rowType() !== 'piece') {
+                        if (!requiresWholeQuantity(rowType())) {
                             return;
                         }
-                        var v = pieceQtyDigitsOnly(input.value);
+                        var v = normalizePositivePieceQty(input.value);
                         input.value = v === '' ? '1' : v;
                     });
                 }
@@ -1006,7 +1025,7 @@
             function syncQuantityInputsForRow(row, measurementType) {
                 var type = measurementType || measurementTypeFromRow(row);
                 row.querySelectorAll('.custom-amount-number, .list-amount-number').forEach(function(num) {
-                    if (type === 'piece') {
+                    if (requiresWholeQuantity(type)) {
                         num.type = 'text';
                         num.setAttribute('inputmode', 'numeric');
                         num.setAttribute('pattern', '[0-9]*');

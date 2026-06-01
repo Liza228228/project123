@@ -3,6 +3,7 @@
 // проверка доступа
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,7 +17,7 @@ class EnsureUserCanAccessApplications
             abort(403, 'Необходима авторизация.');
         }
 
-        $allowed = $user->hasAnyRoleId([1, 6, 4, 2, 3, 7, \App\Models\User::ADMINISTRATOR_ROLE_ID]);
+        $allowed = $user->hasAnyRoleId(User::APPLICATION_LISTING_ROLE_IDS);
 
         if (! $allowed) {
             abort(403, 'Доступ к заявкам разрешён только директору, техническому директору, начальнику отдела снабжения, мастеру участка, начальнику котельной, бухгалтеру и администратору.');

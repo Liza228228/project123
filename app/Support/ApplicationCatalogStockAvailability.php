@@ -82,6 +82,43 @@ final class ApplicationCatalogStockAvailability
         return max(0.0, $physicalBalance - $reserved);
     }
 
+    public static function physicalBalanceForApplicationItem(ApplicationItem $item, int $warehouseId): float
+    {
+        $equipmentId = (int) ($item->equipment_id ?? 0);
+        if ($equipmentId <= 0) {
+            return 0.0;
+        }
+
+        $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+            ? trim((string) ($item->storedSizeValue() ?? ''))
+            : '';
+
+        if ($sizeVariant === '') {
+            return self::physicalBalanceOnWarehouse($equipmentId, $warehouseId, null);
+        }
+
+        $scopedBalance = self::physicalBalanceOnWarehouse($equipmentId, $warehouseId, $sizeVariant);
+        if ($scopedBalance + 1e-9 >= 1.0) {
+            return $scopedBalance;
+        }
+
+        $item->loadMissing('equipment:id,is_catalog,value');
+        $equipment = $item->equipment;
+        if ($equipment === null || $equipment->is_catalog) {
+            return $scopedBalance;
+        }
+
+        $equipmentSize = trim((string) ($equipment->value ?? ''));
+        if ($equipmentSize !== '') {
+            $byEquipmentSize = self::physicalBalanceOnWarehouse($equipmentId, $warehouseId, $equipmentSize);
+            if ($byEquipmentSize + 1e-9 >= 1.0) {
+                return $byEquipmentSize;
+            }
+        }
+
+        return self::physicalBalanceOnWarehouse($equipmentId, $warehouseId, null);
+    }
+
     public static function physicalBalanceOnWarehouse(
         int $equipmentId,
         int $warehouseId,
@@ -157,14 +194,14 @@ final class ApplicationCatalogStockAvailability
             return 0;
         }
 
-        $baseName = trim((string) ($item->base_name ?? ''));
-        if ($baseName === '' || $baseName === '—') {
+        $catalogName = $item->catalogOverflowBaseNameForMatching();
+        if ($catalogName === '') {
             return 0;
         }
 
         $catalogId = Equipment::query()
             ->where('is_catalog', true)
-            ->where('name', $baseName)
+            ->where('name', $catalogName)
             ->value('id');
 
         return $catalogId !== null ? (int) $catalogId : 0;

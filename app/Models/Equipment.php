@@ -3,6 +3,7 @@
 // модель
 namespace App\Models;
 
+use App\Support\ReserveEquipmentDisplayName;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -45,10 +46,15 @@ class Equipment extends Model
 
     public function getDisplayNameAttribute(): string
     {
-        $name = trim((string) $this->name);
+        $name = ReserveEquipmentDisplayName::resolve(trim((string) $this->name), (int) $this->id);
         $value = trim((string) ($this->value ?? ''));
 
         return $value !== '' ? trim($name.' '.$value) : $name;
+    }
+
+    public function warehouseStockLabelName(): string
+    {
+        return ReserveEquipmentDisplayName::resolve(trim((string) $this->name), (int) $this->id);
     }
     public function stockQuantityUnitLabel(): string
     {

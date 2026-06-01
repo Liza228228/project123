@@ -11,7 +11,6 @@ class ApplicationItemManualDetail extends Model
     protected $fillable = [
         'application_item_id',
         'equipment_name',
-        'base_name',
         'size_value',
         'measurement_type',
         'quantity_unit',

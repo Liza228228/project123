@@ -183,10 +183,6 @@
 
                 <div class="p-4 sm:p-6 space-y-6">
 
-                    @if(session('status'))
-                        <x-app-alert type="success">{{ session('status') }}</x-app-alert>
-                    @endif
-
                     @if($errors->any())
                         <x-app-alert type="error">
                             @foreach($errors->all() as $message)

@@ -79,6 +79,29 @@ test('foreman can save draft and submit to boiler chief when chief assigned', fu
 
     $app = Application::query()->first();
     expect($app->isForemanDraftBeforeBoilerChief())->toBeTrue();
+    expect($app->foremanMayEditWithoutChangeReasons())->toBeTrue();
+
+    $itemId = (int) $app->items()->value('id');
+    $newDeliveryDate = now()->addDays(12)->format('Y-m-d');
+    $this->actingAs($ctx['foreman'])->put(route('applications.update', $app), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => $newDeliveryDate,
+        'items' => [
+            [
+                'item_id' => $itemId,
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 3,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app->refresh();
+    expect($app->desired_delivery_date?->format('Y-m-d'))->toBe($newDeliveryDate);
+    expect((int) $app->items()->find($itemId)?->quantity)->toBe(3);
+    expect($app->isForemanDraftBeforeBoilerChief())->toBeTrue();
 
     $this->actingAs($ctx['foreman'])->get(route('applications.show', $app))
         ->assertOk()
@@ -931,7 +954,7 @@ test('foreman fixing the only rejected line auto resubmits to boiler chief', fun
             [
                 'item_id' => $rejectedItemId,
                 'equipment_id' => $rejectedItem->equipment_id,
-                'catalog_label' => $rejectedItem->base_name,
+                'catalog_label' => $rejectedItem->catalogEquipmentName(),
                 'quantity' => 200,
                 'measurement_type' => 'piece',
                 'quantity_unit' => 'шт',
@@ -1488,7 +1511,7 @@ test('management edit of released application requires manual approval without b
         ->assertSee(route('applications.edit', $app), false)
         ->assertSee('id="approval-form"', false)
         ->assertSee('approval-item-checkbox', false)
-        ->assertDontSee('не в согласовании снабжения', false)
+        ->assertDontSee('не в согласовании ', false)
         ->assertDontSee('У начальника котельной', false);
 
     $this->actingAs($management)->post(route('applications.approval', $app), [

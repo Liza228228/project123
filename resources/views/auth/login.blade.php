@@ -6,8 +6,7 @@
         <p class="mt-2 text-sm text-black/65 dark:text-white/60 leading-relaxed">Введите почту и пароль для доступа к заявкам и материалам.</p>
     </div>
 
-    <x-auth-session-status class="mb-4" :status="session('status')" />
-    <x-flash-messages />
+    <x-flash-messages class="mb-4" />
 
     <form method="POST" action="{{ route('login') }}">
         @csrf

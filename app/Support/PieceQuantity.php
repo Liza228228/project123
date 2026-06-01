@@ -21,6 +21,13 @@ final class PieceQuantity
         return trim((string) $measurementType) === self::CLOTHING_MEASUREMENT_TYPE;
     }
 
+    public static function requiresWholeQuantity(?string $measurementType, ?string $unitCode = null): bool
+    {
+        return self::isPieceMeasurement($measurementType)
+            || self::isClothingMeasurement($measurementType)
+            || self::isPieceUnitCode($unitCode);
+    }
+
     public static function isPieceUnitCode(?string $unitCode): bool
     {
         $code = mb_strtolower(trim((string) $unitCode));

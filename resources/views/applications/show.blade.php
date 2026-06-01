@@ -92,7 +92,7 @@
                         Изменить ответственного
                     </a>
                 @endif
-                @if (((! $application->archived_at && (Auth::user()->hasApplicationSupplyWorkflowRole() || Auth::user()->hasRoleId(\App\Models\User::BOILER_CHIEF_ROLE_ID))) || Auth::user()->hasRoleId(4)) && $application->canUploadInstallationActAndPhotos())
+                @if (((! $application->archived_at && (Auth::user()->hasApplicationSupplyWorkflowRole() || Auth::user()->hasRoleId(\App\Models\User::BOILER_CHIEF_ROLE_ID))) || Auth::user()->hasRoleId(4)) && $application->canUploadInstallationActAndPhotos() && ! $application->hasInstallationActEvidence())
                     <a href="{{ route('applications.installation-act.upload', ['application_id' => $application->id]) }}" class="ui-btn ui-btn--secondary whitespace-nowrap shrink-0">
                         Акт установки
                     </a>
@@ -118,7 +118,7 @@
     </x-slot>
 
     <div class="mx-auto max-w-3xl px-0 py-2 max-sm:-mx-4 sm:px-6 sm:py-8 md:py-10 lg:px-8">
-            
+
             @error('submit')
                 <x-app-alert type="error" class="mb-4">{{ $message }}</x-app-alert>
             @enderror
@@ -489,7 +489,7 @@
                                                         <span class="text-sm font-medium text-black dark:text-white">
                                                             {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                         </span>
-                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-amber-900/90 dark:text-amber-100/90">не в согласовании снабжения</span>
+                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-amber-900/90 dark:text-amber-100/90">не в согласовании </span>
                                                     </div>
                                                     @if($application->itemLineRejectionReason($item->id))
                                                         <p class="text-xs text-black dark:text-white">
@@ -516,7 +516,7 @@
                                                         <span class="text-sm font-medium text-black dark:text-white">
                                                             {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
                                                         </span>
-                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-stone-700 dark:text-stone-300">не в согласовании снабжения</span>
+                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-stone-700 dark:text-stone-300">не в согласовании </span>
                                                     </div>
                                                     <p class="text-xs text-black dark:text-white">
                                                         <span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}
@@ -698,7 +698,7 @@
                                     syncAll();
                                 })();
                             </script>
-                            @if(($hasCustomEquipmentOrderForm ?? false) && $application->approved_by_user_id && ! ($supplyAwaitingPostBoilerManagementSave ?? false) && Auth::user()->hasAnyRoleId(\App\Models\User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS))
+                            @if(($hasCustomEquipmentOrderForm ?? false) && $application->approved_by_user_id && ! ($supplyAwaitingPostBoilerManagementSave ?? false) && Auth::user()->canOrderCustomEquipment())
                                 <div class="space-y-2 rounded-xl border border-stone-200/90 bg-stone-50/80 p-4 dark:border-stone-600 dark:bg-stone-800/35">
                                     <p class="text-xs text-black dark:text-white">
                                         Позиции со <span class="font-medium">своим названием</span>: заказ и приход на основной склад оформляются в одной форме — выбор строк и кнопки «Заказано» / «На складе».
@@ -751,7 +751,7 @@
                                     @if(Auth::user()->hasRoleId(4) && $application->foremanCanReviseAfterBoilerChiefRejection())
                                         Начальник котельной не согласовал эти позиции. Откройте «Изменить», внесите правки и отправьте заявку на повторное согласование.
                                     @else
-                                        Позиции не согласованы начальником котельной. Заявка к руководству ещё не передана.
+                                   
                                     @endif
                                 </p>
                                 <ul class="mb-6 divide-y divide-stone-200 overflow-hidden rounded-xl border border-amber-200/80 dark:divide-stone-700 dark:border-amber-800/50">
@@ -799,6 +799,20 @@
                                         </li>
                                     @endforeach
                                 </ul>
+                            @endif
+
+                            @if(($showProcurementOverview ?? false) && ($hasProcurementOverviewContent ?? false) && ! ($canManagementApprove ?? false))
+                                @include('applications.partials.procurement-overview', [
+                                    'application' => $application,
+                                    'mainWarehouse' => $mainWarehouse,
+                                    'catalogPhysicalBalanceByItemId' => $catalogPhysicalBalanceByItemId ?? [],
+                                    'catalogShortageQtyByItem' => $catalogShortageQtyByItem ?? [],
+                                    'customEquipmentProcurementLines' => $customEquipmentProcurementLines ?? collect(),
+                                    'catalogProcurementLines' => $catalogProcurementLines ?? collect(),
+                                    'canOrderCustomEquipment' => $canOrderCustomEquipment ?? false,
+                                    'hasCustomEquipmentOrderForm' => $hasCustomEquipmentOrderForm ?? false,
+                                    'supplyAwaitingPostBoilerManagementSave' => $supplyAwaitingPostBoilerManagementSave ?? false,
+                                ])
                             @endif
 
                             @if(($removedItemsForUserDisplay ?? collect())->isNotEmpty())
@@ -996,10 +1010,14 @@
                                         </li>
                                     @endforeach
                                 </ul>
-                                @if(Auth::user()->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS))
+                                @if(Auth::user()->canOrderCustomEquipment())
                                     <a href="{{ route('applications.custom-equipment-order', $application) }}" class="ui-btn ui-btn--primary ui-btn--sm mt-3 inline-flex">
                                         Открыть форму дозаказа
                                     </a>
+                                @else
+                                    <p class="mt-3 text-xs text-black/75 dark:text-white/70">
+                                        Оформление дозаказа — у начальника отдела снабжения или директора.
+                                    </p>
                                 @endif
                             </div>
                         @endif
@@ -1394,6 +1412,8 @@
                                                     }
                                                     if (bulkExpectedArrival && expectedArrival) {
                                                         expectedArrival.value = bulkExpectedArrival.value;
+                                                        expectedArrival.dispatchEvent(new Event('input', { bubbles: true }));
+                                                        expectedArrival.dispatchEvent(new Event('change', { bubbles: true }));
                                                     }
                                                 });
                                             });
