@@ -23,7 +23,7 @@
         data-server-error="{{ $errors->has('item_change_reasons.'.$id) ? '1' : '0' }}"
     >
         <label class="app-form-label !text-xs" for="item_cr_{{ $id }}">Комментарий: почему изменили позицию</label>
-        <p class="text-xs text-stone-600 dark:text-stone-400">Увидит мастер участка при просмотре заявки.</p>
+       
         <textarea
             id="item_cr_{{ $id }}"
             name="item_change_reasons[{{ $id }}]"

@@ -236,6 +236,12 @@ class ApplicationController extends Controller
         }
 
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'subdivision', 'user']);
+        $this->rebalanceApprovedCatalogItemsForOrdering($application);
+        foreach ($application->items as $item) {
+            $this->syncCatalogOverflowItemAgainstMainWarehouse($application, $item);
+        }
+        $application->refresh();
+        $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'subdivision', 'user']);
 
         $toOrder = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOrdered())->sortBy('id');
         $toWarehouse = $application->items->filter(fn (ApplicationItem $i) => $i->canMarkCustomSupplyOnWarehouse())->sortBy('id');
@@ -275,6 +281,11 @@ class ApplicationController extends Controller
         foreach ($validated['item_ids'] as $rawId) {
             $item = $application->items->firstWhere('id', (int) $rawId);
             if (! $item || ! $item->canMarkCustomSupplyOrdered()) {
+                continue;
+            }
+            $this->syncCatalogOverflowItemAgainstMainWarehouse($application, $item);
+            $item->refresh();
+            if (! $item->canMarkCustomSupplyOrdered()) {
                 continue;
             }
             $item->update(['custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ORDERED_ID]);
@@ -1083,6 +1094,8 @@ class ApplicationController extends Controller
             'items.transportOption',
             'items.deliveryWarehouse',
             'changeJournalEntries.user',
+            'changeJournalEntries.applicationItem.equipment.measurementUnit.unitType',
+            'changeJournalEntries.applicationItem.manualDetail',
             'items.changeJournalEntries.user',
             'removedItems.equipment',
             'removedItems.manualDetail',
@@ -1126,11 +1139,18 @@ class ApplicationController extends Controller
                 ->get();
         }
 
+        if ($application->isSupplyApprovedForCustomEquipmentWorkflow()) {
+            $this->rebalanceApprovedCatalogItemsForOrdering($application);
+            $application->refresh();
+            $application->load([
+                'items.equipment.measurementUnit.unitType',
+                'items.manualDetail',
+            ]);
+        }
+
         $catalogStockOnMainWarehouseByItemId = [];
+        $catalogPhysicalBalanceByItemId = [];
         if ($mainWarehouse) {
-            $reservedByEquipmentId = ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId(
-                (int) $application->id
-            );
             foreach ($application->items as $item) {
                 if ($item->equipment_id) {
                     $equipmentId = (int) $item->equipment_id;
@@ -1144,14 +1164,36 @@ class ApplicationController extends Controller
                             $sizeVariant
                         )
                         : $this->warehouseEquipmentBalance($equipmentId, (int) $mainWarehouse->id);
-                    $stockKey = ApplicationCatalogStockAvailability::stockAggregateKey(
-                        $equipmentId,
-                        $sizeVariant !== '' ? $sizeVariant : null
-                    );
-                    $reserved = (float) ($reservedByEquipmentId[$stockKey] ?? 0.0);
-                    $catalogStockOnMainWarehouseByItemId[(int) $item->id] = max(0.0, $physical - $reserved);
+                    $catalogPhysicalBalanceByItemId[(int) $item->id] = max(0.0, $physical);
+                    $catalogStockOnMainWarehouseByItemId[(int) $item->id] = max(0.0, $physical);
                 }
             }
+        }
+
+        foreach ($application->items as $item) {
+            $item->setRelation('application', $application);
+        }
+
+        $catalogDeliveryInTransitCandidates = $application->items->filter(function (ApplicationItem $item) use ($catalogPhysicalBalanceByItemId, $application): bool {
+            $physical = (float) ($catalogPhysicalBalanceByItemId[(int) $item->id] ?? 0.0);
+
+            return $item->canMarkCatalogDeliveryInTransit($physical, $application->items);
+        });
+        $catalogDeliveryBlockedByShortage = $application->items->filter(function (ApplicationItem $item) use ($catalogPhysicalBalanceByItemId, $application): bool {
+            if (! $item->canMarkDeliveryInTransit()) {
+                return false;
+            }
+            $physical = (float) ($catalogPhysicalBalanceByItemId[(int) $item->id] ?? 0.0);
+
+            return ! $item->canMarkCatalogDeliveryInTransit($physical, $application->items);
+        });
+        $pendingCatalogReorderLines = $application->items->filter(
+            fn (ApplicationItem $item): bool => $item->isCatalogOverflowPendingOrderLine() && (bool) $item->is_checked
+        );
+        $catalogShortageQtyByItemId = [];
+        foreach ($catalogDeliveryBlockedByShortage as $blockedItem) {
+            $physical = (float) ($catalogPhysicalBalanceByItemId[(int) $blockedItem->id] ?? 0.0);
+            $catalogShortageQtyByItemId[(int) $blockedItem->id] = $blockedItem->catalogShortageQtyForMainWarehouseDelivery($physical);
         }
 
         $deliveredWarehouseIssueCandidates = $this->deliveredWarehouseIssueCandidates($application);
@@ -1174,6 +1216,11 @@ class ApplicationController extends Controller
             'issuedByItemId',
             'remainingByItemId',
             'catalogStockOnMainWarehouseByItemId',
+            'catalogPhysicalBalanceByItemId',
+            'catalogDeliveryInTransitCandidates',
+            'catalogDeliveryBlockedByShortage',
+            'pendingCatalogReorderLines',
+            'catalogShortageQtyByItemId',
             'boilerChiefDeliverySubdivisions',
             'deliveredWarehouseIssueCandidates',
             'transportOptions',
@@ -1505,6 +1552,8 @@ class ApplicationController extends Controller
 
         $managementMayEditBoilerApprovedEquipment = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
             && $application->managementCanEditApplication();
+        $lockDesiredDeliveryDateEdit = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS)
+            || $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID);
 
         $usesDraftSubmitFlow = $this->userUsesApplicationDraftSubmitFlow($request);
         $isCreatorDraft = $application->isCreatorDraftApplication();
@@ -1521,6 +1570,7 @@ class ApplicationController extends Controller
             'subdivisionIdsByForeman',
             'measurementMeta',
             'managementMayEditBoilerApprovedEquipment',
+            'lockDesiredDeliveryDateEdit',
             'usesDraftSubmitFlow',
             'isCreatorDraft',
             'foremanMayReviseRejectedByBoilerChiefOnly',
@@ -1537,6 +1587,8 @@ class ApplicationController extends Controller
 
         $isSiteForeman = $request->user()->hasRoleId(4);
         $isBoilerChiefUser = $request->user()->hasRoleId(self::BOILER_CHIEF_ROLE_ID);
+        $isManagementEditor = $request->user()->hasAnyRoleId(User::MANAGEMENT_EDITOR_ROLE_IDS);
+        $lockDesiredDeliveryDateEdit = $isManagementEditor || $isBoilerChiefUser;
         $allowedSubdivisionIds = $this->availableSubdivisionsForCreate($request)->pluck('id')->map(fn ($id) => (int) $id);
         $application->load(['items.equipment.measurementUnit.unitType', 'items.manualDetail', 'applicationStatus']);
         $wasCreatorDraftBeforeUpdate = $application->isCreatorDraftApplication();
@@ -1590,6 +1642,13 @@ class ApplicationController extends Controller
             'desired_delivery_date.after_or_equal' => 'Желаемая дата поставки не может быть в прошлом.',
             'items.min' => 'Добавьте хотя бы одну позицию оборудования.',
         ], ApplicationItem::applicationFormValidationMessages()));
+
+        if ($lockDesiredDeliveryDateEdit
+            && ($application->desired_delivery_date?->toDateString() ?? '') !== (string) $validated['desired_delivery_date']) {
+            throw ValidationException::withMessages([
+                'desired_delivery_date' => 'Руководство и начальник котельной не могут изменять желаемую дату поставки.',
+            ]);
+        }
 
         $requestedSubdivisionId = (int) $validated['subdivision_id'];
         $currentSubdivisionId = (int) $application->subdivision_id;
@@ -1678,6 +1737,13 @@ class ApplicationController extends Controller
                         'equipment' => 'Некорректная позиция заявки.',
                     ]);
                 }
+                $isSupplyRejectedFrozen = ! (bool) $existing->is_checked
+                    && trim((string) ($existing->reason_not_selected ?? '')) !== '';
+                if ($isSupplyRejectedFrozen && ! $this->applicationItemRowMatchesStored($existing, $row)) {
+                    throw ValidationException::withMessages([
+                        'equipment' => 'Не согласованные позиции нельзя изменять.',
+                    ]);
+                }
 
                 if ($foremanMayReviseRejectedByBoilerChiefOnly) {
                     if ($existing->is_checked) {
@@ -1732,7 +1798,7 @@ class ApplicationController extends Controller
             continue;
         }
 
-        $toCreateExpanded = $this->expandCatalogRowsAgainstMainWarehouseVirtualStock($toCreate);
+        $toCreateExpanded = $toCreate;
 
         $approvedCount = $application->items->where('is_checked', true)->count();
         $linesWithEquipment = $approvedCount + count($seenUnapprovedIds) + count($toCreateExpanded);
@@ -1746,6 +1812,14 @@ class ApplicationController extends Controller
         $removedActiveIds = array_values(array_diff($activeIdsBefore, $submittedItemIds));
 
         foreach ($removedActiveIds as $removedId) {
+            $existingForRemoval = $application->items->firstWhere('id', (int) $removedId);
+            if ($existingForRemoval
+                && ! (bool) $existingForRemoval->is_checked
+                && trim((string) ($existingForRemoval->reason_not_selected ?? '')) !== '') {
+                throw ValidationException::withMessages([
+                    'equipment' => 'Не согласованные позиции нельзя удалять.',
+                ]);
+            }
             $removalReason = trim((string) $request->input("removed_item_reasons.{$removedId}", ''));
             if ($removalReason === '') {
                 throw ValidationException::withMessages([
@@ -1815,18 +1889,6 @@ class ApplicationController extends Controller
                 'desired_delivery_date' => $validated['desired_delivery_date'],
             ];
             $journalUserId = (int) $request->user()->id;
-            $oldSubdivisionName = $subdivisionChanged
-                ? (Subdivision::query()->find($previousSubdivisionId)?->name ?? '—')
-                : null;
-            $newSubdivisionName = $subdivisionChanged
-                ? (Subdivision::query()->find((int) $validated['subdivision_id'])?->name ?? '—')
-                : null;
-            $oldDeliveryLabel = $deliveryDateChanged
-                ? ($application->desired_delivery_date?->format('d.m.Y') ?? '—')
-                : null;
-            $newDeliveryLabel = $deliveryDateChanged
-                ? Carbon::parse($validated['desired_delivery_date'])->format('d.m.Y')
-                : null;
 
             $application->update($applicationCoreUpdate);
 
@@ -1836,11 +1898,7 @@ class ApplicationController extends Controller
                     $journalUserId,
                     ApplicationChangeJournal::ACTION_UPDATED,
                     ApplicationChangeJournal::FIELD_SUBDIVISION,
-                    'Подразделение',
                     trim((string) $request->input('field_change_reasons.subdivision_id')),
-                    null,
-                    $oldSubdivisionName,
-                    $newSubdivisionName,
                 );
             }
             if ($deliveryDateChanged) {
@@ -1849,11 +1907,7 @@ class ApplicationController extends Controller
                     $journalUserId,
                     ApplicationChangeJournal::ACTION_UPDATED,
                     ApplicationChangeJournal::FIELD_DELIVERY_DATE,
-                    'Желаемая дата поставки',
                     trim((string) $request->input('field_change_reasons.desired_delivery_date')),
-                    null,
-                    $oldDeliveryLabel,
-                    $newDeliveryLabel,
                 );
             }
 
@@ -1877,10 +1931,6 @@ class ApplicationController extends Controller
 
             foreach ($idsToSoftRemove as $softRemoveId) {
                 $removalReason = trim((string) $request->input("removed_item_reasons.{$softRemoveId}", ''));
-                $itemToRemove = $application->items()->where('id', $softRemoveId)->first();
-                $removedLineLabel = $itemToRemove
-                    ? $this->formatApplicationItemLineForJournal($itemToRemove)
-                    : null;
                 ApplicationItem::query()
                     ->where('application_id', (int) $application->id)
                     ->where('id', $softRemoveId)
@@ -1900,11 +1950,8 @@ class ApplicationController extends Controller
                     $journalUserId,
                     ApplicationChangeJournal::ACTION_REMOVED,
                     ApplicationChangeJournal::FIELD_ITEM_REMOVED,
-                    'Позиция снята с заявки',
                     $removalReason,
                     $softRemoveId,
-                    $removedLineLabel,
-                    null,
                 );
             }
 
@@ -1920,6 +1967,9 @@ class ApplicationController extends Controller
                 if (! $existing) {
                     continue;
                 }
+                if (! (bool) $existing->is_checked && trim((string) ($existing->reason_not_selected ?? '')) !== '') {
+                    continue;
+                }
                 if ($existing->is_checked) {
                     if (! $managementMayEditCheckedEquipmentLines) {
                         continue;
@@ -1931,7 +1981,21 @@ class ApplicationController extends Controller
 
                 $typeId = $row['equipment_id'] ?? null;
                 $typeId = $typeId !== null && $typeId !== '' ? (int) $typeId : null;
-                $normalized = $this->normalizeItemPayload($row, $typeId ? Equipment::query()->find($typeId)?->name : null);
+                $catalogName = $typeId ? trim((string) (Equipment::query()->find($typeId)?->name ?? '')) : '';
+                if ($typeId === null) {
+                    $fallbackBaseName = trim((string) ($existing->base_name ?? ''));
+                    if ($fallbackBaseName !== '' && $fallbackBaseName !== '—') {
+                        $fallbackCatalogId = (int) (Equipment::query()
+                            ->where('is_catalog', true)
+                            ->where('name', $fallbackBaseName)
+                            ->value('id') ?? 0);
+                        if ($fallbackCatalogId > 0) {
+                            $typeId = $fallbackCatalogId;
+                            $catalogName = $fallbackBaseName;
+                        }
+                    }
+                }
+                $normalized = $this->normalizeItemPayload($row, $catalogName !== '' ? $catalogName : null);
 
                 $wasChecked = (bool) $existing->is_checked;
                 $payload = [
@@ -1958,26 +2022,19 @@ class ApplicationController extends Controller
                 }
                 $changedAspectKeys = $this->itemRowChangedAspectKeys($existing, $row);
                 $changeReason = null;
-                $oldItemLineLabel = null;
                 if ($changedAspectKeys !== []) {
                     $changeReason = trim((string) $request->input("item_change_reasons.{$itemId}", ''));
-                    $oldItemLineLabel = $this->formatApplicationItemLineForJournal($existing);
                 }
                 $existing->update($payload);
                 $this->syncCatalogItemManualDetail($existing, $normalized);
                 if ($changeReason !== null && $changeReason !== '') {
-                    $existing->refresh();
-                    $existing->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
                     $this->recordApplicationChangeJournal(
                         $application,
                         $journalUserId,
                         ApplicationChangeJournal::ACTION_UPDATED,
                         ApplicationChangeJournal::FIELD_ITEM_UPDATED,
-                        'Изменение позиции',
                         $changeReason,
                         (int) $existing->id,
-                        $oldItemLineLabel,
-                        $this->formatApplicationItemLineForJournal($existing),
                     );
                 }
             }
@@ -2002,17 +2059,13 @@ class ApplicationController extends Controller
                 ]);
                 $this->syncCatalogItemManualDetail($createdItem, $normalized);
                 if ($additionReason !== '') {
-                    $createdItem->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
                     $this->recordApplicationChangeJournal(
                         $application,
                         $journalUserId,
                         ApplicationChangeJournal::ACTION_ADDED,
                         ApplicationChangeJournal::FIELD_ITEM_ADDED,
-                        'Добавление позиции',
                         $additionReason,
                         (int) $createdItem->id,
-                        null,
-                        $this->formatApplicationItemLineForJournal($createdItem),
                     );
                 }
             }
@@ -2064,6 +2117,10 @@ class ApplicationController extends Controller
         });
 
         $application->refresh();
+
+        if ($application->isSupplyApprovedForCustomEquipmentWorkflow()) {
+            $this->rebalanceApprovedCatalogItemsForOrdering($application);
+        }
 
         if ($application->isForemanDraftBeforeBoilerChief()) {
             return redirect()->route('applications.edit', $application)
@@ -2130,6 +2187,12 @@ class ApplicationController extends Controller
         }
 
         $application->load('items');
+        $frozenRejectedBySupplyIds = $application->items
+            ->filter(fn (ApplicationItem $item) => ! (bool) $item->is_checked
+                && trim((string) ($item->reason_not_selected ?? '')) !== '')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
         if ($this->approvalLockedByDeliveryProgress($application)) {
             return redirect()->route('applications.show', $application)
@@ -2145,6 +2208,9 @@ class ApplicationController extends Controller
         $errors = [];
 
         foreach ($application->items as $item) {
+            if (in_array((int) $item->id, $frozenRejectedBySupplyIds, true)) {
+                continue;
+            }
             $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id] ?? null;
             if (! is_array($row)) {
                 $errors["items.{$item->id}.is_checked"] = 'Отсутствуют данные по позиции.';
@@ -2171,6 +2237,9 @@ class ApplicationController extends Controller
 
         DB::transaction(function () use ($application, $itemsInput, $request) {
             foreach ($application->items as $item) {
+                if (! (bool) $item->is_checked && trim((string) ($item->reason_not_selected ?? '')) !== '') {
+                    continue;
+                }
                 $row = $itemsInput[(string) $item->id] ?? $itemsInput[$item->id];
                 $checkedRaw = $row['is_checked'] ?? '0';
                 $isChecked = $checkedRaw === '1' || $checkedRaw === 1 || $checkedRaw === true;
@@ -2192,6 +2261,7 @@ class ApplicationController extends Controller
                 }
                 $item->update($payload);
             }
+            $this->rebalanceApprovedCatalogItemsForOrdering($application);
 
             $application->refresh();
             $application->load('items');
@@ -2337,6 +2407,20 @@ class ApplicationController extends Controller
         $this->authorizeViewApplication($request, $application);
         $application->load('items');
 
+        $pendingReorderLines = $application->items->filter(function (ApplicationItem $item): bool {
+            if (! (bool) $item->is_checked || $item->equipment_id !== null) {
+                return false;
+            }
+            $name = trim((string) ($item->equipment_name ?? ''));
+            $rawInput = trim((string) ($item->raw_input ?? ''));
+
+            return $rawInput === '' && str_contains($name, '+на согласовании');
+        });
+        if ($pendingReorderLines->isNotEmpty()) {
+            return redirect()->route('applications.show', $application)
+                ->withErrors(['delivery' => 'Сначала дозакажите отсутствующее оборудование по заявке. После этого отправка «В пути» станет доступна.']);
+        }
+
         if ($application->approved_by_user_id === null) {
             return redirect()->route('applications.show', $application)
                 ->withErrors(['delivery' => 'Сначала сохраните согласование снабжения по позициям.']);
@@ -2349,8 +2433,37 @@ class ApplicationController extends Controller
                 ->withErrors(['delivery' => 'После этапа котельной сначала сохраните согласование снабжения по позициям.']);
         }
 
+        $mainWarehouseForEligibility = $this->resolveMainWarehouseForAccounting();
+        $physicalBalanceByItemId = [];
+        if ($mainWarehouseForEligibility) {
+            foreach ($application->items as $item) {
+                if (! $item->equipment_id) {
+                    continue;
+                }
+                $equipmentId = (int) $item->equipment_id;
+                $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+                    ? trim((string) ($item->storedSizeValue() ?? ''))
+                    : '';
+                $physical = $sizeVariant !== ''
+                    ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                        $equipmentId,
+                        (int) $mainWarehouseForEligibility->id,
+                        $sizeVariant
+                    )
+                    : $this->warehouseEquipmentBalance($equipmentId, (int) $mainWarehouseForEligibility->id);
+                $physicalBalanceByItemId[(int) $item->id] = max(0.0, $physical);
+            }
+        }
+        foreach ($application->items as $item) {
+            $item->setRelation('application', $application);
+        }
+
         $eligibleById = $application->items
-            ->filter(fn (ApplicationItem $i) => $i->canMarkDeliveryInTransit())
+            ->filter(function (ApplicationItem $item) use ($physicalBalanceByItemId, $application): bool {
+                $physical = (float) ($physicalBalanceByItemId[(int) $item->id] ?? 0.0);
+
+                return $item->canMarkCatalogDeliveryInTransit($physical, $application->items);
+            })
             ->keyBy('id');
 
         if ($eligibleById->isEmpty()) {
@@ -2361,6 +2474,8 @@ class ApplicationController extends Controller
         $itemsInput = $request->input('items', []);
         $errors = [];
         $resolved = [];
+        $mainWarehouse = $this->resolveMainWarehouseForAccounting();
+        $physicalAvailableByStockKey = [];
 
         foreach ($eligibleById as $itemId => $item) {
             $row = $itemsInput[(string) $itemId] ?? $itemsInput[$itemId] ?? null;
@@ -2400,6 +2515,59 @@ class ApplicationController extends Controller
                 }
 
                 continue;
+            }
+
+            if ($item->equipment_id !== null) {
+                if ($mainWarehouse === null) {
+                    $errors["items.{$itemId}.mark"] = 'Не найден главный склад для проверки остатка.';
+
+                    continue;
+                }
+
+                if ($item->applicationHasPendingOverflowForCatalogItem($application->items)) {
+                    $errors["items.{$itemId}.mark"] = 'Сначала дозакажите недостающее количество и оприходуйте его на основной склад.';
+
+                    continue;
+                }
+
+                $physicalForItem = (float) ($physicalBalanceByItemId[(int) $item->id] ?? 0.0);
+                if (! $item->canMarkCatalogDeliveryInTransit($physicalForItem, $application->items)) {
+                    $shortage = $item->catalogShortageQtyForMainWarehouseDelivery($physicalForItem);
+                    $errors["items.{$itemId}.mark"] = $shortage > 0
+                        ? 'Недостаточно остатка на складе: нужно дозаказать ещё '
+                            .$shortage.' '.trim((string) ($item->quantity_unit ?? 'шт')).'.'
+                        : 'Сначала завершите дозаказ по этой позиции.';
+
+                    continue;
+                }
+
+                $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+                    ? trim((string) ($item->storedSizeValue() ?? ''))
+                    : '';
+                $stockKey = ApplicationCatalogStockAvailability::stockAggregateKey(
+                    (int) $item->equipment_id,
+                    $sizeVariant !== '' ? $sizeVariant : null
+                );
+                if (! isset($physicalAvailableByStockKey[$stockKey])) {
+                    $physical = $sizeVariant !== ''
+                        ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                            (int) $item->equipment_id,
+                            (int) $mainWarehouse->id,
+                            $sizeVariant
+                        )
+                        : $this->warehouseEquipmentBalance((int) $item->equipment_id, (int) $mainWarehouse->id);
+                    $physicalAvailableByStockKey[$stockKey] = (int) max(0, (int) floor($physical + 1e-9));
+                }
+
+                $requiredQty = max(1, (int) round((float) $item->quantity));
+                if ($physicalAvailableByStockKey[$stockKey] < $requiredQty) {
+                    $missingQty = $requiredQty - $physicalAvailableByStockKey[$stockKey];
+                    $errors["items.{$itemId}.mark"] = 'Недостаточно остатка на складе: нужно дозаказать ещё '
+                        .$missingQty.' '.trim((string) ($item->quantity_unit ?? 'шт')).'.';
+
+                    continue;
+                }
+                $physicalAvailableByStockKey[$stockKey] -= $requiredQty;
             }
 
             $resolved[] = [
@@ -3341,13 +3509,10 @@ class ApplicationController extends Controller
     private function recordApplicationChangeJournal(
         Application $application,
         int $userId,
-        string $action,
+        int $action,
         string $fieldKey,
-        string $fieldLabel,
         string $reason,
         ?int $applicationItemId = null,
-        ?string $oldValue = null,
-        ?string $newValue = null,
     ): void {
         ApplicationChangeJournal::query()->create([
             'application_id' => $application->id,
@@ -3355,19 +3520,9 @@ class ApplicationController extends Controller
             'user_id' => $userId,
             'action' => $action,
             'field_key' => $fieldKey,
-            'field_label' => $fieldLabel,
-            'old_value' => $oldValue !== null && trim($oldValue) !== '' ? $oldValue : null,
-            'new_value' => $newValue !== null && trim($newValue) !== '' ? $newValue : null,
             'reason' => $reason,
             'created_at' => now(),
         ]);
-    }
-
-    private function formatApplicationItemLineForJournal(ApplicationItem $item): string
-    {
-        $item->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
-
-        return $item->equipment_display_name.' × '.$item->quantity_with_unit;
     }
 
     private function validateApplicationEditPerFieldChangeReasons(
@@ -3384,14 +3539,6 @@ class ApplicationController extends Controller
             $v = trim((string) $request->input('field_change_reasons.subdivision_id', ''));
             if (mb_strlen($v) < $min) {
                 $messages['field_change_reasons.subdivision_id'] = 'Укажите причину смены подразделения (не короче 3 символов).';
-            }
-        }
-
-        $prevDate = $application->desired_delivery_date?->toDateString() ?? '';
-        if ($prevDate !== $validated['desired_delivery_date']) {
-            $v = trim((string) $request->input('field_change_reasons.desired_delivery_date', ''));
-            if (mb_strlen($v) < $min) {
-                $messages['field_change_reasons.desired_delivery_date'] = 'Укажите причину изменения желаемой даты поставки (не короче 3 символов).';
             }
         }
 
@@ -4314,7 +4461,200 @@ class ApplicationController extends Controller
 
         return mb_substr($label, 0, 255);
     }
-    private function expandCatalogRowsAgainstMainWarehouseVirtualStock(array $items): array
+    private function syncCatalogOverflowItemAgainstMainWarehouse(Application $application, ApplicationItem $item): void
+    {
+        if ($item->equipment_id !== null || ! $item->isCatalogOverflowPendingOrderLine()) {
+            return;
+        }
+
+        $baseName = $item->catalogOverflowBaseNameForMatching();
+        if ($baseName === '') {
+            return;
+        }
+
+        $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+            ? trim((string) ($item->storedSizeValue() ?? ''))
+            : '';
+
+        $catalogLine = $application->items
+            ->first(function (ApplicationItem $candidate) use ($baseName, $sizeVariant): bool {
+                if ((int) ($candidate->equipment_id ?? 0) <= 0 || ! (bool) $candidate->is_checked) {
+                    return false;
+                }
+                if ($candidate->catalogOverflowBaseNameForMatching() !== $baseName) {
+                    return false;
+                }
+                $candidateSize = PieceQuantity::isClothingMeasurement($candidate->storedMeasurementType())
+                    ? trim((string) ($candidate->storedSizeValue() ?? ''))
+                    : '';
+
+                return $candidateSize === $sizeVariant;
+            });
+        if ($catalogLine === null) {
+            return;
+        }
+
+        $mainWarehouse = $this->resolveMainWarehouseForAccounting();
+        if (! $mainWarehouse) {
+            return;
+        }
+
+        $catalogEquipment = Equipment::query()
+            ->where('is_catalog', true)
+            ->where('name', $baseName)
+            ->first();
+        if (! $catalogEquipment) {
+            return;
+        }
+
+        $physicalBalance = $sizeVariant !== ''
+            ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                (int) $catalogEquipment->id,
+                (int) $mainWarehouse->id,
+                $sizeVariant
+            )
+            : $this->warehouseEquipmentBalance((int) $catalogEquipment->id, (int) $mainWarehouse->id);
+        $requestedQty = max(1, (int) round((float) $catalogLine->quantity));
+        $fromStockQty = min($requestedQty, (int) max(0, floor($physicalBalance + 1e-9)));
+        $desiredOverflowQty = max(0, $requestedQty - $fromStockQty);
+
+        if ($desiredOverflowQty <= 0) {
+            $item->update([
+                'removed_at' => now(),
+                'removed_by_user_id' => null,
+                'is_checked' => false,
+                'custom_equipment_supply_status_id' => null,
+            ]);
+
+            return;
+        }
+
+        if ($desiredOverflowQty !== (int) round((float) $item->quantity)) {
+            $item->update([
+                'quantity' => $desiredOverflowQty,
+                'equipment_name' => $this->catalogOverflowPendingOrderLabel($baseName, $desiredOverflowQty, [
+                    'quantity_unit' => $item->quantity_unit,
+                    'measurement_type' => $item->measurement_type,
+                    'size_value' => $item->size_value,
+                ]),
+            ]);
+        }
+    }
+    private function rebalanceApprovedCatalogItemsForOrdering(Application $application): void
+    {
+        $application->load('items');
+        $mainWarehouse = $this->resolveMainWarehouseForAccounting();
+        if (! $mainWarehouse) {
+            return;
+        }
+
+        $physicalPoolByStockKey = [];
+        $approvedCatalogItems = $application->items
+            ->filter(fn (ApplicationItem $item): bool => (bool) $item->is_checked && $item->equipment_id !== null)
+            ->sortBy('id')
+            ->values();
+
+        foreach ($approvedCatalogItems as $item) {
+            $equipmentId = (int) $item->equipment_id;
+            if ($equipmentId <= 0) {
+                continue;
+            }
+            $sizeVariant = PieceQuantity::isClothingMeasurement($item->storedMeasurementType())
+                ? trim((string) ($item->storedSizeValue() ?? ''))
+                : '';
+            $stockKey = ApplicationCatalogStockAvailability::stockAggregateKey(
+                $equipmentId,
+                $sizeVariant !== '' ? $sizeVariant : null
+            );
+            if (! isset($physicalPoolByStockKey[$stockKey])) {
+                $physical = $sizeVariant !== ''
+                    ? ApplicationCatalogStockAvailability::physicalBalanceOnWarehouse(
+                        $equipmentId,
+                        (int) $mainWarehouse->id,
+                        $sizeVariant
+                    )
+                    : $this->warehouseEquipmentBalance($equipmentId, (int) $mainWarehouse->id);
+                $physicalPoolByStockKey[$stockKey] = (int) max(0, (int) floor($physical + 1e-9));
+            }
+
+            $requestedQty = max(1, (int) round((float) $item->quantity));
+            $fromStockQty = min($requestedQty, $physicalPoolByStockKey[$stockKey]);
+            $overflowQty = max(0, $requestedQty - $fromStockQty);
+            $physicalPoolByStockKey[$stockKey] -= $fromStockQty;
+
+            $baseName = $item->catalogOverflowBaseNameForMatching();
+            if ($baseName === '') {
+                continue;
+            }
+
+            $generatedOverflowItem = $application->items
+                ->first(function (ApplicationItem $candidate) use ($item, $baseName, $sizeVariant): bool {
+                    if ((int) ($candidate->id ?? 0) === (int) $item->id) {
+                        return false;
+                    }
+                    if (! $candidate->isCatalogOverflowPendingOrderLine() || ! (bool) $candidate->is_checked) {
+                        return false;
+                    }
+                    if ($candidate->catalogOverflowBaseNameForMatching() !== $baseName) {
+                        return false;
+                    }
+                    $candidateSize = PieceQuantity::isClothingMeasurement($candidate->storedMeasurementType())
+                        ? trim((string) ($candidate->storedSizeValue() ?? ''))
+                        : '';
+
+                    return $candidateSize === $sizeVariant;
+                });
+
+            if ($overflowQty <= 0) {
+                if ($generatedOverflowItem) {
+                    $generatedOverflowItem->update([
+                        'removed_at' => now(),
+                        'removed_by_user_id' => null,
+                        'is_checked' => false,
+                        'custom_equipment_supply_status_id' => null,
+                    ]);
+                }
+                continue;
+            }
+
+            $overflowLabel = $this->catalogOverflowPendingOrderLabel($baseName, $overflowQty, [
+                'quantity_unit' => $item->quantity_unit,
+                'measurement_type' => $item->storedMeasurementType(),
+                'size_value' => $item->storedSizeValue(),
+            ]);
+            if ($generatedOverflowItem) {
+                $generatedOverflowItem->update([
+                    'removed_at' => null,
+                    'removed_by_user_id' => null,
+                    'equipment_name' => $overflowLabel,
+                    'quantity' => $overflowQty,
+                    'measurement_type' => $item->storedMeasurementType(),
+                    'quantity_unit' => $item->quantity_unit,
+                    'size_value' => $item->storedSizeValue(),
+                    'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID,
+                ]);
+                continue;
+            }
+
+            $created = $application->items()->create([
+                'equipment_id' => null,
+                'equipment_name' => $overflowLabel,
+                'base_name' => $baseName,
+                'size_value' => $item->storedSizeValue(),
+                'quantity' => $overflowQty,
+                'measurement_type' => $item->storedMeasurementType(),
+                'quantity_unit' => $item->quantity_unit,
+                'raw_input' => null,
+                'is_checked' => true,
+                'reason_not_selected' => null,
+                'custom_equipment_supply_status_id' => ApplicationItem::CUSTOM_SUPPLY_ACCEPTED_ID,
+                'delivery_status_id' => null,
+                'delivery_warehouse_id' => null,
+            ]);
+            $application->items->push($created);
+        }
+    }
+    private function expandCatalogRowsAgainstMainWarehouseVirtualStock(array $items, ?int $excludeApplicationId = null): array
     {
         $mainWarehouse = $this->resolveMainWarehouseForAccounting();
         $catalogIds = [];
@@ -4334,7 +4674,7 @@ class ApplicationController extends Controller
                 ->get()
                 ->keyBy('id');
 
-        $reservedByStockKey = ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId();
+        $reservedByStockKey = ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId($excludeApplicationId);
         $virtualAvailableByStockKey = [];
         $out = [];
 

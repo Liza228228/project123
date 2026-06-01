@@ -4,6 +4,7 @@
 namespace App\Models;
 
 use App\Models\Scopes\ActiveApplicationItemScope;
+use App\Support\PieceQuantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -370,6 +371,116 @@ class ApplicationItem extends Model
     public function usesFreeTextEquipment(): bool
     {
         return $this->equipment_id === null;
+    }
+
+    public function isCatalogOverflowPendingOrderLine(): bool
+    {
+        if ($this->equipment_id !== null) {
+            return false;
+        }
+
+        if (trim((string) ($this->raw_input ?? '')) !== '') {
+            return false;
+        }
+
+        return str_contains(trim((string) ($this->equipment_name ?? '')), '+на согласовании');
+    }
+
+    public function catalogOverflowBaseNameForMatching(): string
+    {
+        $baseName = trim((string) ($this->base_name ?? ''));
+        if ($baseName !== '' && $baseName !== '—') {
+            return $baseName;
+        }
+
+        if ($this->equipment_id) {
+            $equipment = $this->relationLoaded('equipment') ? $this->equipment : $this->equipment()->first();
+            if ($equipment) {
+                return trim((string) ($equipment->name ?? ''));
+            }
+        }
+
+        return '';
+    }
+
+    public function applicationHasPendingOverflowForCatalogItem(?iterable $siblingItems = null): bool
+    {
+        if ($this->equipment_id === null) {
+            return false;
+        }
+
+        $items = $siblingItems;
+        if ($items === null) {
+            $this->loadMissing('application.items.manualDetail');
+            $items = $this->application?->items;
+        }
+        if ($items === null) {
+            return false;
+        }
+
+        $baseName = $this->catalogOverflowBaseNameForMatching();
+        if ($baseName === '') {
+            return false;
+        }
+
+        $sizeVariant = PieceQuantity::isClothingMeasurement($this->storedMeasurementType())
+            ? trim((string) ($this->storedSizeValue() ?? ''))
+            : '';
+
+        foreach ($items as $candidate) {
+            if (! $candidate instanceof self || ! $candidate->isCatalogOverflowPendingOrderLine() || ! (bool) $candidate->is_checked) {
+                continue;
+            }
+
+            if ($candidate->catalogOverflowBaseNameForMatching() !== $baseName) {
+                continue;
+            }
+
+            $candidateSize = PieceQuantity::isClothingMeasurement($candidate->storedMeasurementType())
+                ? trim((string) ($candidate->storedSizeValue() ?? ''))
+                : '';
+
+            if ($candidateSize !== $sizeVariant) {
+                continue;
+            }
+
+            if ($candidate->resolvedCustomSupplyStatus() === self::CUSTOM_SUPPLY_ON_WAREHOUSE) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function catalogShortageQtyForMainWarehouseDelivery(float $physicalBalanceOnMainWarehouse): int
+    {
+        if ($this->equipment_id === null) {
+            return 0;
+        }
+
+        $requiredQty = max(1, (int) round((float) $this->quantity));
+        $availableQty = (int) max(0, floor($physicalBalanceOnMainWarehouse + 1e-9));
+
+        return max(0, $requiredQty - $availableQty);
+    }
+
+    public function canMarkCatalogDeliveryInTransit(float $physicalBalanceOnMainWarehouse, ?iterable $siblingItems = null): bool
+    {
+        if (! $this->canMarkDeliveryInTransit()) {
+            return false;
+        }
+
+        if ($this->catalogShortageQtyForMainWarehouseDelivery($physicalBalanceOnMainWarehouse) > 0) {
+            return false;
+        }
+
+        if ($this->applicationHasPendingOverflowForCatalogItem($siblingItems)) {
+            return false;
+        }
+
+        return true;
     }
     public function hasArrivedAtWarehouseForReport(): bool
     {

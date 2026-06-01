@@ -450,22 +450,9 @@ class KozlovApplicationsSeeder extends Seeder
     private function seedChangeJournal(Application $application, User $kozlov, int $index): void
     {
         $application->loadMissing('items');
-        $firstItem = $application->items->sortBy('id')->first();
-        $oldDate = $application->desired_delivery_date?->copy()->subDays(5)->format('d.m.Y') ?? '01.06.2026';
-        $newDate = $application->desired_delivery_date?->format('d.m.Y') ?? '15.06.2026';
-
-        ApplicationChangeJournal::query()->create([
-            'application_id' => $application->id,
-            'application_item_id' => null,
-            'user_id' => $kozlov->id,
-            'action' => ApplicationChangeJournal::ACTION_UPDATED,
-            'field_key' => ApplicationChangeJournal::FIELD_DELIVERY_DATE,
-            'field_label' => 'Желаемая дата поставки',
-            'old_value' => $oldDate,
-            'new_value' => $newDate,
-            'reason' => 'Срок скорректировали после замечания котельной.',
-            'created_at' => Carbon::now()->subDays(3 + ($index % 4)),
-        ]);
+        $items = $application->items->sortBy('id')->values();
+        $firstItem = $items->first();
+        $addedItem = $items->count() > 1 ? $items->last() : $firstItem;
 
         if ($firstItem !== null) {
             ApplicationChangeJournal::query()->create([
@@ -474,26 +461,22 @@ class KozlovApplicationsSeeder extends Seeder
                 'user_id' => $kozlov->id,
                 'action' => ApplicationChangeJournal::ACTION_UPDATED,
                 'field_key' => ApplicationChangeJournal::FIELD_ITEM_UPDATED,
-                'field_label' => 'Позиция оборудования',
-                'old_value' => $firstItem->equipment_display_name.' × '.max(1, (int) $firstItem->quantity - 2).' шт',
-                'new_value' => $firstItem->equipment_display_name.' × '.$firstItem->quantity.' шт',
                 'reason' => 'Уточнили количество после отказа котельной.',
                 'created_at' => Carbon::now()->subDays(2 + ($index % 3)),
             ]);
         }
 
-        ApplicationChangeJournal::query()->create([
-            'application_id' => $application->id,
-            'application_item_id' => null,
-            'user_id' => $kozlov->id,
-            'action' => ApplicationChangeJournal::ACTION_ADDED,
-            'field_key' => ApplicationChangeJournal::FIELD_ITEM_ADDED,
-            'field_label' => 'Новая позиция',
-            'old_value' => null,
-            'new_value' => 'Насос циркуляционный × 2 шт',
-            'reason' => 'Добавили позицию по итогам согласования.',
-            'created_at' => Carbon::now()->subDay(),
-        ]);
+        if ($addedItem !== null) {
+            ApplicationChangeJournal::query()->create([
+                'application_id' => $application->id,
+                'application_item_id' => $addedItem->id,
+                'user_id' => $kozlov->id,
+                'action' => ApplicationChangeJournal::ACTION_ADDED,
+                'field_key' => ApplicationChangeJournal::FIELD_ITEM_ADDED,
+                'reason' => 'Добавили позицию по итогам согласования.',
+                'created_at' => Carbon::now()->subDay(),
+            ]);
+        }
     }
 
     private function attachInstallationActAndPhotoToAllCompletedApplications(int $kozlovUserId, int $completedStatusId): void

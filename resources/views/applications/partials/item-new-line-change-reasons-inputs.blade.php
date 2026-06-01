@@ -11,7 +11,7 @@
     data-server-error="{{ $errors->has('items.'.$i.'.addition_reason') ? '1' : '0' }}"
 >
     <label class="app-form-label !text-xs" for="new_line_cr_{{ $i }}">Комментарий: почему добавляете позицию</label>
-    <p class="text-xs text-stone-600 dark:text-stone-400">Увидит мастер участка при просмотре заявки.</p>
+  
     <textarea
         id="new_line_cr_{{ $i }}"
         name="items[{{ $i }}][addition_reason]"

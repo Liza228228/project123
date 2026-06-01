@@ -326,14 +326,14 @@
                         }
                         $canBoilerChiefApprove = Auth::user()->hasRoleId(7)
                             && $application->needsBoilerChiefReviewBeforeManagement();
-                        $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id));
-                        $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id));
-                        $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked);
+                        $uncheckedItems = $application->items->filter(fn ($i) => ! $application->itemLineIsApproved($i->id) && ! $i->isCatalogOverflowPendingOrderLine());
+                        $checkedItems = $application->items->filter(fn ($i) => $application->itemLineIsApproved($i->id) && ! $i->isCatalogOverflowPendingOrderLine());
+                        $boilerUncheckedItems = $application->items->filter(fn ($i) => ! $i->is_checked && ! $i->isCatalogOverflowPendingOrderLine());
                         $itemsAwaitingBoilerChiefReview = $application->items->filter(
-                            fn ($i) => $application->itemAwaitingBoilerChiefReview($i)
+                            fn ($i) => $application->itemAwaitingBoilerChiefReview($i) && ! $i->isCatalogOverflowPendingOrderLine()
                         );
                         $itemsRejectedByBoilerChiefWithReason = $application->items->filter(
-                            fn ($i) => $application->itemIsRejectedByBoilerChief($i)
+                            fn ($i) => $application->itemIsRejectedByBoilerChief($i) && ! $i->isCatalogOverflowPendingOrderLine()
                         );
                         $subdivisionHasBoilerChiefForReadonly = \App\Models\Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id);
                         $postBoilerChiefFrozenUncheckedReadonly = $subdivisionHasBoilerChiefForReadonly
@@ -353,7 +353,10 @@
                         $showBoilerAwaitingSection = $awaitingBoilerChiefApprovalList;
                         $showBoilerRejectedItemsSection = $itemsRejectedByBoilerChiefReadonly->isNotEmpty();
                         $canManageDeliveryTransit = Auth::user()->hasApplicationSupplyWorkflowRole();
-                        $inTransitCandidates = $application->items->filter(fn ($i) => $i->canMarkDeliveryInTransit());
+                        $inTransitCandidates = $catalogDeliveryInTransitCandidates ?? collect();
+                        $catalogDeliveryBlockedByShortage = $catalogDeliveryBlockedByShortage ?? collect();
+                        $pendingCatalogReorderLines = $pendingCatalogReorderLines ?? collect();
+                        $catalogShortageQtyByItem = $catalogShortageQtyByItemId ?? [];
                         $showCatalogDeliveryInTransitForm = $canManageDeliveryTransit
                             && $application->managementHasSavedApproval()
                             && $inTransitCandidates->isNotEmpty();
@@ -521,7 +524,7 @@
                         @elseif($canManagementApprove)
                             @php
                                 $subdivisionHasBoilerChief = \App\Models\Subdivision::hasBoilerChiefAssigned((int) $application->subdivision_id);
-                                $supplyManagementItems = $application->items;
+                                $supplyManagementItems = $application->items->reject(fn ($i) => $i->isCatalogOverflowPendingOrderLine());
                                 $stockByItem = $catalogStockOnMainWarehouseByItemId ?? [];
                                 $supplyAwaitingPostBoilerManagementSave = $subdivisionHasBoilerChief
                                     && ! $application->needsBoilerChiefReviewBeforeManagement()
@@ -540,6 +543,13 @@
                                     $itemsFrozenAsBoilerRejectedForSupply = collect();
                                     $supplyManagementItemsInteractive = $supplyManagementItems;
                                 }
+                                $itemsFrozenAsSupplyRejected = $supplyManagementItemsInteractive->filter(
+                                    fn ($i) => ! $application->itemLineIsApproved($i->id)
+                                        && trim((string) ($application->itemLineRejectionReason($i->id) ?? '')) !== ''
+                                );
+                                $supplyManagementItemsInteractive = $supplyManagementItemsInteractive->reject(
+                                    fn ($i) => $itemsFrozenAsSupplyRejected->contains(fn ($frozen) => (int) $frozen->id === (int) $i->id)
+                                );
                             @endphp
                             @if($supplyAwaitingPostBoilerManagementSave)
                                 
@@ -573,6 +583,31 @@
                                             @endforeach
                                         </ul>
                                         @foreach($itemsFrozenAsBoilerRejectedForSupply->sortBy('id') as $item)
+                                            <input type="hidden" name="items[{{ $item->id }}][is_checked]" value="0">
+                                            <input type="hidden" name="items[{{ $item->id }}][reason_not_selected]" value="{{ old('items.'.$item->id.'.reason_not_selected', $item->reason_not_selected ?? '') }}">
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                @if($itemsFrozenAsSupplyRejected->isNotEmpty())
+                                    <div class="space-y-2 rounded-xl border border-stone-200/80 bg-stone-50/70 p-4 dark:border-stone-700 dark:bg-stone-900/20">
+                                        <h4 class="app-form-label !normal-case !mb-0">Не согласовано</h4>
+                                        <ul class="divide-y divide-stone-200/80 overflow-hidden rounded-lg border border-stone-200/70 dark:divide-stone-700/60 dark:border-stone-700/70">
+                                            @foreach($itemsFrozenAsSupplyRejected->sortBy('id') as $item)
+                                                <li class="space-y-1 bg-white/90 px-3 py-2.5 dark:bg-stone-900/50">
+                                                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                                        <span class="text-sm font-medium text-black dark:text-white">
+                                                            {{ $item->equipment_display_name }} × {{ $item->quantity_with_unit }}
+                                                        </span>
+                                                        <span class="text-[11px] font-medium uppercase tracking-wide text-stone-700 dark:text-stone-300">не в согласовании снабжения</span>
+                                                    </div>
+                                                    <p class="text-xs text-black dark:text-white">
+                                                        <span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($item->id) }}
+                                                    </p>
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                        @foreach($itemsFrozenAsSupplyRejected->sortBy('id') as $item)
                                             <input type="hidden" name="items[{{ $item->id }}][is_checked]" value="0">
                                             <input type="hidden" name="items[{{ $item->id }}][reason_not_selected]" value="{{ old('items.'.$item->id.'.reason_not_selected', $item->reason_not_selected ?? '') }}">
                                         @endforeach
@@ -649,7 +684,6 @@
                                                             К дозаказу: {{ $fmt($toOrder) }} {{ $unitLabel }}.
                                                         </p>
                                                     @endif
-                                                    @include('applications.partials.custom-equipment-supply-badge', ['item' => $item])
                                                 </div>
                                             </div>
                                             <div class="approval-reason-block pl-8 sm:pl-9 {{ $isCheckedOld ? 'hidden' : '' }}">
@@ -1027,6 +1061,50 @@
                                 'chiefCanManageDeliveryDefect' => $chiefCanManageDeliveryDefect,
                                 'deliveryDefectItems' => $deliveryDefectItems,
                             ])
+                        @endif
+
+                        @if($catalogDeliveryBlockedByShortage->isNotEmpty())
+                            <div class="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/70 p-4 dark:border-amber-800/50 dark:bg-amber-950/25">
+                                <p class="text-sm font-medium text-black dark:text-white">Отправка «В пути» недоступна — не хватает на складе</p>
+                                <ul class="mt-2 space-y-2 text-sm text-black/90 dark:text-white/85">
+                                    @foreach($catalogDeliveryBlockedByShortage->sortBy('id') as $blockedItem)
+                                        @php
+                                            $shortageQty = (int) ($catalogShortageQtyByItem[(int) $blockedItem->id] ?? 0);
+                                            $unitLabel = $blockedItem->quantityUnitLabelForDisplay();
+                                        @endphp
+                                        <li>
+                                            <span class="font-medium">{{ $blockedItem->equipment_display_name }} × {{ $blockedItem->quantity_with_unit }}</span>
+                                            @if($shortageQty > 0)
+                                                — нужно дозаказать {{ $shortageQty }} {{ $unitLabel }} и оприходовать на основной склад.
+                                            @else
+                                                — сначала завершите дозаказ по этой позиции.
+                                            @endif
+                                        </li>
+                                    @endforeach
+                                </ul>
+                                @if($pendingCatalogReorderLines->isNotEmpty() && Auth::user()->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS))
+                                    <a href="{{ route('applications.custom-equipment-order', $application) }}" class="ui-btn ui-btn--primary ui-btn--sm mt-3 inline-flex">
+                                        Открыть форму дозаказа
+                                    </a>
+                                @endif
+                            </div>
+                        @elseif($pendingCatalogReorderLines->isNotEmpty())
+                            <div class="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/70 p-4 dark:border-amber-800/50 dark:bg-amber-950/25">
+                                <p class="text-sm font-medium text-black dark:text-white">Требуется дозаказ со склада</p>
+                                <ul class="mt-2 space-y-1 text-sm text-black/90 dark:text-white/85">
+                                    @foreach($pendingCatalogReorderLines->sortBy('id') as $reorderItem)
+                                        <li>{{ $reorderItem->equipment_display_name }} × {{ $reorderItem->quantity_with_unit }}</li>
+                                    @endforeach
+                                </ul>
+                                <p class="mt-2 text-xs text-black/80 dark:text-white/75">
+                                    Оформите дозаказ в разделе «Своё оборудование к заказу». Отправка «В пути» по позициям с нехваткой на складе будет доступна после поступления дозаказа.
+                                </p>
+                                @if(Auth::user()->hasAnyRoleId(\App\Models\User::MANAGEMENT_EDITOR_ROLE_IDS))
+                                    <a href="{{ route('applications.custom-equipment-order', $application) }}" class="ui-btn ui-btn--primary ui-btn--sm mt-3 inline-flex">
+                                        Открыть форму дозаказа
+                                    </a>
+                                @endif
+                            </div>
                         @endif
 
                         @if($showCatalogDeliveryInTransitForm)

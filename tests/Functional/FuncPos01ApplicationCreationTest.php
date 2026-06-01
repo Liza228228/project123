@@ -1496,7 +1496,8 @@ test('management rejection of all equipment lines marks application rejected and
     $app->refresh();
     expect($app->application_status_id)->toBe(ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED));
     expect($app->isStatusRejected())->toBeTrue();
-    expect($app->managementHasSavedApproval())->toBeFalse();
+    expect($app->isPendingManagementReview())->toBeFalse();
+    expect($app->managementHasSavedApproval())->toBeTrue();
     expect($app->management_supply_items_saved_at)->toBeNull();
 
     ApplicationIndexPresenter::prepare(

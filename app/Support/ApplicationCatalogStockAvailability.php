@@ -40,6 +40,9 @@ final class ApplicationCatalogStockAvailability
 
         $byKey = [];
         foreach ($items as $item) {
+            if ($item->isCatalogOverflowPendingOrderLine()) {
+                continue;
+            }
             $equipmentId = self::resolveCatalogEquipmentIdForReservation($item);
             if ($equipmentId <= 0) {
                 continue;

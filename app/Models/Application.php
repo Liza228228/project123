@@ -495,10 +495,6 @@ class Application extends Model
             return false;
         }
 
-        if ($this->items->isNotEmpty() && ! $this->items->contains(fn (ApplicationItem $i) => (bool) $i->is_checked)) {
-            return false;
-        }
-
         if ($this->usesBoilerChiefSubdivisionWorkflow()) {
             if ($this->management_supply_items_saved_at !== null) {
                 return true;

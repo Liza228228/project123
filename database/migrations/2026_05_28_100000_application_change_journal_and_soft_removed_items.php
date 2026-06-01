@@ -14,11 +14,8 @@ return new class extends Migration
                 $table->foreignId('application_id')->constrained('applications')->cascadeOnDelete();
                 $table->foreignId('application_item_id')->nullable()->constrained('application_items')->nullOnDelete();
                 $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-                $table->string('action', 32);
+                $table->unsignedTinyInteger('action');
                 $table->string('field_key', 64);
-                $table->string('field_label', 255);
-                $table->text('old_value')->nullable();
-                $table->text('new_value')->nullable();
                 $table->string('reason', 500);
                 $table->timestamp('created_at')->useCurrent();
 

@@ -3,16 +3,20 @@
 // модель
 namespace App\Models;
 
+use App\Models\Scopes\ActiveApplicationItemScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ApplicationChangeJournal extends Model
 {
-    public const ACTION_ADDED = 'added';
+    /** 0 — добавление позиции */
+    public const ACTION_ADDED = 0;
 
-    public const ACTION_UPDATED = 'updated';
+    /** 1 — изменение полей заявки или позиции */
+    public const ACTION_UPDATED = 1;
 
-    public const ACTION_REMOVED = 'removed';
+    /** 2 — снятие позиции */
+    public const ACTION_REMOVED = 2;
 
     public const FIELD_SUBDIVISION = 'subdivision_id';
 
@@ -34,9 +38,6 @@ class ApplicationChangeJournal extends Model
         'user_id',
         'action',
         'field_key',
-        'field_label',
-        'old_value',
-        'new_value',
         'reason',
         'created_at',
     ];
@@ -44,6 +45,7 @@ class ApplicationChangeJournal extends Model
     protected function casts(): array
     {
         return [
+            'action' => 'integer',
             'created_at' => 'datetime',
         ];
     }
@@ -55,7 +57,8 @@ class ApplicationChangeJournal extends Model
 
     public function applicationItem(): BelongsTo
     {
-        return $this->belongsTo(ApplicationItem::class);
+        return $this->belongsTo(ApplicationItem::class)
+            ->withoutGlobalScope(ActiveApplicationItemScope::class);
     }
 
     public function user(): BelongsTo
@@ -65,10 +68,28 @@ class ApplicationChangeJournal extends Model
 
     public function actionLabelRu(): string
     {
-        return match ($this->action) {
+        return self::actionLabelsRu()[(int) $this->action] ?? 'Изменение';
+    }
+
+    /** @return array<int, string> */
+    public static function actionLabelsRu(): array
+    {
+        return [
             self::ACTION_ADDED => 'Добавление',
+            self::ACTION_UPDATED => 'Изменение',
             self::ACTION_REMOVED => 'Снятие',
-            default => 'Изменение',
-        };
+        ];
+    }
+
+    public function equipmentLineLabel(): ?string
+    {
+        $item = $this->applicationItem;
+        if ($item === null) {
+            return null;
+        }
+
+        $item->loadMissing(['equipment.measurementUnit.unitType', 'manualDetail']);
+
+        return $item->equipment_display_name.' × '.$item->quantity_with_unit;
     }
 }

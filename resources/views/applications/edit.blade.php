@@ -106,16 +106,21 @@
                                 @php
                                     $itemId = $item['item_id'] ?? null;
                                     $dbItem = $itemId !== null && $itemId !== '' ? $application->items->firstWhere('id', (int) $itemId) : null;
-                                    $locked = (bool) ($dbItem && $application->itemLineIsApproved($dbItem->id) && ! ($managementMayEditBoilerApprovedEquipment ?? false));
+                                    $lockedApproved = (bool) ($dbItem && $application->itemLineIsApproved($dbItem->id) && ! ($managementMayEditBoilerApprovedEquipment ?? false));
+                                    $lockedRejected = (bool) ($dbItem && ! $application->itemLineIsApproved($dbItem->id)
+                                        && trim((string) ($application->itemLineRejectionReason($dbItem->id) ?? '')) !== '');
+                                    $locked = $lockedApproved || $lockedRejected;
                                     $typeId = $item['equipment_id'] ?? '';
                                     $eqName = trim($item['equipment_name'] ?? '');
                                     $isCustomRow = ! $locked && (($typeId === '' || $typeId === null) && $eqName !== '');
                                 @endphp
 
                                 @if($locked)
-                                    <div class="equipment-row equipment-row--locked app-equipment-card border-emerald-200/70 dark:border-emerald-800/45">
+                                    <div class="equipment-row equipment-row--locked app-equipment-card {{ $lockedRejected ? 'border-amber-200/70 dark:border-amber-800/45' : 'border-emerald-200/70 dark:border-emerald-800/45' }}">
                                         <div class="mb-3 flex items-center justify-between gap-2 border-b border-stone-200/80 pb-2 dark:border-stone-600/80">
-                                            <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">Согласовано</span>
+                                            <span class="text-xs font-semibold uppercase tracking-wide {{ $lockedRejected ? 'text-amber-800/90 dark:text-amber-200/90' : 'text-emerald-800/90 dark:text-emerald-200/90' }}">
+                                                {{ $lockedRejected ? 'Не согласовано' : 'Согласовано' }}
+                                            </span>
                                         </div>
                                         <div class="space-y-2">
                                             <p class="text-sm font-medium text-stone-900 dark:text-stone-100">
@@ -128,6 +133,11 @@
                                             </p>
                                             @if($dbItem && $dbItem->usesFreeTextEquipment())
                                                 @include('applications.partials.custom-equipment-supply-badge', ['item' => $dbItem])
+                                            @endif
+                                            @if($lockedRejected)
+                                                <p class="text-xs text-black dark:text-white">
+                                                    <span class="font-medium">Причина:</span> {{ $application->itemLineRejectionReason($dbItem->id) }}
+                                                </p>
                                             @endif
                                         </div>
                                         <input type="hidden" name="items[{{ $idx }}][item_id]" value="{{ $itemId }}" />
@@ -309,9 +319,18 @@
                         <h3 id="edit-section-date" class="app-section-title">Срок</h3>
                         <div class="w-full max-w-full sm:max-w-xs">
                             <label for="desired_delivery_date" class="app-form-label">Желаемая дата поставки</label>
-                            <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" required class="app-input min-h-[3.25rem] sm:min-h-[2.75rem]" />
+                            @if($lockDesiredDeliveryDateEdit ?? false)
+                                <input type="hidden" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" />
+                            @endif
+                            <input id="desired_delivery_date" type="date" name="desired_delivery_date" value="{{ old('desired_delivery_date', $application->desired_delivery_date?->format('Y-m-d')) }}" min="{{ now()->format('Y-m-d') }}" @if($lockDesiredDeliveryDateEdit ?? false) disabled @endif required class="app-input min-h-[3.25rem] sm:min-h-[2.75rem] @if($lockDesiredDeliveryDateEdit ?? false) bg-stone-100 text-stone-500 dark:bg-stone-800/70 dark:text-stone-300 cursor-not-allowed @endif" />
                             <x-input-error :messages="$errors->get('desired_delivery_date')" class="mt-1.5" />
-                            @include('applications.partials.application-level-change-reason-inputs', ['block' => 'delivery'])
+                            @if(!($lockDesiredDeliveryDateEdit ?? false))
+                                @include('applications.partials.application-level-change-reason-inputs', ['block' => 'delivery'])
+                            @else
+                                <p class="mt-1.5 text-xs text-stone-500 dark:text-stone-400">
+                                    Для этой роли изменение даты поставки недоступно.
+                                </p>
+                            @endif
                         </div>
                     </section>
 
@@ -382,7 +401,7 @@
             </div>
             <div class="new-line-field-change-reasons mt-3 space-y-1 border-t border-stone-200/80 pt-3 dark:border-stone-600/80 hidden" data-new-line-change-reasons="__INDEX__" data-server-error="0">
                 <label class="app-form-label !text-xs">Комментарий: почему добавляете позицию</label>
-                <p class="text-xs text-stone-600 dark:text-stone-400">Увидит мастер участка при просмотре заявки.</p>
+               
                 <textarea name="items[__INDEX__][addition_reason]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
             </div>
         </div>
@@ -494,7 +513,7 @@
                 if (serverDelErr) {
                     delWrap.classList.remove('hidden');
                     if (delInput) {
-                        delInput.required = true;
+                        delInput.required = false;
                     }
                     return;
                 }
@@ -502,10 +521,8 @@
                 var changed = cur !== String(initDel);
                 delWrap.classList.toggle('hidden', !changed);
                 if (delInput) {
-                    delInput.required = changed;
-                    if (!changed) {
-                        delInput.value = '';
-                    }
+                    delInput.required = false;
+                    if (!changed) delInput.value = '';
                 }
             }
 
@@ -1479,7 +1496,7 @@
                 var itemIdInput = row.querySelector('input[name*="[item_id]"]');
                 var itemId = itemIdInput && itemIdInput.value ? String(parseInt(itemIdInput.value, 10) || 0) : '0';
                 if (itemId !== '0' && parseInt(itemId, 10) > 0) {
-                    var reason = window.prompt('Укажите причину снятия этой позиции с заявки (будет видна мастеру участка). Не менее 3 символов:', '');
+                    var reason = window.prompt('Укажите причину снятия этой позиции с заявки. Не менее 3 символов:', '');
                     if (reason === null) {
                         return;
                     }
