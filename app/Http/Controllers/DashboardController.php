@@ -7,6 +7,7 @@ use App\Models\Application;
 use App\Models\ApplicationItem;
 use App\Models\ApplicationStatus;
 use App\Models\User;
+use App\Support\ApplicationApprovalListingFilter;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -50,11 +51,6 @@ class DashboardController extends Controller
         $activeBase = $this->dashboardApplicationsListingQuery($user, 'active');
         $archivedBase = $this->dashboardApplicationsListingQuery($user, 'archived');
 
-        $pendingId = ApplicationStatus::idFor(ApplicationStatus::NAME_PENDING);
-        $approvedId = ApplicationStatus::idFor(ApplicationStatus::NAME_APPROVED);
-        $rejectedId = ApplicationStatus::idFor(ApplicationStatus::NAME_REJECTED);
-        $partialId = ApplicationStatus::idFor(ApplicationStatus::NAME_PARTIAL);
-
         $customEquipmentPending = 0;
         if ($user->hasAnyRoleId(User::CUSTOM_EQUIPMENT_ORDERING_ROLE_IDS)) {
             $customEquipmentPending = ApplicationItem::queryPendingCustomEquipmentOrder()->count();
@@ -62,13 +58,26 @@ class DashboardController extends Controller
 
         return [
             'total_active' => (clone $activeBase)->count(),
-            'pending' => (clone $activeBase)->where(function (Builder $q) use ($pendingId): void {
-                $q->where('application_status_id', $pendingId)
-                    ->orWhereNull('application_status_id');
-            })->count(),
-            'approved' => (clone $activeBase)->where('application_status_id', $approvedId)->count(),
-            'partial' => (clone $activeBase)->where('application_status_id', $partialId)->count(),
-            'rejected' => (clone $activeBase)->where('application_status_id', $rejectedId)->count(),
+            'pending' => ApplicationApprovalListingFilter::countWithFilter(
+                $activeBase,
+                ApplicationApprovalListingFilter::KEY_PENDING,
+                $user
+            ),
+            'approved' => ApplicationApprovalListingFilter::countWithFilter(
+                $activeBase,
+                ApplicationApprovalListingFilter::KEY_APPROVED,
+                $user
+            ),
+            'partial' => ApplicationApprovalListingFilter::countWithFilter(
+                $activeBase,
+                ApplicationApprovalListingFilter::KEY_PARTIAL,
+                $user
+            ),
+            'rejected' => ApplicationApprovalListingFilter::countWithFilter(
+                $activeBase,
+                ApplicationApprovalListingFilter::KEY_REJECTED,
+                $user
+            ),
             'archived' => (clone $archivedBase)->count(),
             'custom_equipment_pending' => $customEquipmentPending,
         ];
@@ -93,7 +102,9 @@ class DashboardController extends Controller
 
         if ($user->hasRoleId(self::BOILER_CHIEF_ROLE_ID)) {
             $chiefSubIds = $user->boilerChiefSubdivisions()->pluck('subdivisions.id');
-            $applicationsQuery->whereIn('subdivision_id', $chiefSubIds);
+            $applicationsQuery
+                ->whereIn('subdivision_id', $chiefSubIds)
+                ->visibleToBoilerChiefInListing();
         }
 
         if ($user->hasRoleId(4)) {

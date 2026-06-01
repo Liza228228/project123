@@ -11,6 +11,7 @@
         : '';
     $plateFormatted = \App\Support\RussianVehiclePlate::formatWithSpaces($vehiclePlateValue);
     $hasPlateColumn = \Illuminate\Support\Facades\Schema::hasColumn('transport_options', 'plate');
+    $fieldsRequired = ! ($optional ?? false) && filled($nameTransport);
 @endphp
 <div class="delivery-transport-fields grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-end" data-delivery-transport-fields>
     <div class="w-full">
@@ -20,7 +21,7 @@
             @if($nameTransport) name="{{ $nameTransport }}" @endif
             class="app-select text-sm w-full delivery-transport-method"
             data-delivery-method
-            @if($nameTransport) required @endif
+            @if($fieldsRequired) required @endif
         >
             <option value="" disabled @selected($selectedMethodId === null || $selectedMethodId === '' || $selectedMethodId === 0)>Выберите способ</option>
             @foreach(($transportOptions ?? collect()) as $transportOption)
@@ -50,7 +51,7 @@
                 placeholder="А 123 ВС 77"
                 class="delivery-plate-input delivery-transport-plate-text app-input text-sm w-full font-semibold uppercase @if($selectedMethodName === \App\Models\TransportOption::NAME_SERVICE_VEHICLE) hidden @endif"
                 data-delivery-plate-text
-                @if($namePlate && $selectedMethodName !== \App\Models\TransportOption::NAME_SELF_PICKUP && $selectedMethodName !== \App\Models\TransportOption::NAME_SERVICE_VEHICLE) required @endif
+                @if($fieldsRequired && $selectedMethodName !== \App\Models\TransportOption::NAME_SELF_PICKUP && $selectedMethodName !== \App\Models\TransportOption::NAME_SERVICE_VEHICLE) required @endif
                 @if($selectedMethodName === \App\Models\TransportOption::NAME_SERVICE_VEHICLE || $selectedMethodName === \App\Models\TransportOption::NAME_SELF_PICKUP) disabled @endif
             />
             <select
@@ -58,7 +59,7 @@
                 @if($namePlate && $selectedMethodName === \App\Models\TransportOption::NAME_SERVICE_VEHICLE) name="{{ $namePlate }}" @endif
                 class="app-select text-sm w-full delivery-transport-plate-select @if($selectedMethodName !== \App\Models\TransportOption::NAME_SERVICE_VEHICLE) hidden @endif"
                 data-delivery-plate-select
-                @if($namePlate && $selectedMethodName === \App\Models\TransportOption::NAME_SERVICE_VEHICLE) required @else disabled @endif
+                @if($fieldsRequired && $selectedMethodName === \App\Models\TransportOption::NAME_SERVICE_VEHICLE) required @else disabled @endif
             >
                 <option value="" disabled @selected($vehiclePlateValue === '')>Выберите машину</option>
                 @foreach(($serviceVehiclePlateOptions ?? collect()) as $serviceVehicle)

@@ -141,6 +141,14 @@ final class ApplicationApprovalListingFilter
             default => self::KEY_ALL,
         };
     }
+    public static function countWithFilter(Builder $query, string $filter, ?User $user = null): int
+    {
+        $filtered = clone $query;
+        self::apply($filtered, $filter, $user);
+
+        return $filtered->count();
+    }
+
     public static function apply(Builder $query, string $filter, ?User $user = null): void
     {
         $filter = self::normalizeForUser($filter, $user);
@@ -170,9 +178,7 @@ final class ApplicationApprovalListingFilter
     }
     private static function applyAtBoilerChief(Builder $query): void
     {
-        $draftId = ApplicationStatus::idForDraft();
         $query->notArchived()
-            ->where('application_status_id', '!=', $draftId)
             ->whereExists(self::boilerChiefSubdivisionExistsSubquery())
             ->whereDoesntHave('user', function (Builder $userQuery): void {
                 $userQuery->whereIn('role_id', User::MANAGEMENT_EDITOR_ROLE_IDS);
@@ -180,19 +186,7 @@ final class ApplicationApprovalListingFilter
             ->whereDoesntHave('user', function (Builder $userQuery): void {
                 $userQuery->where('role_id', 7);
             })
-            ->where(function (Builder $notReleasedToManagement): void {
-                $notReleasedToManagement
-                    ->whereDoesntHave('user', fn (Builder $userQuery) => $userQuery->where('role_id', 4))
-                    ->orWhereNull('approved_by_user_id');
-            })
-            ->where(function (Builder $outer): void {
-                $outer->whereDoesntHave('items')
-                    ->orWhereHas('items', function (Builder $itemQuery): void {
-                        $itemQuery
-                            ->where('is_checked', false)
-                            ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) = ''");
-                    });
-            });
+            ->foremanApplicationAtBoilerChiefStage();
     }
     private static function applyAtManagement(Builder $query): void
     {
@@ -405,17 +399,18 @@ final class ApplicationApprovalListingFilter
     }
     private static function applyManagementSavedApprovalScope(Builder $query): void
     {
+        $decisionStatusIds = self::managementDecisionStatusIds();
+
         $query
             ->whereNotNull('approved_by_user_id')
             ->whereHas('approvedBy', fn (Builder $userQuery) => $userQuery->whereIn('role_id', User::MANAGEMENT_EDITOR_ROLE_IDS))
-            ->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('is_checked', true))
-            ->where(function (Builder $saved): void {
+            ->where(function (Builder $saved) use ($decisionStatusIds): void {
+                // Совпадает с Application::managementHasSavedApproval(): отказ по всем
+                // позициям (статус «Не согласована») тоже считается сохранённым решением.
+                $saved->whereIn('application_status_id', $decisionStatusIds);
+
                 if (Schema::hasColumn('applications', 'management_supply_items_saved_at')) {
-                    $saved
-                        ->whereNotNull('management_supply_items_saved_at')
-                        ->orWhereIn('application_status_id', self::managementDecisionStatusIds());
-                } else {
-                    $saved->whereIn('application_status_id', self::managementDecisionStatusIds());
+                    $saved->orWhereNotNull('management_supply_items_saved_at');
                 }
             });
     }

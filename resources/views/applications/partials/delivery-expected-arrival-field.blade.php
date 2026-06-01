@@ -3,6 +3,7 @@
     $uid = (string) ($fieldUid ?? 'delivery-arrival');
     $nameExpectedArrival = $nameExpectedArrival ?? null;
     $expectedArrivalValue = trim((string) ($expectedArrivalValue ?? ''));
+    $fieldsRequired = ! ($optional ?? false) && filled($nameExpectedArrival);
 @endphp
 <div class="w-full" data-delivery-expected-arrival-field>
     <label for="{{ $uid }}-expected-arrival" class="app-form-label !normal-case">Дата прибытия</label>
@@ -14,6 +15,6 @@
         min="{{ now()->format('Y-m-d') }}"
         class="app-input text-sm w-full sm:max-w-md delivery-expected-arrival-input"
         data-delivery-expected-arrival
-        @if($nameExpectedArrival) required @endif
+        @if($fieldsRequired) required @endif
     />
 </div>

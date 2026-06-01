@@ -762,6 +762,18 @@ test('foreman can revise items rejected by boiler chief and resubmit without rel
     expect($app->foremanCanReviseAfterBoilerChiefRejection())->toBeTrue();
     expect($app->foremanCanEditApplication())->toBeTrue();
     expect($app->foremanCanResubmitAwaitingItemsToBoilerChief())->toBeFalse();
+    expect($app->isForemanDraftAfterBoilerChiefBeforeManagement())->toBeTrue();
+
+    $this->actingAs($chief)->get(route('applications.index'))
+        ->assertOk()
+        ->assertSee('applications/'.$app->id, false);
+
+    $atBoilerChiefIds = Application::query()
+        ->select('applications.id')
+        ->tap(fn ($q) => \App\Support\ApplicationApprovalListingFilter::apply($q, \App\Support\ApplicationApprovalListingFilter::KEY_AT_BOILER_CHIEF))
+        ->pluck('id')
+        ->all();
+    expect($atBoilerChiefIds)->toContain($app->id);
 
     $this->actingAs($management)->get(route('applications.show', $app))
         ->assertForbidden();
@@ -835,6 +847,109 @@ test('foreman can revise items rejected by boiler chief and resubmit without rel
         ->assertSee('id="boiler-chief-approval-form"', false)
         ->assertSee((string) $app->items()->find($modifiedRejectedItemId)->equipment_display_name, false)
         ->assertDontSee((string) $app->items()->find($unchangedRejectedItemId)->equipment_display_name, false);
+});
+
+test('foreman fixing the only rejected line auto resubmits to boiler chief', function (): void {
+    FunctionalScenarioFixture::seedRolesAndUnits();
+    $ctx = FunctionalScenarioFixture::foremanCatalogStockContext('Котёл КВ-одна-ревизия');
+    $pieceUnitId = (int) \App\Models\MeasurementUnit::query()
+        ->where('code', 'шт')
+        ->whereHas('unitType', fn ($q) => $q->where('code', 'piece'))
+        ->value('id');
+    $equipment2 = \App\Models\Equipment::query()->create([
+        'name' => 'Опора подвижная одна-ревизия',
+        'value' => null,
+        'measurement_unit_id' => $pieceUnitId,
+        'is_catalog' => true,
+    ]);
+
+    $chief = \App\Models\User::query()->create([
+        'surname' => 'Начальник',
+        'name' => 'Одна',
+        'patronymic' => 'Ревизия',
+        'email' => 'chief-one-revise-'.uniqid('', true).'@test.local',
+        'password' => \Illuminate\Support\Facades\Hash::make('password'),
+        'role_id' => 7,
+    ]);
+    $ctx['subdivision']->users()->attach($chief->id);
+
+    $this->actingAs($ctx['foreman'])->post(route('applications.store'), [
+        'submit_action' => 'save',
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => now()->addDays(7)->format('Y-m-d'),
+        'items' => [
+            [
+                'equipment_id' => $ctx['equipment']->id,
+                'quantity' => 5,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+            [
+                'equipment_id' => $equipment2->id,
+                'quantity' => 1,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.index'));
+
+    $app = Application::query()->where('user_id', $ctx['foreman']->id)->latest('id')->first();
+    expect($app)->not->toBeNull();
+    $this->actingAs($ctx['foreman'])->post(route('applications.submit-to-boiler-chief', $app))
+        ->assertRedirect(route('applications.show', $app));
+
+    $app->refresh()->load('items');
+    $sortedItems = $app->items->sortBy('id')->values();
+    $approvedItemId = (int) $sortedItems[0]->id;
+    $rejectedItemId = (int) $sortedItems[1]->id;
+
+    $this->actingAs($chief)->post(route('applications.boiler-chief-approval', $app), [
+        'boiler_items' => [
+            (string) $approvedItemId => ['is_checked' => '1'],
+            (string) $rejectedItemId => [
+                'is_checked' => '0',
+                'reason_not_selected' => 'Слишком мало',
+            ],
+        ],
+    ])->assertRedirect(route('applications.show', $app));
+
+    $app->refresh();
+    expect($app->foremanCanReviseAfterBoilerChiefRejection())->toBeTrue();
+
+    $rejectedItem = $app->items()->find($rejectedItemId);
+    $this->actingAs($ctx['foreman'])->put(route('applications.update', $app), [
+        'subdivision_id' => $ctx['subdivision']->id,
+        'desired_delivery_date' => $app->desired_delivery_date?->format('Y-m-d'),
+        'items' => [
+            [
+                'item_id' => $approvedItemId,
+                'equipment_id' => $sortedItems[0]->equipment_id,
+                'quantity' => (int) $sortedItems[0]->quantity,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+            [
+                'item_id' => $rejectedItemId,
+                'equipment_id' => $rejectedItem->equipment_id,
+                'catalog_label' => $rejectedItem->base_name,
+                'quantity' => 200,
+                'measurement_type' => 'piece',
+                'quantity_unit' => 'шт',
+            ],
+        ],
+    ])->assertRedirect(route('applications.show', $app))
+        ->assertSessionHas('status');
+
+    $app->refresh();
+    expect($app->items()->find($rejectedItemId)?->quantity)->toBe(200);
+    expect($app->itemAwaitingBoilerChiefReview($app->items()->find($rejectedItemId)))->toBeTrue();
+    expect($app->foremanSubmittedAwaitingItemsForBoilerChiefReview())->toBeTrue();
+    expect($app->foremanCanReviseAfterBoilerChiefRejection())->toBeFalse();
+
+    $this->actingAs($chief)->get(route('applications.show', $app))
+        ->assertOk()
+        ->assertSee('id="boiler-chief-approval-form"', false)
+        ->assertSee((string) $app->items()->find($rejectedItemId)->equipment_display_name, false);
 });
 
 test('boiler chief submits foreman application to management after boiler approval', function (): void {
@@ -945,6 +1060,10 @@ test('boiler chief submits foreman application to management after boiler approv
         ->pluck('id')
         ->all();
     expect($pendingIds)->toContain($app->id);
+
+    $this->actingAs($chief)->get(route('applications.index', ['archive' => 'active']))
+        ->assertOk()
+        ->assertSee('applications/'.$app->id, false);
 
     ApplicationIndexPresenter::prepare(
         new \Illuminate\Pagination\LengthAwarePaginator([$app], 1, 15, 1),
@@ -1513,6 +1632,20 @@ test('management rejection of all equipment lines marks application rejected and
     $this->actingAs($management)->get(route('applications.index'))
         ->assertOk()
         ->assertDontSee('На согласование', false);
+
+    $this->actingAs($ctx['foreman'])->get(route('applications.index', [
+        'approval_filter' => 'rejected',
+        'archive' => 'active',
+    ]))
+        ->assertOk()
+        ->assertSee((string) $app->id, false);
+
+    expect(\App\Support\ApplicationApprovalListingFilter::countWithFilter(
+        Application::listingQuery(\Illuminate\Http\Request::create('/applications', 'GET', ['archive' => 'active']))
+            ->tap(fn ($q) => $q->forSiteForemanAccess($ctx['foreman'])),
+        \App\Support\ApplicationApprovalListingFilter::KEY_REJECTED,
+        $ctx['foreman']
+    ))->toBeGreaterThanOrEqual(1);
 });
 
 test('legacy management-delegated application with assigned foreman is supply-ready', function (): void {

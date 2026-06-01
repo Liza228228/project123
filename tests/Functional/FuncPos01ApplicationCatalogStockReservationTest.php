@@ -84,6 +84,18 @@ test('approved catalog quantity reserves main warehouse stock for other applicat
     expect($app1->managementHasSavedApproval())->toBeTrue();
     expect($item1->is_checked)->toBeTrue();
 
+    $overflowLine = ApplicationItem::query()
+        ->where('application_id', $app1->id)
+        ->get()
+        ->first(fn (ApplicationItem $row) => $row->isCatalogOverflowPendingOrderLine());
+    expect($overflowLine)->not->toBeNull();
+
+    $this->actingAs($supplyHead)->post(route('applications.approval', $app1), [
+        'items' => [
+            (string) $item1->id => ['is_checked' => '1'],
+        ],
+    ])->assertRedirect(route('applications.show', $app1));
+
     expect(ApplicationCatalogStockAvailability::reservedQuantitiesByEquipmentId()[(int) $ctx['equipment']->id] ?? 0.0)
         ->toEqual(8.0);
 

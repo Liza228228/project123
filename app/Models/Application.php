@@ -215,10 +215,54 @@ class Application extends Model
     }
     public function transportAndVehicleLine(): ?string
     {
+        $lines = $this->transportAndVehicleLines();
+        if ($lines === []) {
+            return null;
+        }
+
+        return count($lines) === 1
+            ? $lines[0]
+            : implode('; ', $lines);
+    }
+
+    /**
+     * Уникальные строки «способ — номер» по позициям в доставке и, при отсутствии, с уровня заявки.
+     *
+     * @return list<string>
+     */
+    public function transportAndVehicleLines(): array
+    {
+        $this->loadMissing(['items.transportOption', 'transportOption']);
+
+        $lines = [];
+
+        foreach ($this->items as $item) {
+            if (! $item->is_checked) {
+                continue;
+            }
+
+            $status = $item->resolvedDeliveryStatus();
+            if (! in_array($status, [ApplicationItem::DELIVERY_IN_TRANSIT, ApplicationItem::DELIVERY_DELIVERED], true)) {
+                continue;
+            }
+
+            $line = $item->transportAndVehicleLine();
+            if ($line !== null) {
+                $lines[$line] = $line;
+            }
+        }
+
+        if ($lines !== []) {
+            $sorted = array_values($lines);
+            sort($sorted, SORT_NATURAL | SORT_FLAG_CASE);
+
+            return $sorted;
+        }
+
         $this->loadMissing('transportOption');
         $opt = $this->transportOption;
         if (! $opt) {
-            return null;
+            return [];
         }
 
         $name = trim((string) ($opt->name ?? ''));
@@ -227,14 +271,14 @@ class Application extends Model
             : '';
 
         if ($name === '' && $plate === '') {
-            return null;
+            return [];
         }
 
         if ($name !== '' && $plate !== '') {
-            return $name.' — '.$plate;
+            return [$name.' — '.$plate];
         }
 
-        return $name !== '' ? $name : $plate;
+        return [$name !== '' ? $name : $plate];
     }
     public function expectedArrivalSummaryLine(): ?string
     {
@@ -556,7 +600,8 @@ class Application extends Model
 
         if (Subdivision::hasBoilerChiefAssigned((int) $this->subdivision_id)
             && ! $this->isForemanDraftBeforeBoilerChief()) {
-            return $this->foremanCanReviseAfterBoilerChiefRejection();
+            return $this->foremanCanReviseAfterBoilerChiefRejection()
+                || $this->foremanCanResubmitAwaitingItemsToBoilerChief();
         }
 
         return true;
@@ -1032,6 +1077,62 @@ class Application extends Model
             'reason_for_refusal' => null,
         ];
     }
+
+    /**
+     * Заявка мастера на этапе котельной: ещё не передана руководству, но уже не «черновик до первой отправки».
+     */
+    public function scopeForemanApplicationAtBoilerChiefStage(Builder $query): Builder
+    {
+        $draftId = ApplicationStatus::idForDraft();
+
+        return $query
+            ->whereHas('user', function (Builder $userQuery): void {
+                $userQuery->where('role_id', 4);
+            })
+            ->whereNull('approved_by_user_id')
+            ->where(function (Builder $outer) use ($draftId): void {
+                $outer->where('application_status_id', '!=', $draftId)
+                    ->orWhere(function (Builder $afterBoilerReview) use ($draftId): void {
+                        $afterBoilerReview
+                            ->where('application_status_id', $draftId)
+                            ->where(function (Builder $cycle): void {
+                                $cycle
+                                    ->whereHas('items', function (Builder $itemQuery): void {
+                                        $itemQuery->where('is_checked', true);
+                                    })
+                                    ->orWhereHas('items', function (Builder $itemQuery): void {
+                                        $itemQuery
+                                            ->where('is_checked', false)
+                                            ->whereRaw("TRIM(COALESCE(reason_not_selected, '')) <> ''");
+                                    });
+                            });
+                    });
+            });
+    }
+
+    /**
+     * Видимость заявки мастера в общем списке для начальника котельной:
+     * этап котельной, возврат после частичного согласования или уже передана руководству.
+     */
+    public function scopeVisibleToBoilerChiefInListing(Builder $query): Builder
+    {
+        return $query->where(function (Builder $outer): void {
+            $outer->whereDoesntHave('user', function (Builder $userQuery): void {
+                $userQuery->where('role_id', 4);
+            })->orWhere(function (Builder $foremanVisible): void {
+                $foremanVisible
+                    ->whereHas('user', function (Builder $userQuery): void {
+                        $userQuery->where('role_id', 4);
+                    })
+                    ->where(function (Builder $stage): void {
+                        $stage
+                            ->foremanApplicationAtBoilerChiefStage()
+                            ->orWhereNotNull('approved_by_user_id');
+                    });
+            });
+        });
+    }
+
     public function scopeForSiteForemanAccess(Builder $query, User $foreman): Builder
     {
         $assignedSubdivisionIds = $foreman->assignedSubdivisions()
@@ -1093,41 +1194,91 @@ class Application extends Model
         static::applyArchiveFilterToListingQuery($applications, static::archiveFilterFromRequest($request));
 
         if ($search !== '') {
-            $like = '%'.addcslashes($search, '%_\\').'%';
-            $applications->where(function ($query) use ($search, $like) {
-                $query->whereRaw('0 = 1');
-                if (ctype_digit($search)) {
-                    $id = (int) $search;
-                    $query->orWhere('id', $id)->orWhere('source_application_id', $id);
-                }
-                $query->orWhereHas('subdivision', fn ($q) => $q->where('name', 'like', $like))
-                    ->orWhereHas('responsibleUser', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('user', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('approvedBy', function ($q) use ($like) {
-                        $q->where('surname', 'like', $like)
-                            ->orWhere('name', 'like', $like)
-                            ->orWhere('patronymic', 'like', $like);
-                    })
-                    ->orWhereHas('transportOption', fn ($q) => $q->where('name', 'like', $like))
-                    ->orWhereHas('items', function ($q) use ($like) {
-                        $q->whereHas('manualDetail', fn ($m) => $m->where('equipment_name', 'like', $like))
-                            ->orWhereHas('equipment', fn ($eq) => $eq->where('name', 'like', $like));
-                    });
-            });
+            static::applyListingSearch($applications, $search);
         }
 
         \App\Support\ApplicationApprovalListingFilter::apply($applications, $approvalFilter, $request->user());
 
         return $applications;
     }
+
+    /**
+     * @return list<int>
+     */
+    public static function listingSearchApplicationIds(string $search): array
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return [];
+        }
+
+        $ids = [];
+
+        if (preg_match('/^[\s#№]*(\d+)\s*$/u', $search, $match)) {
+            $ids[] = (int) $match[1];
+        } elseif (ctype_digit($search)) {
+            $ids[] = (int) $search;
+        }
+
+        if (preg_match_all('/(?:№|#|заявк[aа]\s*(?:№|#)?)\s*(\d+)/iu', $search, $matches)) {
+            foreach ($matches[1] as $number) {
+                $ids[] = (int) $number;
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            $ids,
+            static fn (int $id): bool => $id > 0
+        )));
+    }
+
+    public static function applyListingSearch(Builder $query, string $search): void
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return;
+        }
+
+        $applicationIds = static::listingSearchApplicationIds($search);
+        $numberOnly = $applicationIds !== []
+            && preg_match('/^[\s#№]*(\d+)\s*$/u', $search);
+
+        if ($numberOnly) {
+            $query->where(function (Builder $inner) use ($applicationIds): void {
+                $inner->whereRaw('0 = 1');
+                foreach ($applicationIds as $id) {
+                    $inner->orWhere('applications.id', $id)
+                        ->orWhere('applications.source_application_id', $id);
+                }
+            });
+
+            return;
+        }
+
+        $like = '%'.addcslashes($search, '%_\\').'%';
+
+        $query->where(function (Builder $inner) use ($like, $applicationIds): void {
+            $inner->whereRaw('0 = 1');
+
+            foreach ($applicationIds as $id) {
+                $inner->orWhere('applications.id', $id)
+                    ->orWhere('applications.source_application_id', $id);
+            }
+
+            $inner->orWhereHas('subdivision', fn (Builder $q) => $q->where('name', 'like', $like))
+                ->orWhereHas('user', function (Builder $q) use ($like): void {
+                    $q->where('surname', 'like', $like)
+                        ->orWhere('name', 'like', $like)
+                        ->orWhere('patronymic', 'like', $like);
+                })
+                ->orWhereHas('approvedBy', function (Builder $q) use ($like): void {
+                    $q->where('surname', 'like', $like)
+                        ->orWhere('name', 'like', $like)
+                        ->orWhere('patronymic', 'like', $like);
+                });
+        });
+    }
+
     public function getEquipmentSummaryAttribute(): string
     {
         $names = $this->items->map(fn (ApplicationItem $item) => $item->equipment_display_name.' × '.$item->quantity_with_unit);

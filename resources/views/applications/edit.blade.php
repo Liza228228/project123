@@ -54,8 +54,20 @@
             <div class="px-4 py-5 sm:p-8">
                 @if ($foremanMayReviseRejectedByBoilerChiefOnly ?? false)
                     <div class="mb-6 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
-                        Начальник котельной не согласовал часть позиций. Можно изменить только эти позиции. Согласованные позиции недоступны для редактирования. После правок отправьте заявку на повторное согласование.
+                        Начальник котельной не согласовал часть позиций. Можно изменить только эти позиции. Согласованные позиции недоступны для редактирования. После сохранения всех правок исправленные позиции уйдут на согласование котельной.
                     </div>
+                @endif
+
+                @if (session('edit_notice'))
+                    <x-app-alert type="success" class="mb-6" dismissible>
+                        {{ session('edit_notice') }}
+                    </x-app-alert>
+                @endif
+
+                @if ($errors->has('equipment'))
+                    <x-app-alert type="error" class="mb-6">
+                        {{ $errors->first('equipment') }}
+                    </x-app-alert>
                 @endif
 
                 <form id="application-edit-form" method="POST" action="{{ route('applications.update', $application) }}" enctype="multipart/form-data" class="max-sm:pb-40 space-y-8 sm:space-y-10" data-app-initial-subdivision="{{ (int) $application->subdivision_id }}" data-app-initial-delivery="{{ $application->desired_delivery_date?->format('Y-m-d') }}">
@@ -106,11 +118,25 @@
                                 @php
                                     $itemId = $item['item_id'] ?? null;
                                     $dbItem = $itemId !== null && $itemId !== '' ? $application->items->firstWhere('id', (int) $itemId) : null;
+                                    $foremanReviseBoilerRejections = (bool) ($foremanMayReviseRejectedByBoilerChiefOnly ?? false);
                                     $lockedApproved = (bool) ($dbItem && $application->itemLineIsApproved($dbItem->id) && ! ($managementMayEditBoilerApprovedEquipment ?? false));
                                     $lockedRejected = (bool) ($dbItem && ! $application->itemLineIsApproved($dbItem->id)
-                                        && trim((string) ($application->itemLineRejectionReason($dbItem->id) ?? '')) !== '');
+                                        && trim((string) ($application->itemLineRejectionReason($dbItem->id) ?? '')) !== ''
+                                        && ! ($foremanReviseBoilerRejections && $application->itemIsRejectedByBoilerChief($dbItem)));
                                     $locked = $lockedApproved || $lockedRejected;
                                     $typeId = $item['equipment_id'] ?? '';
+                                    if (($typeId === '' || $typeId === null) && $dbItem) {
+                                        $baseForCatalog = trim((string) ($dbItem->base_name ?? ''));
+                                        if ($baseForCatalog !== '' && $baseForCatalog !== '—') {
+                                            $resolvedCatalogRowId = \App\Models\Equipment::query()
+                                                ->where('is_catalog', true)
+                                                ->where('name', $baseForCatalog)
+                                                ->value('id');
+                                            if ($resolvedCatalogRowId) {
+                                                $typeId = (string) $resolvedCatalogRowId;
+                                            }
+                                        }
+                                    }
                                     $eqName = trim($item['equipment_name'] ?? '');
                                     $isCustomRow = ! $locked && (($typeId === '' || $typeId === null) && $eqName !== '');
                                 @endphp
@@ -255,21 +281,25 @@
                                                     <input type="hidden" name="items[{{ $idx }}][equipment_id]" value="{{ $typeId ?? '' }}" class="equipment-type-id" />
                                                     <input
                                                         type="text"
-                                                        value="{{ $selectedEq?->name ?? '' }}"
+                                                        name="items[{{ $idx }}][catalog_label]"
+                                                        value="{{ old('items.'.$idx.'.catalog_label', $selectedEq?->name ?? '') }}"
                                                         placeholder="От 2 букв названия…"
                                                         maxlength="{{ $equipmentCatalogSearchMax }}"
                                                         autocomplete="off"
                                                         autocorrect="off"
                                                         autocapitalize="off"
                                                         spellcheck="false"
-                                                        class="equipment-search app-input app-input--with-icon"
+                                                        class="equipment-search catalog-label-field app-input app-input--with-icon"
                                                     />
                                                     <div class="equipment-suggestions app-suggestions hidden"></div>
                                                 </div>
+                                                <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную — только количество (поле справа) или другая позиция из списка.</p>
+                                                <x-input-error :messages="$errors->get('items.'.$idx.'.equipment_id')" class="mt-1.5" />
                                             </div>
                                             <div class="list-amount-block md:col-span-3">
                                                 <label class="list-amount-label app-form-label !normal-case">{{ $listAmtLabel }}</label>
-                                                <input type="number" value="{{ (int) ($item['quantity'] ?? 1) }}" min="1" step="1" name="items[{{ $idx }}][quantity]" required class="list-amount-number app-input" />
+                                                <input type="number" value="{{ (int) old('items.'.$idx.'.quantity', $item['quantity'] ?? 1) }}" min="1" step="1" name="items[{{ $idx }}][quantity]" required class="list-amount-number app-input" />
+                                                <x-input-error :messages="$errors->get('items.'.$idx.'.quantity')" class="mt-1.5" />
                                                 <div class="list-size-wrap {{ $isClothing ? 'mt-2' : 'hidden' }}">
                                                     <label class="list-size-label app-form-label !normal-case">Размер</label>
                                                     <select class="list-amount-size app-select" @if($isClothing) required @else disabled @endif>
@@ -305,7 +335,6 @@
                                 </button>
                             </div>
                         @endunless
-                        <x-input-error :messages="$errors->get('equipment')" class="mt-1.5" />
                         @foreach($errors->getMessages() as $errKey => $errMessages)
                             @if(\Illuminate\Support\Str::startsWith((string) $errKey, 'removed_item_reasons.'))
                                 @foreach($errMessages as $msg)
@@ -338,7 +367,7 @@
                         <a href="{{ route('applications.index') }}" class="min-h-11 content-center text-center text-sm font-medium text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200 sm:text-left">
                             Отмена и к списку заявок
                         </a>
-                        @if (($usesDraftSubmitFlow ?? false) && (($isCreatorDraft ?? false) || ($foremanCanResubmitToBoilerChief ?? false)))
+                        @if (($usesDraftSubmitFlow ?? false) && (($isCreatorDraft ?? false) || ($foremanCanResubmitToBoilerChief ?? false) || ($foremanMayReviseRejectedByBoilerChiefOnly ?? false)))
                             <button type="submit" name="submit_action" value="save"
                                     class="ui-btn ui-btn--primary ui-btn--lg w-full text-base sm:w-auto">
                                 Сохранить
@@ -381,9 +410,10 @@
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </span>
                         <input type="hidden" name="items[__INDEX__][equipment_id]" value="" class="equipment-type-id" />
-                        <input type="text" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search app-input app-input--with-icon" />
+                        <input type="text" name="items[__INDEX__][catalog_label]" value="" placeholder="От 2 букв названия…" maxlength="{{ $equipmentCatalogSearchMax }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="equipment-search catalog-label-field app-input app-input--with-icon" />
                         <div class="equipment-suggestions app-suggestions hidden"></div>
                     </div>
+                    <p class="mt-1 text-[11px] text-stone-500 dark:text-stone-400">Название из справочника нельзя менять вручную — только количество или другая позиция из списка.</p>
                 </div>
                 <div class="list-amount-block md:col-span-3">
                     <label class="list-amount-label app-form-label !normal-case">Количество, шт</label>
@@ -452,20 +482,9 @@
                     <select class="measurement-unit app-select" data-current="" disabled></select>
                 </div>
             </div>
-            <div class="new-line-field-change-reasons mt-3 space-y-2 border-t border-stone-200/80 pt-3 dark:border-stone-600/80" data-new-line-change-reasons="__INDEX__">
-                <p class="text-xs text-stone-600 dark:text-stone-400">Для новой позиции укажите комментарий по каждому пункту — их увидит мастер участка.</p>
-                <div class="new-line-reason-aspect new-line-reason-aspect--equipment hidden space-y-1" data-aspect="equipment" data-server-error="0">
-                    <label class="app-form-label !text-xs">Комментарий (новая позиция): оборудованию / наименованию</label>
-                    <textarea name="items[__INDEX__][addition_reasons][equipment]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
-                </div>
-                <div class="new-line-reason-aspect new-line-reason-aspect--quantity hidden space-y-1" data-aspect="quantity" data-server-error="0">
-                    <label class="app-form-label !text-xs">Комментарий (новая позиция): количеству</label>
-                    <textarea name="items[__INDEX__][addition_reasons][quantity]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
-                </div>
-                <div class="new-line-reason-aspect new-line-reason-aspect--measurement hidden space-y-1" data-aspect="measurement" data-server-error="0">
-                    <label class="app-form-label !text-xs">Комментарий (новая позиция): типу измерения, единице или размеру</label>
-                    <textarea name="items[__INDEX__][addition_reasons][measurement]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
-                </div>
+            <div class="new-line-field-change-reasons mt-3 space-y-1 border-t border-stone-200/80 pt-3 dark:border-stone-600/80 hidden" data-new-line-change-reasons="__INDEX__" data-server-error="0">
+                <label class="app-form-label !text-xs">Комментарий: почему добавляете позицию</label>
+                <textarea name="items[__INDEX__][addition_reason]" rows="2" maxlength="500" class="app-input min-h-[4rem] text-sm"></textarea>
             </div>
         </div>
     </script>
@@ -555,7 +574,7 @@
                     var serverFlag = wrap.getAttribute('data-server-error') === '1';
                     var vis = serverFlag || hasContent;
                     wrap.classList.toggle('hidden', !vis);
-                    var ta = wrap.querySelector('textarea');
+                    var ta = wrap.querySelector('textarea[name*="[addition_reason]"]');
                     if (ta) {
                         ta.required = !!vis;
                         if (!vis && !serverFlag) {
@@ -770,6 +789,221 @@
             var catalogById = @json($measurementMeta['catalogById'] ?? []);
             var DUPLICATE_EQUIPMENT_MSG = 'Нельзя добавить две строки с одним и тем же наименованием и размером.';
             var DUPLICATE_EQUIPMENT_GENERIC_MSG = 'Нельзя добавить две строки с одинаковым наименованием и типом измерения.';
+            var CATALOG_SEARCH_SELECT_MSG = 'Выберите оборудование из справочника.';
+            var CATALOG_SEARCH_MISMATCH_MSG = 'Нельзя изменить название вручную. Выберите позицию из справочника или измените только количество.';
+
+            function expectedCatalogNameForId(id) {
+                var key = String(id || '').trim();
+                if (!key) {
+                    return '';
+                }
+                var meta = catalogById[key];
+                if (meta && meta.name) {
+                    return String(meta.name);
+                }
+                var hit = equipmentList.find(function(item) {
+                    return String(item.id) === key;
+                });
+
+                return hit && hit.name ? String(hit.name) : '';
+            }
+
+            function rememberCatalogSearchCommit(input, id, name) {
+                if (!input) {
+                    return;
+                }
+                if (id && name) {
+                    input.dataset.catalogCommitId = String(id);
+                    input.dataset.catalogCommitName = String(name);
+                } else {
+                    delete input.dataset.catalogCommitId;
+                    delete input.dataset.catalogCommitName;
+                }
+            }
+
+            function initCatalogSearchCommit(input) {
+                var row = input.closest('.equipment-row--list');
+                if (!row) {
+                    return;
+                }
+                var hidden = row.querySelector('.equipment-type-id');
+                var id = hidden ? String(hidden.value || '').trim() : '';
+                if (!id) {
+                    return;
+                }
+                var name = expectedCatalogNameForId(id);
+                if (name) {
+                    rememberCatalogSearchCommit(input, id, name);
+                }
+            }
+
+            function looksLikeAppendedCatalogNameEdit(text, commitName) {
+                if (!text || !commitName) {
+                    return false;
+                }
+                var t = text.toLowerCase();
+                var c = commitName.toLowerCase();
+                if (t === c) {
+                    return false;
+                }
+
+                return t.indexOf(c) === 0 && t.length > c.length;
+            }
+
+            function catalogSearchManualNameDrift(search) {
+                var row = search.closest('.equipment-row--list');
+                if (!row) {
+                    return false;
+                }
+                var hidden = row.querySelector('.equipment-type-id');
+                if (!hidden) {
+                    return false;
+                }
+                var text = String(search.value || '').trim();
+                if (!text) {
+                    return false;
+                }
+                var commitName = String(search.dataset.catalogCommitName || '').trim();
+                var id = String(hidden.value || '').trim();
+                if (id) {
+                    var expected = expectedCatalogNameForId(id);
+
+                    return !!(expected && text.toLowerCase() !== expected.toLowerCase());
+                }
+                if (!commitName) {
+                    return false;
+                }
+                if (text.toLowerCase() === commitName.toLowerCase()) {
+                    return false;
+                }
+                if (equipmentMap[text.toLowerCase()]) {
+                    return false;
+                }
+                if (text.toLowerCase().indexOf(commitName.toLowerCase()) !== 0) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            function guardCatalogSearchInput(input) {
+                var row = input.closest('.equipment-row--list');
+                if (!row) {
+                    return;
+                }
+                var hidden = row.querySelector('.equipment-type-id');
+                if (!hidden) {
+                    return;
+                }
+                var commitName = String(input.dataset.catalogCommitName || '').trim();
+                var commitId = String(input.dataset.catalogCommitId || '').trim();
+                if (!commitName || !commitId) {
+                    return;
+                }
+                var text = String(input.value || '');
+                if (text === '') {
+                    return;
+                }
+                if (text.toLowerCase() === commitName.toLowerCase()) {
+                    setDuplicateErrorOnInput(input, '');
+
+                    return;
+                }
+                var exactOtherId = equipmentMap[text.trim().toLowerCase()];
+                if (exactOtherId && exactOtherId !== commitId) {
+                    return;
+                }
+                if (text.toLowerCase().indexOf(commitName.toLowerCase()) !== 0) {
+                    return;
+                }
+                input.value = commitName;
+                hidden.value = commitId;
+                syncCatalogLabelField(input);
+                setDuplicateErrorOnInput(input, CATALOG_SEARCH_MISMATCH_MSG);
+                syncListRowFromEquipmentId(row);
+            }
+
+            function enforceCatalogSearchLabel(input) {
+                var row = input.closest('.equipment-row--list');
+                if (!row) {
+                    return;
+                }
+                var hidden = row.querySelector('.equipment-type-id');
+                if (!hidden) {
+                    return;
+                }
+                syncCatalogSearchHiddenId(input);
+                var id = String(hidden.value || '').trim();
+                var text = String(input.value || '').trim();
+                setDuplicateErrorOnInput(input, '');
+                if (id) {
+                    var expected = expectedCatalogNameForId(id);
+                    if (expected && text.toLowerCase() !== expected.toLowerCase()) {
+                        input.value = expected;
+                        setDuplicateErrorOnInput(input, CATALOG_SEARCH_MISMATCH_MSG);
+                    } else {
+                        setDuplicateErrorOnInput(input, '');
+                    }
+                    rememberCatalogSearchCommit(input, id, expected || text);
+
+                    return;
+                }
+                var commitId = String(input.dataset.catalogCommitId || '').trim();
+                var commitName = String(input.dataset.catalogCommitName || '').trim();
+                if (!text) {
+                    rememberCatalogSearchCommit(input, '', '');
+
+                    return;
+                }
+                if (commitId && commitName && looksLikeAppendedCatalogNameEdit(text, commitName)) {
+                    hidden.value = commitId;
+                    input.value = commitName;
+                    setDuplicateErrorOnInput(input, CATALOG_SEARCH_MISMATCH_MSG);
+                    syncListRowFromEquipmentId(row);
+
+                    return;
+                }
+                setDuplicateErrorOnInput(input, CATALOG_SEARCH_MISMATCH_MSG);
+            }
+
+            function enforceAllCatalogSearchLabels() {
+                container.querySelectorAll('.equipment-row--list .equipment-search').forEach(function(input) {
+                    enforceCatalogSearchLabel(input);
+                });
+            }
+
+            function validateCatalogListRows() {
+                var ok = true;
+                container.querySelectorAll('.equipment-row--list').forEach(function(row) {
+                    var search = row.querySelector('.equipment-search');
+                    var hidden = row.querySelector('.equipment-type-id');
+                    if (!search || !hidden) {
+                        return;
+                    }
+                    if (catalogSearchManualNameDrift(search)) {
+                        setDuplicateErrorOnInput(search, CATALOG_SEARCH_MISMATCH_MSG);
+                        ok = false;
+
+                        return;
+                    }
+                    setDuplicateErrorOnInput(search, '');
+                    var id = String(hidden.value || '').trim();
+                    var text = String(search.value || '').trim();
+                    if (!id) {
+                        setDuplicateErrorOnInput(search, text ? CATALOG_SEARCH_MISMATCH_MSG : CATALOG_SEARCH_SELECT_MSG);
+                        ok = false;
+
+                        return;
+                    }
+                    var expected = expectedCatalogNameForId(id);
+                    if (expected && text.toLowerCase() !== expected.toLowerCase()) {
+                        setDuplicateErrorOnInput(search, CATALOG_SEARCH_MISMATCH_MSG);
+                        ok = false;
+                    }
+                });
+
+                return ok;
+            }
 
             function catalogIdForFreeTextLabel(raw) {
                 var text = String(raw || '').trim();
@@ -924,6 +1158,27 @@
                 });
             }
 
+            function catalogLabelFieldForRow(row) {
+                return row ? row.querySelector('.catalog-label-field') : null;
+            }
+
+            function syncCatalogLabelField(input) {
+                var row = input.closest('.equipment-row--list');
+                if (!row || !input) {
+                    return;
+                }
+                var labelField = catalogLabelFieldForRow(row);
+                if (labelField) {
+                    labelField.value = String(input.value || '').trim();
+                }
+            }
+
+            function syncCatalogLabelFieldsFromSearch() {
+                container.querySelectorAll('.equipment-row--list .equipment-search').forEach(function(input) {
+                    syncCatalogLabelField(input);
+                });
+            }
+
             function syncCatalogSearchHiddenId(input) {
                 var row = input.closest('.equipment-row');
                 if (!row) {
@@ -936,6 +1191,8 @@
                 var raw = String(input.value || '').trim();
                 if (raw === '') {
                     hidden.value = '';
+                    syncCatalogLabelField(input);
+
                     return;
                 }
                 var key = raw.toLowerCase();
@@ -946,6 +1203,7 @@
                         hidden.value = matched;
                     }
                 }
+                syncCatalogLabelField(input);
             }
 
             function syncAllCatalogSearchHiddenIds() {
@@ -1197,6 +1455,7 @@
                     if (input.dataset.bound === '1') {
                         return;
                     }
+                    initCatalogSearchCommit(input);
                     var sync = function() {
                         var row = input.closest('.equipment-row');
                         if (!row) {
@@ -1206,7 +1465,14 @@
                         if (!hidden) {
                             return;
                         }
+                        if (row.classList.contains('equipment-row--list')) {
+                            guardCatalogSearchInput(input);
+                        }
                         syncCatalogSearchHiddenId(input);
+                        var syncedId = String(hidden.value || '').trim();
+                        if (syncedId && row.classList.contains('equipment-row--list')) {
+                            rememberCatalogSearchCommit(input, syncedId, expectedCatalogNameForId(syncedId));
+                        }
                         if (row.classList.contains('equipment-row--list')) {
                             syncListRowFromEquipmentId(row);
                         }
@@ -1261,11 +1527,14 @@
                         setTimeout(function() {
                             var row = input.closest('.equipment-row');
                             var box = row ? row.querySelector('.equipment-suggestions') : null;
-                            if (!box) {
-                                return;
+                            if (box) {
+                                box.innerHTML = '';
+                                box.classList.add('hidden');
                             }
-                            box.innerHTML = '';
-                            box.classList.add('hidden');
+                            if (row && row.classList.contains('equipment-row--list')) {
+                                enforceCatalogSearchLabel(input);
+                                refreshDuplicateEquipmentErrors();
+                            }
                         }, 120);
                     });
                     input.dataset.bound = '1';
@@ -1546,7 +1815,19 @@
             var editForm = document.getElementById('application-edit-form');
             if (editForm) {
                 editForm.addEventListener('submit', function(e) {
+                    syncCatalogLabelFieldsFromSearch();
                     syncAllCatalogSearchHiddenIds();
+                    syncCatalogLabelFieldsFromSearch();
+                    if (!validateCatalogListRows()) {
+                        e.preventDefault();
+                        var catalogErr = container.querySelector('.equipment-search[aria-invalid="true"]');
+                        if (catalogErr) {
+                            catalogErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            catalogErr.focus({ preventScroll: true });
+                        }
+
+                        return;
+                    }
                     refreshDuplicateEquipmentErrors();
                     var firstErr = container.querySelector('.equipment-line-duplicate-error');
                     if (!firstErr) {

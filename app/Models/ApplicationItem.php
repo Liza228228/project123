@@ -468,8 +468,19 @@ class ApplicationItem extends Model
 
     public function canMarkCatalogDeliveryInTransit(float $physicalBalanceOnMainWarehouse, ?iterable $siblingItems = null): bool
     {
+        if ($this->isMisplacedCatalogReserveDuplicateLine($siblingItems)) {
+            return false;
+        }
+
         if (! $this->canMarkDeliveryInTransit()) {
             return false;
+        }
+
+        if ($this->equipment_id !== null) {
+            $this->loadMissing('equipment:id,is_catalog');
+            if (! $this->equipment?->is_catalog) {
+                return false;
+            }
         }
 
         if ($this->catalogShortageQtyForMainWarehouseDelivery($physicalBalanceOnMainWarehouse) > 0) {
@@ -639,8 +650,105 @@ class ApplicationItem extends Model
         return $this->expected_arrival_at?->format('d.m.Y');
     }
 
+    public function isApplicationReserveEquipmentLine(): bool
+    {
+        if ($this->equipment_id === null) {
+            return false;
+        }
+
+        $this->loadMissing('equipment:id,name,is_catalog');
+        $equipment = $this->equipment;
+        if ($equipment === null || $equipment->is_catalog) {
+            return false;
+        }
+
+        return preg_match('/\[РЕЗЕРВ\s+заявка\s+\d+/u', (string) $equipment->name) === 1;
+    }
+
+    /**
+     * Ошибочная строка после старого оприходования дозаказа: дубликат каталожной позиции с резервным оборудованием.
+     */
+    public function reserveCatalogBaseName(): string
+    {
+        $base = trim((string) ($this->base_name ?? ''));
+        if ($base !== '' && $base !== '—') {
+            return $base;
+        }
+
+        return trim((string) preg_replace(
+            '/\s*\[РЕЗЕРВ\s+заявка\s+\d+.*$/u',
+            '',
+            trim((string) ($this->equipment?->name ?? ''))
+        ));
+    }
+
+    public function isMisplacedCatalogReserveDuplicateLine(?iterable $siblingItems = null): bool
+    {
+        if (! $this->isApplicationReserveEquipmentLine()) {
+            return false;
+        }
+
+        $items = $siblingItems;
+        if ($items === null) {
+            $this->loadMissing('application.items.equipment');
+            $items = $this->application?->items;
+        }
+        if ($items === null) {
+            return false;
+        }
+
+        $reserveBase = $this->reserveCatalogBaseName();
+        if ($reserveBase === '') {
+            return false;
+        }
+
+        foreach ($items as $other) {
+            if (! $other instanceof self || (int) $other->id === (int) $this->id) {
+                continue;
+            }
+            if ((int) ($other->equipment_id ?? 0) <= 0) {
+                continue;
+            }
+            $other->loadMissing('equipment:id,name,is_catalog');
+            if (! $other->equipment?->is_catalog) {
+                continue;
+            }
+            $catalogName = trim((string) $other->equipment->name);
+            if ($catalogName === $reserveBase
+                || $other->catalogOverflowBaseNameForMatching() === $reserveBase
+                || str_starts_with($catalogName, $reserveBase)
+                || str_starts_with($reserveBase, $catalogName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function isCatalogOverflowRelatedLine(): bool
+    {
+        if ($this->isCatalogOverflowPendingOrderLine()) {
+            return true;
+        }
+
+        if ($this->isApplicationReserveEquipmentLine()) {
+            return true;
+        }
+
+        return str_contains(trim((string) ($this->equipment_name ?? '')), '+на согласовании');
+    }
+
+    public function shouldShowInRemovedFromApplicationSection(): bool
+    {
+        return ! $this->isCatalogOverflowRelatedLine();
+    }
+
     public function canMarkDeliveryInTransit(): bool
     {
+        if ($this->isMisplacedCatalogReserveDuplicateLine()) {
+            return false;
+        }
+
         return $this->is_checked
             && $this->equipment_id !== null
             && $this->resolvedDeliveryStatus() === null;
